@@ -213,7 +213,7 @@ enum ArtworkTrigger: String {
 }
 
 enum ArtworkAction: String, CaseIterable, Identifiable {
-    case glow, sway, ripple, burst, bounce
+    case glow, sway, ripple, burst, bounce, chime
 
     var id: String { rawValue }
 
@@ -224,6 +224,7 @@ enum ArtworkAction: String, CaseIterable, Identifiable {
         case .ripple: return "波紋"
         case .burst: return "はじける"
         case .bounce: return "はねる"
+        case .chime: return "鳴る"
         }
     }
 }

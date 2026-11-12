@@ -119,6 +119,7 @@ final class ARExperienceModel: ObservableObject {
     }
 
     func stop() {
+        ChimePlayer.shared.stop()
         stopFindingRequested = true
         mappingTask?.cancel()
         captionTask?.cancel()

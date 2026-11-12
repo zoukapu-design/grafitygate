@@ -13,6 +13,7 @@ insert into public.gf_settings (key, value, note) values
 on conflict (key) do nothing;
 
 -- 反応のルール：[{"trigger":"touch","action":"burst","cooldown_ms":1500}, …]（6 つまで）
+-- 動き：glow 光る／sway ゆれる／ripple 波紋／burst はじける／bounce はねる／chime 鳴る（やさしい鐘の音）
 create or replace function public.gf_valid_rules(r jsonb) returns boolean
 language sql immutable as $$
   select r is not null and jsonb_typeof(r) = 'array' and jsonb_array_length(r) <= 6 and not exists (
@@ -20,7 +21,7 @@ language sql immutable as $$
     where case
       when jsonb_typeof(x) <> 'object' then true
       when coalesce(x ->> 'trigger', '') not in ('approach', 'touch', 'tap', 'open') then true
-      when coalesce(x ->> 'action', '') not in ('glow', 'sway', 'ripple', 'burst', 'bounce') then true
+      when coalesce(x ->> 'action', '') not in ('glow', 'sway', 'ripple', 'burst', 'bounce', 'chime') then true
       when x ? 'cooldown_ms' and jsonb_typeof(x -> 'cooldown_ms') <> 'number' then true
       when x ? 'cooldown_ms' and (x ->> 'cooldown_ms')::numeric not between 0 and 10000 then true
       when exists (select 1 from jsonb_object_keys(x) as k(name) where name not in ('trigger', 'action', 'cooldown_ms')) then true

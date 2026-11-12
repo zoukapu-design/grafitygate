@@ -35,7 +35,9 @@ select t_throws(format('select gf_place_artwork(%L, %L, %L, null, null, 0, 1, 0,
   'gf_bad_artwork', '文字のない光る文字は置けない');
 select t_throws(format('select gf_place_artwork(%L, %L, %L, %L, null, 0, 1, 0, 0, 1, null, null)', :'vd', 'photo', '', :'bob' || '/x.jpg'),
   'gf_bad_media_path', '他人のフォルダの写真は使えない');
-select gf_place_artwork(:'vd', 'petals', '', null, 'sakura', 0, 1.0, 0.8, 0, 1, null, 'public') as a3 \gset
+select gf_place_artwork(:'vd', 'petals', '', null, 'sakura', 0, 1.0, 0.8, 0, 1,
+  '[{"trigger":"touch","action":"chime","cooldown_ms":800}]'::jsonb, 'public') as a3 \gset
+select t_ok(:'a3' is not null, '「鳴る」の動きも置ける');
 select t_throws(format('select gf_place_artwork(%L, %L, %L, null, null, 0, 1, 0, 0, 1, null, null)', :'vd', 'light', ''),
   'gf_artwork_limit', '1 人が 1 つの GATE に置けるのは 3 つまで');
 select t_throws(format('insert into gf_artworks (gate_id, owner, kind, px, py, pz) values (%L, %L, %L, 0, 1, 0)', :'g3', :'dave', 'light'),

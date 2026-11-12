@@ -319,7 +319,14 @@ final class ArtworkItem {
         }
     }
 
+    /// 「視差効果を減らす」の設定のときは、点滅・飛び散る光をやめ、やわらかく光るだけにする
+    static var reduceMotion: Bool { UIAccessibility.isReduceMotionEnabled }
+
     func perform(_ action: ArtworkAction) {
+        if Self.reduceMotion, action != .chime {
+            glow = max(glow, 0.6)
+            return
+        }
         switch action {
         case .glow:
             glow = 1
@@ -340,6 +347,9 @@ final class ArtworkItem {
         case .bounce:
             bounceVelocity += 1.5
             glow = max(glow, 0.35)
+        case .chime:
+            ChimePlayer.shared.play(color)
+            glow = max(glow, 0.7)
         }
     }
 
