@@ -83,6 +83,14 @@ struct MyGate: Decodable, Identifiable, Hashable {
     let created_at: String
 }
 
+/// 場所の記憶の置き場所（gf_place_map）
+struct PlaceMapInfo: Decodable {
+    let path: String
+    let anchor_name: String
+    let byte_size: Int
+    let created_at: String
+}
+
 struct Challenge: Decodable {
     let challenge_id: UUID
     let expires_at: String

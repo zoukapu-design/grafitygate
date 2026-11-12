@@ -10,6 +10,10 @@
 - 写真で入る・作るときはカメラだけ（写真アプリから選ばせない＝前の写真で入れないように）。
 - iPhone アプリは `App/`。XcodeGen（`App/project.yml`）、Swift 5 言語モード、iOS 17 以上。いちばん下の基準の端末は iPhone 12（LiDAR なし・4GB）。`.xcodeproj` はコミットしない。
 - ユーザーは Mac を持っていない。組み立ては GitHub Actions（`.github/workflows/ios.yml`。公開リポジトリなので Mac も無料）。push で署名なしの組み立てを確かめ、TestFlight へは手動実行で「TestFlight に送る」を選んだときだけ。失敗したら `gh run view <id> --log-failed` と、注記（annotations）の `build errors` を読んで直す。
+- AR の作り：`ARStage`（ARKit のセッション・床・場所の記憶の保存と探索・カメラの絵から写真の特徴）、`GateDoor`（扉：`ArchMesh` で形を作り、向こうの世界は見えない壁 OcclusionMaterial で囲んで開口部からだけ見せる）、`ARExperienceModel`/`ARExperienceView`（入る・作るの流れ）。扉は ARAnchor に付ける（ARKit が座標を直しても扉がずれない）。場所の記憶の印の名前は `gg.gate`、おおよその位置に出した印は `gg.visit`。ARFrame は長く持たない（`currentFrame` から取り出してすぐ離す）。
+- 場所の記憶（ARWorldMap）は、作った本人と入場中の人だけが受け取れる（`gf_place_map`・`gf-maps`）。見つからない・やめたときは、出さないのではなく目の前（2m 先）に「おおよその位置」として必ず出す。
+- 調べものの記録は `Trace.log`（端末の中だけ。「わたし」→「調べものの記録を送る」）。新しい AR の動き・置き方・失敗には、何が起きたかが後で分かる 1 行を足す。重くなりうる処理は `MainWatch.run("名前") { }` で囲む（0.5 秒より画面が止まると記録に出る）。
+- iPhone 12（4GB・`Perf.isLowMemoryDevice`）では、映像を 30 コマ/秒・周りの映り込みなし・HDR なし・光の粒を減らす。端末が熱いとき（`Perf.isHot`）は人の奥行きを使わない。
 - 画面は白基調（`Theme`）。下のタブは「ホーム／地図／撮る／わたし」の 4 つ。ホームは友達の新着だけ。分かりやすさを最優先にし、ボタンや文字を詰め込まない。
 - エフェクトは最初は数種類。仕組みが固まってから増やす。
 - ユーザーへの説明は日本語で、専門用語を避けて分かりやすく。直したときは、何をどう直したかをまとめて伝える。

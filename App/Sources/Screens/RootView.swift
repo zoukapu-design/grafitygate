@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// GATE の画面へ進むための印（どのタブからでも同じ画面を開く）
-struct GateRoute: Hashable {
+struct GateRoute: Hashable, Identifiable {
     let id: UUID
 }
 

@@ -31,15 +31,18 @@ final class SessionModel: ObservableObject {
 
     let client: SupabaseClient?
     let api: GateAPI?
+    let media: MediaStore?
 
     init() {
         if let url = ServerConfig.url, let key = ServerConfig.anonKey {
             let c = SupabaseClient(supabaseURL: url, supabaseKey: key)
             client = c
             api = GateAPI(client: c)
+            media = MediaStore(client: c)
         } else {
             client = nil
             api = nil
+            media = nil
         }
     }
 

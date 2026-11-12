@@ -39,16 +39,28 @@ struct GateAPI {
 
     /// GATE を作る。clientKey が同じなら送り直しても 1 つしかできない。
     func createGate(clientKey: String, title: String, note: String, kind: String, visibility: Visibility,
-                    location: CLLocation, prints: [[Float]]) async throws -> UUID {
+                    location: CLLocation, heading: Double?, coverPath: String?, prints: [[Float]]) async throws -> UUID {
         let challenge = try await requestChallenge()
         let params = CreateGateParams(
             p_client_key: clientKey, p_challenge: challenge, p_title: title, p_note: note, p_kind: kind,
             p_lat: location.coordinate.latitude, p_lon: location.coordinate.longitude,
             p_accuracy: location.horizontalAccuracy,
-            p_heading: location.course >= 0 ? location.course : nil,
-            p_visibility: visibility.rawValue, p_cover_path: nil,
+            p_heading: heading,
+            p_visibility: visibility.rawValue, p_cover_path: coverPath,
             p_refs: prints.map { RefPayload(print: $0, rev: FeaturePrint.revision) })
         return try await client.rpc("gf_create_gate", params: params).execute().value
+    }
+
+    /// 場所の記憶の置き場所（作った本人か、入場中だけ返る）
+    func placeMap(_ gate: UUID) async throws -> PlaceMapInfo? {
+        let rows: [PlaceMapInfo] = try await client.rpc("gf_place_map", params: GateParam(p_gate: gate)).execute().value
+        return rows.first
+    }
+
+    func registerPlaceMap(gate: UUID, path: String, size: Int, anchorName: String) async throws {
+        try await client.rpc("gf_register_place_map",
+                             params: PlaceMapParams(p_gate: gate, p_path: path, p_size: size, p_anchor: anchorName))
+            .execute()
     }
 
     /// 現地で入る（位置と、いま写した写真の特徴を送る）
@@ -61,9 +73,10 @@ struct GateAPI {
         return try await client.rpc("gf_enter", params: params).execute().value
     }
 
-    func postGraffiti(visit: UUID, body: String, visibility: Visibility, localOnly: Bool) async throws -> UUID {
+    func postGraffiti(visit: UUID, body: String, photoPath: String?, visibility: Visibility,
+                      localOnly: Bool) async throws -> UUID {
         try await client.rpc("gf_post_graffiti",
-                             params: PostParams(p_visit: visit, p_body: body, p_photo_path: nil,
+                             params: PostParams(p_visit: visit, p_body: body, p_photo_path: photoPath,
                                                 p_visibility: visibility.rawValue, p_local_only: localOnly))
             .execute().value
     }
@@ -139,6 +152,13 @@ private struct LatLon: Encodable {
 }
 
 private struct GateParam: Encodable { let p_gate: UUID }
+
+private struct PlaceMapParams: Encodable {
+    let p_gate: UUID
+    let p_path: String
+    let p_size: Int
+    let p_anchor: String
+}
 private struct IDParam: Encodable { let p_id: UUID }
 
 private struct CandidateParams: Encodable {

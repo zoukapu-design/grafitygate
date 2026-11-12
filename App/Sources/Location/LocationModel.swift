@@ -6,6 +6,8 @@ import Foundation
 final class LocationModel: NSObject, ObservableObject {
     @Published private(set) var location: CLLocation?
     @Published private(set) var authorization: CLAuthorizationStatus = .notDetermined
+    /// 端末の向き（真北から時計回りの度。分からなければ nil）。GATE を作るときに扉の向きとして残す
+    private(set) var heading: Double?
 
     private let manager = CLLocationManager()
 
@@ -25,6 +27,10 @@ final class LocationModel: NSObject, ObservableObject {
             manager.requestWhenInUseAuthorization()
         }
         manager.startUpdatingLocation()
+        if CLLocationManager.headingAvailable() {
+            manager.headingFilter = 2
+            manager.startUpdatingHeading()
+        }
     }
 
     var isDenied: Bool { authorization == .denied || authorization == .restricted }
@@ -62,6 +68,11 @@ extension LocationModel: CLLocationManagerDelegate {
                 self.manager.startUpdatingLocation()
             }
         }
+    }
+
+    nonisolated func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
+        let value = newHeading.trueHeading >= 0 ? newHeading.trueHeading : nil
+        Task { @MainActor in self.heading = value }
     }
 
     nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {

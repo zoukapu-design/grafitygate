@@ -58,4 +58,14 @@ if [ "$status" != "0" ]; then
 fi
 
 bash "$here/test_concurrency.sh"
+
+set +e
+PGOPTIONS='-c client_min_messages=notice' "$PSQL" -q -X -t -A -v ON_ERROR_STOP=1 -f "$here/test_maps.sql" 2>&1 \
+  | sed -n -e 's/^psql:[^:]*:[0-9]*: NOTICE:  /  /p' -e 's/^psql:[^:]*:[0-9]*: ERROR:  /  ERROR: /p' -e '/^== /p'
+status=${PIPESTATUS[0]}
+set -e
+if [ "$status" != "0" ]; then
+  echo "test_maps.sql が失敗しました" >&2
+  exit 1
+fi
 echo "すべてのテストが通りました"

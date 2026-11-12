@@ -71,6 +71,14 @@ struct MeView: View {
                     }
 
                     Section {
+                        ShareLink(item: Trace.fileURL) {
+                            Label("調べものの記録を送る", systemImage: "doc.text.magnifyingglass")
+                        }
+                        Text("AR で何が起きたかの記録です（位置や写真は入っていません）。うまく動かないとき、開発者に送ってください。")
+                            .font(.caption).foregroundStyle(Theme.textSecondary)
+                    }
+
+                    Section {
                         Text("GRAFITYGATE \(appVersion)")
                             .font(.caption).foregroundStyle(Theme.textSecondary)
                     }

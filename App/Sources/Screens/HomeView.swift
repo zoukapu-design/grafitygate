@@ -53,7 +53,12 @@ private struct FeedRow: View {
     let card: FeedCard
 
     var body: some View {
-        Card {
+        VStack(alignment: .leading, spacing: 0) {
+            if let path = card.photo_path {
+                RemotePhoto(path: path)
+                    .frame(height: 260)
+                    .frame(maxWidth: .infinity)
+            }
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Text(card.author_name).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
@@ -67,7 +72,11 @@ private struct FeedRow: View {
                     .font(.caption)
                     .foregroundStyle(Theme.accent)
             }
+            .padding(16)
         }
+        .background(Theme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radiusCard))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radiusCard).stroke(Theme.line))
         .padding(.vertical, 4)
     }
 }
