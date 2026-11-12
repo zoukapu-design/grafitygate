@@ -79,6 +79,15 @@ final class SessionModel: ObservableObject {
         return row
     }
 
+    /// アカウントを消したあと：ログアウトして、新しい名前なしのアカウントで始め直す
+    func restartAfterDeletion() async {
+        try? await client?.auth.signOut(scope: .local)
+        userID = nil
+        profile = nil
+        state = .starting
+        await start()
+    }
+
     func rename(_ name: String) async throws {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let client, let id = userID, !trimmed.isEmpty, trimmed.count <= 30 else { return }

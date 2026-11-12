@@ -1,29 +1,54 @@
 import PhotosUI
 import SwiftUI
 
-/// GATE の画面。入る前は表紙と概要だけ。現地で入ると（20 分）、中のグラフィティを読み、写真付きで 1 枚残せる。
+/// GATE の中のどこを見ているか
+enum GateTab: String, CaseIterable, Identifiable {
+    case graffiti, memories, board, letters
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .graffiti: return "記憶"
+        case .memories: return "思い出"
+        case .board: return "掲示板"
+        case .letters: return "手紙"
+        }
+    }
+}
+
+/// GATE の中の画面に渡す、いまの状態
+struct GateContext: Equatable {
+    let gateID: UUID
+    let title: String
+    let ownerID: UUID
+    let ownerName: String
+    /// いま有効な入場券（現地で扉を開けているあいだだけ）
+    let visit: UUID?
+    let visitExpires: Date?
+
+    var isInside: Bool { visit != nil && (visitExpires ?? .distantPast) > Date() }
+}
+
+/// GATE の画面。上に表紙、まん中に「記憶／思い出／掲示板／手紙」の切り替え。
+/// 中身の多くは、現地で扉を開けているあいだ（20 分）だけ読める・書ける。
 struct GateDetailView: View {
     let gateID: UUID
 
     @EnvironmentObject private var session: SessionModel
-    @EnvironmentObject private var location: LocationModel
     @State private var summary: GateSummary?
-    @State private var graffiti: [Graffiti] = []
-    @State private var names: [UUID: String] = [:]
     @State private var loadError: String?
     @State private var loaded = false
     @State private var showAR = false
+    @State private var tab: GateTab = .graffiti
+    @State private var saved = false
+    @State private var report: ReportItem?
+    @State private var refreshToken = 0
+    @State private var actionMessage: String?
 
-    @State private var draft = ""
-    @State private var draftVisibility: Visibility = .friends
-    @State private var draftLocalOnly = false
-    @State private var photoItem: PhotosPickerItem?
-    @State private var photo: UIImage?
-    @State private var posting = false
-    @State private var postMessage: (text: String, isError: Bool)?
-
-    init(gateID: UUID) {
+    init(gateID: UUID, tab: GateTab = .graffiti) {
         self.gateID = gateID
+        _tab = State(initialValue: tab)
     }
 
     var body: some View {
@@ -31,11 +56,15 @@ struct GateDetailView: View {
             VStack(alignment: .leading, spacing: 16) {
                 if let summary {
                     header(summary)
-                    TimelineView(.periodic(from: .now, by: 30)) { context in
-                        if let expires = summary.visitExpiresAt, expires > context.date {
-                            inside(summary, expires: expires, now: context.date)
-                        } else {
-                            outside
+                    TimelineView(.periodic(from: .now, by: 30)) { timeline in
+                        let context = makeContext(summary, now: timeline.date)
+                        VStack(alignment: .leading, spacing: 16) {
+                            visitBanner(context, now: timeline.date)
+                            Picker("GATE の中", selection: $tab) {
+                                ForEach(GateTab.allCases) { t in Text(t.label).tag(t) }
+                            }
+                            .pickerStyle(.segmented)
+                            section(context)
                         }
                     }
                 } else if let loadError {
@@ -53,16 +82,55 @@ struct GateDetailView: View {
         .background(Theme.background.ignoresSafeArea())
         .navigationTitle(summary?.title ?? "GATE")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar { toolbar }
         .task { await reload() }
-        .refreshable { await reload() }
+        .refreshable {
+            await reload()
+            refreshToken += 1
+        }
         .fullScreenCover(isPresented: $showAR) {
             ARExperienceView(mode: .enter(gateID)) {
                 showAR = false
-                Task { await reload() }
+                Task {
+                    await reload()
+                    refreshToken += 1
+                }
             }
         }
-        .onChange(of: photoItem) { _, item in
-            Task { await loadPhoto(item) }
+        .sheet(item: $report) { item in
+            ReportSheet(item: item)
+        }
+    }
+
+    private func makeContext(_ s: GateSummary, now: Date) -> GateContext {
+        let active = (s.visitExpiresAt ?? .distantPast) > now
+        return GateContext(gateID: s.id, title: s.title, ownerID: s.owner, ownerName: s.owner_name,
+                           visit: active ? s.my_visit : nil, visitExpires: active ? s.visitExpiresAt : nil)
+    }
+
+    @ToolbarContentBuilder private var toolbar: some ToolbarContent {
+        if let summary {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button {
+                    Task { await toggleSaved() }
+                } label: {
+                    Image(systemName: saved ? "bookmark.fill" : "bookmark")
+                }
+                .accessibilityLabel(saved ? "保存をやめる" : "保存する")
+                if summary.owner != session.userID {
+                    Menu {
+                        Button {
+                            report = ReportItem(id: summary.id, target: .gate, userID: summary.owner,
+                                                userName: summary.owner_name, label: summary.title)
+                        } label: {
+                            Label("この GATE を通報する", systemImage: "exclamationmark.bubble")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                    .accessibilityLabel("そのほか")
+                }
+            }
         }
     }
 
@@ -81,12 +149,23 @@ struct GateDetailView: View {
                     Text(s.note).font(.body).foregroundStyle(Theme.text)
                 }
                 HStack(spacing: 12) {
-                    Label(s.owner_name, systemImage: "person")
+                    if s.owner == session.userID {
+                        Label("あなたの GATE", systemImage: "person")
+                    } else {
+                        NavigationLink {
+                            ProfileView(userID: s.owner)
+                        } label: {
+                            Label(s.owner_name, systemImage: "person")
+                        }
+                    }
                     Label("\(s.graffiti_count) 枚の記憶", systemImage: "square.stack")
                     Label(Visibility.label(of: s.visibility), systemImage: "eye")
                 }
                 .font(.caption)
                 .foregroundStyle(Theme.textSecondary)
+                if let actionMessage {
+                    NoticeText(text: actionMessage, isError: false)
+                }
             }
             .padding(16)
         }
@@ -95,66 +174,140 @@ struct GateDetailView: View {
         .overlay(RoundedRectangle(cornerRadius: Theme.radiusCard).stroke(Theme.line))
     }
 
-    // MARK: 入る前
-
-    private var outside: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("中の記憶は、現地で扉を開けると見られます。")
-                .font(.subheadline)
-                .foregroundStyle(Theme.textSecondary)
-            Button {
-                showAR = true
-            } label: {
-                Label("現地で扉を開ける", systemImage: "door.left.hand.open")
-            }
-            .buttonStyle(PrimaryButtonStyle())
-            .disabled(session.api == nil)
-            Text("作った人が写した場所・物にカメラを向けます。位置（120m 以内）と景色の両方が合うと、扉が現れて 20 分入れます。")
-                .font(.caption)
-                .foregroundStyle(Theme.textSecondary)
-            mine
-        }
-    }
-
-    /// 入場していなくても、自分のグラフィティは見られる
-    @ViewBuilder private var mine: some View {
-        let own = graffiti.filter { $0.author == session.userID }
-        if !own.isEmpty {
-            Text("ここに残した自分の記憶").font(.headline).foregroundStyle(Theme.text).padding(.top, 8)
-            ForEach(own) { item in
-                GraffitiCard(item: item, author: names[item.author] ?? "", isMine: true) {
-                    Task { await delete(item) }
-                }
-            }
-        }
-    }
-
-    // MARK: 入場中
-
-    private func inside(_ s: GateSummary, expires: Date, now: Date) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
+    /// 入場中は残り時間、入る前は「現地で扉を開ける」
+    @ViewBuilder private func visitBanner(_ context: GateContext, now: Date) -> some View {
+        if let expires = context.visitExpires, context.isInside {
             let minutes = max(1, Int(expires.timeIntervalSince(now) / 60 + 0.5))
             Label("扉が開いています・あと約 \(minutes) 分", systemImage: "door.left.hand.open")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(Theme.accent)
-
-            composer(visit: s.my_visit)
-
-            Text("みんなの記憶").font(.headline).foregroundStyle(Theme.text)
-            if graffiti.isEmpty {
-                Text("まだ記憶はありません。最初の 1 枚を残せます。")
-                    .font(.subheadline).foregroundStyle(Theme.textSecondary)
-            }
-            ForEach(graffiti) { item in
-                GraffitiCard(item: item, author: names[item.author] ?? "",
-                             isMine: item.author == session.userID) {
-                    Task { await delete(item) }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Theme.accentLight, in: RoundedRectangle(cornerRadius: 14))
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                Button {
+                    showAR = true
+                } label: {
+                    Label("現地で扉を開ける", systemImage: "door.left.hand.open")
                 }
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(session.api == nil)
+                Text("作った人が写した場所・物にカメラを向けます。位置（120m 以内）と景色の両方が合うと扉が現れ、20 分のあいだ中の記憶を読んだり残したりできます。")
+                    .font(.caption)
+                    .foregroundStyle(Theme.textSecondary)
             }
         }
     }
 
-    private func composer(visit: UUID?) -> some View {
+    @ViewBuilder private func section(_ context: GateContext) -> some View {
+        switch tab {
+        case .graffiti:
+            GraffitiSection(context: context, refreshToken: refreshToken) { item in report = item }
+        case .memories:
+            MemorySection(context: context, refreshToken: refreshToken) { item in report = item }
+        case .board:
+            BoardSection(context: context, refreshToken: refreshToken)
+        case .letters:
+            LetterSection(context: context, refreshToken: refreshToken)
+        }
+    }
+
+    // MARK: 動き
+
+    private func reload() async {
+        guard let api = session.api else { return }
+        do {
+            summary = try await api.summary(gateID)
+            loadError = nil
+            if let saved = try? await api.collection("saved") {
+                self.saved = saved.contains { $0.gate_id == gateID }
+            }
+        } catch {
+            loadError = ErrorText.of(error)
+        }
+        loaded = true
+    }
+
+    private func toggleSaved() async {
+        guard let api = session.api else { return }
+        let next = !saved
+        do {
+            try await api.setBookmark(gateID, on: next)
+            saved = next
+            actionMessage = next ? "保存しました。「わたし」→「保存」から開けます。" : "保存をやめました。"
+            Haptics.tap()
+        } catch {
+            actionMessage = ErrorText.of(error)
+        }
+    }
+}
+
+// MARK: - 記憶（グラフィティ）
+
+/// みんなの記憶：入場中は 1 枚残せて、みんなのカードが読める。入る前は自分のカードだけ。
+struct GraffitiSection: View {
+    let context: GateContext
+    let refreshToken: Int
+    let onReport: (ReportItem) -> Void
+
+    @EnvironmentObject private var session: SessionModel
+    @State private var graffiti: [Graffiti] = []
+    @State private var names: [UUID: String] = [:]
+    @State private var likes: [UUID: (count: Int, mine: Bool)] = [:]
+    @State private var error: String?
+
+    @State private var draft = ""
+    @State private var draftVisibility: Visibility = .friends
+    @State private var draftLocalOnly = false
+    @State private var photoItem: PhotosPickerItem?
+    @State private var photo: UIImage?
+    @State private var posting = false
+    @State private var postMessage: (text: String, isError: Bool)?
+
+    init(context: GateContext, refreshToken: Int, onReport: @escaping (ReportItem) -> Void) {
+        self.context = context
+        self.refreshToken = refreshToken
+        self.onReport = onReport
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            if context.isInside {
+                composer
+            }
+            let shown = context.isInside ? graffiti : graffiti.filter { $0.author == session.userID }
+            if !context.isInside && !shown.isEmpty {
+                Text("ここに残した自分の記憶").font(.headline).foregroundStyle(Theme.text)
+            }
+            if context.isInside && shown.isEmpty {
+                Text("まだ記憶はありません。最初の 1 枚を残せます。")
+                    .font(.subheadline).foregroundStyle(Theme.textSecondary)
+            }
+            if !context.isInside && shown.isEmpty {
+                Text("みんなの記憶は、現地で扉を開けると読めます。")
+                    .font(.subheadline).foregroundStyle(Theme.textSecondary)
+            }
+            if let error { NoticeText(text: error) }
+            ForEach(shown) { item in
+                GraffitiCard(item: item, author: names[item.author] ?? "",
+                             isMine: item.author == session.userID,
+                             likeCount: likes[item.id]?.count ?? 0, liked: likes[item.id]?.mine ?? false,
+                             onLike: { Task { await toggleLike(item) } },
+                             onDelete: { Task { await delete(item) } },
+                             onReport: {
+                                 onReport(ReportItem(id: item.id, target: .graffiti, userID: item.author,
+                                                     userName: names[item.author], label: "記憶のカード"))
+                             })
+            }
+        }
+        .task(id: "\(context.isInside)-\(refreshToken)") { await load() }
+        .onChange(of: photoItem) { _, item in
+            Task { await loadPhoto(item) }
+        }
+    }
+
+    private var composer: some View {
         Card {
             VStack(alignment: .leading, spacing: 12) {
                 Text("ここに 1 枚残す").font(.headline).foregroundStyle(Theme.text)
@@ -195,13 +348,12 @@ struct GateDetailView: View {
                     .font(.subheadline)
                     .tint(Theme.accent)
                 Button {
-                    Task { await post(visit: visit) }
+                    Task { await post() }
                 } label: {
                     if posting { ProgressView().tint(.white) } else { Text("残す") }
                 }
                 .buttonStyle(PrimaryButtonStyle())
-                .disabled(posting || visit == nil
-                          || (draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && photo == nil))
+                .disabled(posting || (draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && photo == nil))
                 Text("1 回の入場で 1 枚。同じ GATE には 12 時間あけると、また残せます。写真の位置情報などは消して送ります。")
                     .font(.caption).foregroundStyle(Theme.textSecondary)
                 if let postMessage {
@@ -211,19 +363,18 @@ struct GateDetailView: View {
         }
     }
 
-    // MARK: 動き
-
-    private func reload() async {
+    private func load() async {
         guard let api = session.api else { return }
         do {
-            summary = try await api.summary(gateID)
-            graffiti = try await api.graffiti(in: gateID)
+            graffiti = try await api.graffiti(in: context.gateID)
             names = try await api.names(of: Array(Set(graffiti.map(\.author))))
-            loadError = nil
+            if let me = session.userID {
+                likes = (try? await api.likes(for: graffiti.map(\.id), me: me)) ?? [:]
+            }
+            error = nil
         } catch {
-            loadError = ErrorText.of(error)
+            self.error = ErrorText.of(error)
         }
-        loaded = true
     }
 
     private func loadPhoto(_ item: PhotosPickerItem?) async {
@@ -235,12 +386,12 @@ struct GateDetailView: View {
         }
     }
 
-    private func post(visit: UUID?) async {
-        guard let api = session.api, let visit else { return }
+    private func post() async {
+        guard let api = session.api, let visit = context.visit else { return }
         posting = true
         defer { posting = false }
+        var photoPath: String?
         do {
-            var photoPath: String?
             if let photo, let media = session.media, let me = session.userID {
                 photoPath = try await media.uploadPhoto(photo, owner: me)
             }
@@ -251,8 +402,9 @@ struct GateDetailView: View {
             photoItem = nil
             postMessage = ("残しました。", false)
             Haptics.success()
-            await reload()
+            await load()
         } catch {
+            if let photoPath { await session.media?.removePhoto(path: photoPath) }
             postMessage = (ErrorText.of(error), true)
         }
     }
@@ -261,8 +413,23 @@ struct GateDetailView: View {
         guard let api = session.api else { return }
         do {
             try await api.deleteGraffiti(item.id)
-            await reload()
+            if let path = item.photo_path { await session.media?.removePhoto(path: path) }
+            await load()
         } catch {
+            postMessage = (ErrorText.of(error), true)
+        }
+    }
+
+    private func toggleLike(_ item: Graffiti) async {
+        guard let api = session.api, let me = session.userID else { return }
+        let current = likes[item.id] ?? (0, false)
+        let next = !current.mine
+        likes[item.id] = (max(0, current.count + (next ? 1 : -1)), next)
+        do {
+            try await api.setLike(item.id, me: me, on: next)
+            if next { Haptics.tap() }
+        } catch {
+            likes[item.id] = current
             postMessage = (ErrorText.of(error), true)
         }
     }
@@ -273,9 +440,25 @@ struct GraffitiCard: View {
     let item: Graffiti
     let author: String
     let isMine: Bool
-    var onDelete: () -> Void
+    let likeCount: Int
+    let liked: Bool
+    let onLike: () -> Void
+    let onDelete: () -> Void
+    let onReport: () -> Void
 
     @State private var confirmDelete = false
+
+    init(item: Graffiti, author: String, isMine: Bool, likeCount: Int, liked: Bool,
+         onLike: @escaping () -> Void, onDelete: @escaping () -> Void, onReport: @escaping () -> Void) {
+        self.item = item
+        self.author = author
+        self.isMine = isMine
+        self.likeCount = likeCount
+        self.liked = liked
+        self.onLike = onLike
+        self.onDelete = onDelete
+        self.onReport = onReport
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -286,8 +469,16 @@ struct GraffitiCard: View {
             }
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Text(author.isEmpty ? "だれか" : author)
-                        .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
+                    if isMine {
+                        Text("あなた").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
+                    } else {
+                        NavigationLink {
+                            ProfileView(userID: item.author)
+                        } label: {
+                            Text(author.isEmpty ? "だれか" : author)
+                                .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
+                        }
+                    }
                     Spacer()
                     Text(ServerDate.relative(item.created_at)).font(.caption).foregroundStyle(Theme.textSecondary)
                 }
@@ -295,15 +486,30 @@ struct GraffitiCard: View {
                     Text(item.body).font(.body).foregroundStyle(Theme.text)
                 }
                 HStack(spacing: 12) {
+                    Button(action: onLike) {
+                        Label("\(likeCount)", systemImage: liked ? "heart.fill" : "heart")
+                            .foregroundStyle(liked ? Theme.alert : Theme.textSecondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(liked ? "いいねをやめる" : "いいね")
                     Label(Visibility.label(of: item.visibility), systemImage: "eye")
                     if item.local_only {
                         Label("現地だけ", systemImage: "mappin.and.ellipse")
                     }
                     Spacer()
-                    if isMine {
-                        Button("消す", role: .destructive) { confirmDelete = true }
-                            .font(.caption)
+                    Menu {
+                        if isMine {
+                            Button("消す", role: .destructive) { confirmDelete = true }
+                        } else {
+                            Button(action: onReport) {
+                                Label("通報する", systemImage: "exclamationmark.bubble")
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .frame(width: 32, height: 24)
                     }
+                    .accessibilityLabel("そのほか")
                 }
                 .font(.caption)
                 .foregroundStyle(Theme.textSecondary)

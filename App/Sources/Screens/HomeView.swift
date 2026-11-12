@@ -6,6 +6,7 @@ struct HomeView: View {
     @State private var cards: [FeedCard] = []
     @State private var error: String?
     @State private var loaded = false
+    @State private var report: ReportItem?
 
     var body: some View {
         NavigationStack {
@@ -18,6 +19,14 @@ struct HomeView: View {
                     ForEach(cards) { card in
                         NavigationLink(value: GateRoute(id: card.gate_id)) {
                             FeedRow(card: card)
+                        }
+                        .contextMenu {
+                            Button {
+                                report = ReportItem(id: card.id, target: .graffiti, userID: card.author,
+                                                    userName: card.author_name, label: "\(card.author_name) さんの記憶")
+                            } label: {
+                                Label("通報する", systemImage: "exclamationmark.bubble")
+                            }
                         }
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
@@ -34,6 +43,7 @@ struct HomeView: View {
                 .refreshable { await load() }
             }
             .task(id: session.state) { await load() }
+            .sheet(item: $report, onDismiss: { Task { await load() } }) { item in ReportSheet(item: item) }
         }
     }
 

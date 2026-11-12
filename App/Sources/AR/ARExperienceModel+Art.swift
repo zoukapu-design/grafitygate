@@ -14,6 +14,8 @@ extension ARExperienceModel {
         case saving
         /// 自分の作品を押した
         case selected(UUID)
+        /// ほかの人の作品を押した（だれの作品か・通報）
+        case viewing(UUID)
     }
 
     struct ArtDraft {
@@ -118,9 +120,29 @@ extension ARExperienceModel {
         if artwork.owner == session?.userID {
             art = .selected(id)
         } else {
-            let name = artNames[artwork.owner] ?? "だれか"
-            showArtCaption("\(name)さんの\(artwork.artKind.label)・\(ServerDate.relative(artwork.created_at))")
+            art = .viewing(id)
         }
+    }
+
+    func artworkOwnerName(_ id: UUID) -> String {
+        guard let owner = artScene?.artwork(id)?.owner else { return "だれか" }
+        return artNames[owner] ?? "だれか"
+    }
+
+    /// ブロックした人の作品を、すぐ見えなくする
+    func removeArtworks(of user: UUID?) {
+        guard let user, let scene = artScene else { return }
+        let ids = scene.items.filter { $0.value.artwork.owner == user }.map(\.key)
+        for id in ids { scene.remove(id) }
+        refreshArtCounts()
+        art = nil
+        Trace.log("ブロックした人の作品を \(ids.count) 個外しました")
+    }
+
+    func reportArtwork(_ id: UUID) {
+        guard let artwork = artScene?.artwork(id) else { return }
+        reportItem = ReportItem(id: id, target: .artwork, userID: artwork.owner, userName: artNames[artwork.owner],
+                                label: artwork.artKind.label)
     }
 
     private func showArtCaption(_ text: String) {

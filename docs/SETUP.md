@@ -10,6 +10,9 @@
 4. **Run** を押す（何度実行しても大丈夫です）
 5. 同じように [0002_gf_place_maps.sql](https://github.com/zoukapu-design/grafitygate/blob/main/supabase/migrations/0002_gf_place_maps.sql)（場所の記憶）も貼って **Run**
 6. 同じように [0003_gf_artworks.sql](https://github.com/zoukapu-design/grafitygate/blob/main/supabase/migrations/0003_gf_artworks.sql)（AR の作品）も貼って **Run**
+7. 同じように [0004_gf_inside.sql](https://github.com/zoukapu-design/grafitygate/blob/main/supabase/migrations/0004_gf_inside.sql)（掲示板・手紙・思い出・保存と図鑑・通報・アカウントの削除）も貼って **Run**
+
+通報は表 `gf_reports` に入ります。Supabase の [Table Editor](https://supabase.com/dashboard/project/_/editor) で `gf_reports` を開くと見られます（アプリからはだれも読めません）。
 
 `supabase/migrations/` に新しいファイルが増えたら、番号の順に同じように実行します。
 

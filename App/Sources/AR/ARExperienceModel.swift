@@ -66,6 +66,7 @@ final class ARExperienceModel: ObservableObject {
     @Published var artCaption: String?
     @Published var artworkCount = 0
     @Published var myArtworkCount = 0
+    @Published var reportItem: ReportItem?
     let hand = HandTouch()
 
     let stage = ARStage()

@@ -40,6 +40,23 @@ struct MediaStore {
         }
     }
 
+    /// アカウントを消す前に、自分のフォルダのファイル（写真・場所の記憶）をすべて消す
+    func removeEverything(owner: UUID) async {
+        let folder = owner.uuidString.lowercased()
+        for bucket in ["gf-media", "gf-maps"] {
+            var removed = 0
+            for _ in 0..<50 {
+                guard let files = try? await client.storage.from(bucket)
+                    .list(path: folder, options: SearchOptions(limit: 100)), !files.isEmpty else { break }
+                let paths = files.map { "\(folder)/\($0.name)" }
+                guard (try? await client.storage.from(bucket).remove(paths: paths)) != nil else { break }
+                removed += paths.count
+            }
+            Trace.log("アカウントの削除：\(bucket) のファイルを \(removed) 個消しました")
+        }
+        Self.photos.removeAllObjects()
+    }
+
     /// 写真を受け取る（見てよくない写真は、サーバーが断る）
     func photo(path: String) async -> UIImage? {
         if let cached = Self.photos.object(forKey: path as NSString) { return cached }
@@ -80,18 +97,20 @@ struct MediaStore {
 struct RemotePhoto: View {
     let path: String
     let contentMode: ContentMode
+    let placeholder: Color
 
     @EnvironmentObject private var session: SessionModel
     @State private var image: UIImage?
 
-    init(path: String, contentMode: ContentMode = .fill) {
+    init(path: String, contentMode: ContentMode = .fill, placeholder: Color = Theme.surfaceElevated) {
         self.path = path
         self.contentMode = contentMode
+        self.placeholder = placeholder
     }
 
     var body: some View {
         ZStack {
-            Theme.surfaceElevated
+            placeholder
             if let image {
                 Image(uiImage: image)
                     .resizable()

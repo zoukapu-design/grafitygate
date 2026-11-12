@@ -13,6 +13,8 @@
 - AR の作り：`ARStage`（ARKit のセッション・床・場所の記憶の保存と探索・カメラの絵から写真の特徴）、`GateDoor`（扉：`ArchMesh` で形を作り、向こうの世界は見えない壁 OcclusionMaterial で囲んで開口部からだけ見せる）、`ARExperienceModel`/`ARExperienceView`（入る・作るの流れ）。扉は ARAnchor に付ける（ARKit が座標を直しても扉がずれない）。場所の記憶の印の名前は `gg.gate`、おおよその位置に出した印は `gg.visit`。ARFrame は長く持たない（`currentFrame` から取り出してすぐ離す）。
 - AR の作品（`0003_gf_artworks.sql`・`ArtworkScene`・`ArtworkItem`）：扉の印の下に置き、位置・向き・大きさは扉の足もとの中心が基準（+Z が扉の手前）。置く・動かすのは入場中だけ、見えるのも入場中の人と置いた本人だけ（サーバーが判定）。触れたときの動きはプログラムではなく、決まった形のルール（きっかけ approach／touch／tap／open と、動き glow／sway／ripple／burst／bounce）で残し、サーバーが中身を確かめる。新しい種類・動きを足すときは、サーバーの `gf_valid_rules`・表の check・`supabase/tests/test_artworks.sql` も一緒に直す。
 - 手で触れる（`HandTouch`）：Vision で人さし指の先を見つけ、人の奥行き（`estimatedDepthData`）で指先の 3D の位置を出して作品に入ったら触れたとする（2 回続けて入ったときだけ）。奥行きが無いときは明るくするだけで、画面を押せばいつでも同じ反応。作品が 2.5m 以内にあるときだけ 1 秒に 10 回（4GB の端末は 8 回）、熱いときは止める。カメラの映像・手の形はサーバーに送らない。触れた・調べた回数は `Trace.log` に出る（現場で確かめて、しきい値を直す）。
+- GATE の中の機能（`0004_gf_inside.sql`）：掲示板・思い出は入場券が要る（書いた本人・思い出の仲間は別）。手紙は表を直接読ませず、`gf_my_letters`（中身なし）と `gf_open_letter`（宛先の本人が、日時と現地の条件がそろったときだけ）で返す。自分あてのタイムカプセルは、書いた本人でも開く日まで開けない。画面は `GateDetailView` の「記憶／思い出／掲示板／手紙」の切り替え（`Screens/Gate/`）。
+- 通報は `gf_reports`（`reports` は Lyric Path の形のままにするため使わない）。ブロックは `gf_block` が共通の `lp_blocks` に書く。人が書いたものを出す所には、必ず「通報する」を付ける（App Store の決まり 1.2）。アカウントの削除は、アプリが自分のフォルダのファイルを消してから `gf_delete_me`。
 - 場所の記憶（ARWorldMap）は、作った本人と入場中の人だけが受け取れる（`gf_place_map`・`gf-maps`）。見つからない・やめたときは、出さないのではなく目の前（2m 先）に「おおよその位置」として必ず出す。
 - 調べものの記録は `Trace.log`（端末の中だけ。「わたし」→「調べものの記録を送る」）。新しい AR の動き・置き方・失敗には、何が起きたかが後で分かる 1 行を足す。重くなりうる処理は `MainWatch.run("名前") { }` で囲む（0.5 秒より画面が止まると記録に出る）。
 - iPhone 12（4GB・`Perf.isLowMemoryDevice`）では、映像を 30 コマ/秒・周りの映り込みなし・HDR なし・光の粒を減らす。端末が熱いとき（`Perf.isHot`）は人の奥行きを使わない。

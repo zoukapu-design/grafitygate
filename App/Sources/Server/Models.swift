@@ -228,6 +228,210 @@ enum ArtworkAction: String, CaseIterable, Identifiable {
     }
 }
 
+// MARK: - GATE の中の機能
+
+/// 掲示板の話題（gf_board_list）
+struct BoardThread: Decodable, Identifiable, Hashable {
+    let id: UUID
+    let author: UUID
+    let author_name: String
+    let topic: String
+    let title: String
+    let body: String
+    let pinned: Bool
+    let reply_count: Int
+    let last_activity_at: String
+    let created_at: String
+    let unread: Bool
+
+    var boardTopic: BoardTopic { BoardTopic(rawValue: topic) ?? .other }
+}
+
+/// 掲示板の返信（gf_board_replies_of）
+struct BoardReply: Decodable, Identifiable, Hashable {
+    let id: UUID
+    let author: UUID
+    let author_name: String
+    let body: String
+    let created_at: String
+}
+
+enum BoardTopic: String, CaseIterable, Identifiable {
+    case memory, question, notice, other
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .memory: return "思い出話"
+        case .question: return "質問"
+        case .notice: return "お知らせ・注意"
+        case .other: return "そのほか"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .memory: return "heart.text.square"
+        case .question: return "questionmark.bubble"
+        case .notice: return "exclamationmark.triangle"
+        case .other: return "text.bubble"
+        }
+    }
+}
+
+/// 手紙の一覧の 1 行（gf_my_letters。中身は入っていない）
+struct LetterInfo: Decodable, Identifiable, Hashable {
+    let id: UUID
+    let gate_id: UUID
+    let gate_title: String
+    let author: UUID
+    let author_name: String
+    let recipient: UUID
+    let recipient_name: String
+    let open_at: String?
+    let onsite: Bool
+    let opened_at: String?
+    let created_at: String
+    /// 自分がほかの人に書いた手紙
+    let sent: Bool
+    /// 開く日時を過ぎている（日時の条件がなければ true）
+    let time_ok: Bool
+    /// いまこの GATE に入場している
+    let here: Bool
+
+    var isOpened: Bool { opened_at != nil }
+    var openDate: Date? { open_at.flatMap(ServerDate.parse) }
+    var isToSelf: Bool { author == recipient }
+    /// いま開けるか（宛先の人から見て）
+    var canOpenNow: Bool { isOpened || (time_ok && (!onsite || here)) }
+
+    /// 閉じている理由（開けるなら nil）
+    var lockReason: String? {
+        if canOpenNow { return nil }
+        if !time_ok, let date = openDate {
+            return "\(ServerDate.day(date)) に開けます" + (onsite ? "（現地で）" : "")
+        }
+        return "\(gate_title) で扉を開けると読めます"
+    }
+}
+
+/// 開いた手紙（gf_open_letter）
+struct LetterContent: Decodable, Identifiable, Hashable {
+    let id: UUID
+    let author_name: String
+    let recipient_name: String
+    let body: String
+    let photo_path: String?
+    let created_at: String
+    let opened_at: String?
+}
+
+/// GATE の思い出（gf_memory_list）
+struct MemorySummary: Decodable, Identifiable, Hashable {
+    let id: UUID
+    let owner: UUID
+    let owner_name: String
+    let title: String
+    let note: String
+    let visibility: String
+    let created_at: String
+    let item_count: Int
+    let cover_path: String?
+    let member_count: Int
+    let is_member: Bool
+    let can_add: Bool
+}
+
+/// 思い出の写真（表 gf_memory_items）
+struct MemoryItem: Decodable, Identifiable, Hashable {
+    let id: UUID
+    let memory_id: UUID
+    let author: UUID
+    let photo_path: String
+    let caption: String
+    let created_at: String
+}
+
+/// 自分が作った・仲間に入っている思い出（gf_my_memories）
+struct MyMemory: Decodable, Identifiable, Hashable {
+    let id: UUID
+    let gate_id: UUID
+    let gate_title: String
+    let owner: UUID
+    let owner_name: String
+    let title: String
+    let created_at: String
+    let item_count: Int
+    let cover_path: String?
+}
+
+/// 保存・図鑑の 1 行（gf_my_collection）
+struct CollectionGate: Decodable, Identifiable, Hashable {
+    let gate_id: UUID
+    let title: String
+    let owner: UUID
+    let owner_name: String
+    let cover_path: String?
+    let approx_lat: Double
+    let approx_lon: Double
+    let first_at: String?
+    let last_at: String?
+    let visits: Int
+    let shared: Bool
+    let saved_at: String?
+
+    var id: UUID { gate_id }
+}
+
+/// 友達の図鑑の 1 行（gf_friend_atlas）
+struct FriendAtlasGate: Decodable, Identifiable, Hashable {
+    let gate_id: UUID
+    let title: String
+    let owner: UUID
+    let owner_name: String
+    let cover_path: String?
+    let approx_lat: Double
+    let approx_lon: Double
+    let first_at: String
+    let visits: Int
+
+    var id: UUID { gate_id }
+}
+
+/// ブロックした人（gf_my_blocks）
+struct BlockedUser: Decodable, Identifiable, Hashable {
+    let user_id: UUID
+    let display_name: String
+    let handle: String
+    let created_at: String
+
+    var id: UUID { user_id }
+}
+
+/// 通報の理由（サーバーの gf_reports.reason と同じ）
+enum ReportReason: String, CaseIterable, Identifiable {
+    case harassment, inappropriate, privacy, dangerous, spam, other
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .harassment: return "いやがらせ・悪口"
+        case .inappropriate: return "不適切な内容"
+        case .privacy: return "人の顔・家・個人の情報が写っている"
+        case .dangerous: return "危ない場所・立ち入り禁止の場所"
+        case .spam: return "宣伝・迷惑"
+        case .other: return "そのほか"
+        }
+    }
+}
+
+/// 通報できるもの（サーバーの gf_reports.target_kind と同じ）
+enum ReportTarget: String {
+    case gate, graffiti, artwork, thread, reply, memory, memory_item, letter, user
+}
+
 /// 場所の記憶の置き場所（gf_place_map）
 struct PlaceMapInfo: Decodable {
     let path: String
@@ -283,6 +487,14 @@ enum ServerDate {
 
     static func parse(_ s: String) -> Date? {
         withFraction.date(from: s) ?? plain.date(from: s)
+    }
+
+    /// 「2027年4月1日 9:00」など
+    static func day(_ d: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ja_JP")
+        f.dateFormat = "yyyy年M月d日 H:mm"
+        return f.string(from: d)
     }
 
     /// 「3 分前」「2 時間前」など

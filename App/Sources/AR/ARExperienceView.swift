@@ -53,6 +53,10 @@ struct ARExperienceView: View {
         .onDisappear {
             model.stop()
         }
+        .sheet(item: $model.reportItem) { item in
+            ReportSheet(item: item) { model.removeArtworks(of: item.userID) }
+                .environmentObject(session)
+        }
         .sheet(item: $model.presentedGate, onDismiss: { model.resetToScanning() }) { route in
             NavigationStack {
                 GateDetailView(gateID: route.id)
@@ -431,6 +435,7 @@ private struct ArtCard: View {
                     Text("作品を置いています…").font(.subheadline).foregroundStyle(Theme.text)
                 }
             case .selected(let id): selected(id)
+            case .viewing(let id): viewing(id)
             }
         }
         .onChange(of: step) { _, _ in confirmDelete = false }
@@ -622,6 +627,23 @@ private struct ArtCard: View {
             Button("戻る") { model.backFromPlacing() }
                 .font(.subheadline)
                 .foregroundStyle(Theme.textSecondary)
+        }
+    }
+
+    // ほかの人の作品
+    private func viewing(_ id: UUID) -> some View {
+        let artwork = model.artScene?.artwork(id)
+        return VStack(alignment: .leading, spacing: 10) {
+            Title("\(model.artworkOwnerName(id)) さんの\(artwork?.artKind.label ?? "作品")")
+            if let artwork {
+                Caption("\(ServerDate.relative(artwork.created_at))に置かれました。近づいたり、手で触れたりすると動きます。")
+            }
+            HStack(spacing: 10) {
+                Button("閉じる") { model.cancelArt() }
+                    .buttonStyle(SecondaryButtonStyle())
+                Button("通報する") { model.reportArtwork(id) }
+                    .buttonStyle(DangerButtonStyle())
+            }
         }
     }
 
