@@ -59,15 +59,32 @@ final class ARExperienceModel: ObservableObject {
     @Published var presentedGate: GateRoute?
     @Published var form = GateForm()
 
+    // AR の作品（扉が開いたあと）
+    @Published var art: ArtStep?
+    @Published var draft = ArtDraft()
+    @Published var previewInRange = true
+    @Published var artCaption: String?
+    @Published var artworkCount = 0
+    @Published var myArtworkCount = 0
+    let hand = HandTouch()
+
     let stage = ARStage()
     let mode: Mode
     var onFinished: (() -> Void)?
 
-    private weak var session: SessionModel?
+    weak var session: SessionModel?
     private weak var location: LocationModel?
-    private var door: GateDoor?
+    private(set) var door: GateDoor?
     private var doorAnchor: ARAnchor?
-    private var enteredGate: UUID?
+    private(set) var enteredGate: UUID?
+    /// いまの入場券（作品を置く・動かすのに使う）と、その期限
+    var visitID: UUID?
+    var visitExpires: Date?
+    var artScene: ArtworkScene?
+    var artImages: [UUID: UIImage] = [:]
+    var artNames: [UUID: String] = [:]
+    var movingArtwork: UUID?
+    var captionTask: Task<Void, Never>?
     private var lastPrint: [Float]?
     private var clientKey = UUID().uuidString
     private var stopFindingRequested = false
@@ -101,6 +118,7 @@ final class ARExperienceModel: ObservableObject {
     func stop() {
         stopFindingRequested = true
         mappingTask?.cancel()
+        captionTask?.cancel()
         clearDoor()
         stage.pause()
         DoorTextures.releaseAll()
@@ -112,10 +130,20 @@ final class ARExperienceModel: ObservableObject {
         mapWarning = nil
         shots = []
         enteredGate = nil
+        visitID = nil
+        visitExpires = nil
         phase = .scanning
     }
 
     private func clearDoor() {
+        hand.stop()
+        artScene?.removeAll()
+        artScene = nil
+        art = nil
+        artImages.removeAll()
+        artworkCount = 0
+        myArtworkCount = 0
+        movingArtwork = nil
         door?.remove()
         door = nil
         if let anchor = doorAnchor { stage.removeAnchor(anchor) }
@@ -192,6 +220,8 @@ final class ARExperienceModel: ObservableObject {
             }
             Trace.log(String(format: "入場しました（位置の精度 ±%.0fm）", fix.horizontalAccuracy))
             enteredGate = gate
+            visitID = result.visit_id
+            visitExpires = result.expires_at.flatMap(ServerDate.parse)
             await showDoor(for: gate)
         } catch {
             phase = .failed(ErrorText.of(error))
@@ -234,7 +264,9 @@ final class ARExperienceModel: ObservableObject {
             Haptics.success()
             phase = .doorClosed
             Trace.log(placedPrecisely ? "扉を作った人と同じ位置に出しました" : "扉をおおよその位置（2m 前）に出しました")
+            makeArtScene()
             Task { await loadDoorPhotos(gate) }
+            Task { await loadArtworks(gate) }
         } catch {
             Trace.log("扉を組み立てられませんでした：\(error)")
             phase = .failed("扉を表示できませんでした。")
@@ -265,6 +297,7 @@ final class ARExperienceModel: ObservableObject {
         door.open()
         Haptics.open()
         phase = .doorOpen
+        revealArtworks()
     }
 
     func goInside() {
@@ -279,6 +312,8 @@ final class ARExperienceModel: ObservableObject {
         switch phase {
         case .doorClosed:
             if door?.isHit(stage.arView.entity(at: point)) == true { openDoor() }
+        case .doorOpen:
+            tapArtwork(at: point)
         case .createPlace:
             placeNewDoor(at: point)
         default:
@@ -290,6 +325,8 @@ final class ARExperienceModel: ObservableObject {
 
     func startCreate() {
         clearDoor()
+        visitID = nil
+        visitExpires = nil
         shots = []
         clientKey = UUID().uuidString
         form = GateForm()
@@ -420,9 +457,13 @@ final class ARExperienceModel: ObservableObject {
             let result = try await api.enter(gate: gate, location: fix, print: shot.print)
             enteredGate = gate
             if result.ok {
+                visitID = result.visit_id
+                visitExpires = result.expires_at.flatMap(ServerDate.parse)
+                makeArtScene()
                 door?.open()
                 Haptics.open()
                 phase = .doorOpen
+                revealArtworks()
             } else {
                 Trace.log("作ったあとの入場ができませんでした：\(result.reason ?? "不明")")
                 phase = .failed("GATE はできました。ただ、入場の確かめが通りませんでした。" + ErrorText.enterReason(result.reason))

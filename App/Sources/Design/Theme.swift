@@ -52,6 +52,19 @@ struct SecondaryButtonStyle: ButtonStyle {
     }
 }
 
+/// 消すなど、取り消せない操作のボタン（枠だけ・赤）
+struct DangerButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.headline)
+            .foregroundStyle(Theme.alert)
+            .frame(maxWidth: .infinity, minHeight: 48)
+            .background(Theme.surface.opacity(configuration.isPressed ? 0.6 : 1),
+                        in: RoundedRectangle(cornerRadius: Theme.radiusButton))
+            .overlay(RoundedRectangle(cornerRadius: Theme.radiusButton).stroke(Theme.alert.opacity(0.5)))
+    }
+}
+
 /// 白いカード
 struct Card<Content: View>: View {
     private let content: Content

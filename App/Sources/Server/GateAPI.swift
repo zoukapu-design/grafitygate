@@ -95,6 +95,51 @@ struct GateAPI {
             .execute().value
     }
 
+    // MARK: AR の作品
+
+    /// GATE の作品（入場中なら公開範囲が合うもの、そうでなければ自分のものだけが返る）
+    func artworks(in gate: UUID) async throws -> [Artwork] {
+        try await client.from("gf_artworks")
+            .select("id,gate_id,owner,kind,body,photo_path,color,px,py,pz,yaw,scale,rules,visibility,status,revision,created_at")
+            .eq("gate_id", value: gate.uuidString)
+            .order("created_at", ascending: true)
+            .limit(60)
+            .execute().value
+    }
+
+    /// 作品を置く（入場中だけ）。置いた作品の ID を返す。
+    func placeArtwork(visit: UUID, kind: ArtworkKind, body: String, photoPath: String?, color: ArtworkColor,
+                      position: SIMD3<Float>, yaw: Float, scale: Float, rules: [ArtworkRule],
+                      visibility: Visibility) async throws -> UUID {
+        try await client.rpc("gf_place_artwork",
+                             params: PlaceArtworkParams(p_visit: visit, p_kind: kind.rawValue, p_body: body,
+                                                        p_photo_path: photoPath, p_color: color.rawValue,
+                                                        p_px: position.x, p_py: position.y, p_pz: position.z,
+                                                        p_yaw: yaw, p_scale: scale, p_rules: rules,
+                                                        p_visibility: visibility.rawValue))
+            .execute().value
+    }
+
+    /// 自分の作品を置き直す。新しい版の番号を返す（ほかの端末で先に動かしていたら断られる）。
+    func moveArtwork(_ id: UUID, visit: UUID, position: SIMD3<Float>, yaw: Float, scale: Float,
+                     revision: Int) async throws -> Int {
+        try await client.rpc("gf_move_artwork",
+                             params: MoveArtworkParams(p_id: id, p_visit: visit, p_px: position.x, p_py: position.y,
+                                                       p_pz: position.z, p_yaw: yaw, p_scale: scale,
+                                                       p_revision: revision))
+            .execute().value
+    }
+
+    func setArtworkStatus(_ id: UUID, hidden: Bool) async throws {
+        try await client.rpc("gf_set_artwork_status",
+                             params: ArtworkStatusParams(p_id: id, p_status: hidden ? "hidden" : "published"))
+            .execute()
+    }
+
+    func deleteArtwork(_ id: UUID) async throws {
+        try await client.rpc("gf_delete_artwork", params: IDParam(p_id: id)).execute()
+    }
+
     func myGates(owner: UUID) async throws -> [MyGate] {
         try await client.from("gf_gates")
             .select("id,title,visibility,status,created_at")
@@ -238,6 +283,57 @@ private struct PostParams: Encodable {
         try c.encode(p_visibility, forKey: .p_visibility)
         try c.encode(p_local_only, forKey: .p_local_only)
     }
+}
+
+private struct PlaceArtworkParams: Encodable {
+    let p_visit: UUID
+    let p_kind: String
+    let p_body: String
+    let p_photo_path: String?
+    let p_color: String
+    let p_px: Float
+    let p_py: Float
+    let p_pz: Float
+    let p_yaw: Float
+    let p_scale: Float
+    let p_rules: [ArtworkRule]
+    let p_visibility: String
+
+    enum CodingKeys: String, CodingKey {
+        case p_visit, p_kind, p_body, p_photo_path, p_color, p_px, p_py, p_pz, p_yaw, p_scale, p_rules, p_visibility
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(p_visit, forKey: .p_visit)
+        try c.encode(p_kind, forKey: .p_kind)
+        try c.encode(p_body, forKey: .p_body)
+        try c.encode(p_photo_path, forKey: .p_photo_path)    // nil は null
+        try c.encode(p_color, forKey: .p_color)
+        try c.encode(p_px, forKey: .p_px)
+        try c.encode(p_py, forKey: .p_py)
+        try c.encode(p_pz, forKey: .p_pz)
+        try c.encode(p_yaw, forKey: .p_yaw)
+        try c.encode(p_scale, forKey: .p_scale)
+        try c.encode(p_rules, forKey: .p_rules)
+        try c.encode(p_visibility, forKey: .p_visibility)
+    }
+}
+
+private struct MoveArtworkParams: Encodable {
+    let p_id: UUID
+    let p_visit: UUID
+    let p_px: Float
+    let p_py: Float
+    let p_pz: Float
+    let p_yaw: Float
+    let p_scale: Float
+    let p_revision: Int
+}
+
+private struct ArtworkStatusParams: Encodable {
+    let p_id: UUID
+    let p_status: String
 }
 
 private struct FollowRow: Codable {

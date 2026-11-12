@@ -1,4 +1,5 @@
 import ARKit
+import PhotosUI
 import RealityKit
 import SwiftUI
 
@@ -25,11 +26,22 @@ struct ARExperienceView: View {
                 Reticle()
                     .allowsHitTesting(false)
             }
+            HandCursorView(hand: model.hand)
             VStack(spacing: 12) {
                 ARTopBar(stage: model.stage, onClose: onClose)
+                if let caption = model.artCaption {
+                    Text(caption)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(Theme.text)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
                 Spacer()
                 ExperienceCard(model: model)
             }
+            .animation(.easeInOut(duration: 0.2), value: model.artCaption)
             .padding(.horizontal, 16)
             .padding(.bottom, 12)
         }
@@ -141,9 +153,18 @@ private struct ExperienceCard: View {
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 24))
         .shadow(color: .black.opacity(0.12), radius: 18, y: 6)
         .animation(.easeInOut(duration: 0.2), value: model.phase)
+        .animation(.easeInOut(duration: 0.2), value: model.art)
     }
 
     @ViewBuilder private var content: some View {
+        if model.phase == .doorOpen, let step = model.art {
+            ArtCard(model: model, step: step)
+        } else {
+            phaseContent
+        }
+    }
+
+    @ViewBuilder private var phaseContent: some View {
         switch model.phase {
         case .scanning:
             scanning
@@ -171,12 +192,7 @@ private struct ExperienceCard: View {
                     .buttonStyle(PrimaryButtonStyle())
             }
         case .doorOpen:
-            VStack(alignment: .leading, spacing: 10) {
-                Title("扉が開きました")
-                if let warning = model.mapWarning { Caption(warning) }
-                Button("中へ") { model.goInside() }
-                    .buttonStyle(PrimaryButtonStyle())
-            }
+            DoorOpenCard(model: model)
         case .createShoot(let index):
             createShoot(index)
         case .createDetails:
@@ -352,5 +368,326 @@ private struct Caption: View {
     var body: some View {
         Text(text).font(.subheadline).foregroundStyle(Theme.textSecondary)
             .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// 扉が開いたとき：作品の案内・中へ・作品を置く
+private struct DoorOpenCard: View {
+    @ObservedObject var model: ARExperienceModel
+    @ObservedObject var hand: HandTouch
+
+    init(model: ARExperienceModel) {
+        _model = ObservedObject(wrappedValue: model)
+        _hand = ObservedObject(wrappedValue: model.hand)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Title("扉が開きました")
+            if model.artworkCount > 0 {
+                Caption(hand.isActive ? "作品が \(model.artworkCount) 個あります。手をのばして触れてみてください（画面で押しても動きます）。"
+                                      : "作品が \(model.artworkCount) 個あります。近づいたり、画面で押したりすると動きます。")
+            }
+            if let warning = model.mapWarning { Caption(warning) }
+            Button("中へ") { model.goInside() }
+                .buttonStyle(PrimaryButtonStyle())
+            if model.visitID != nil {
+                Button {
+                    model.startArt()
+                } label: {
+                    Label(model.myArtworkCount > 0 ? "作品を置く（あと \(max(0, ARExperienceModel.artworksPerPerson - model.myArtworkCount)) つ）"
+                                                   : "作品を置く",
+                          systemImage: "sparkles")
+                }
+                .buttonStyle(SecondaryButtonStyle())
+                .disabled(model.myArtworkCount >= ARExperienceModel.artworksPerPerson)
+            }
+        }
+    }
+}
+
+/// 作品を置く・自分の作品を直すカード
+private struct ArtCard: View {
+    @ObservedObject var model: ARExperienceModel
+    let step: ARExperienceModel.ArtStep
+    @State private var pickerItem: PhotosPickerItem?
+    @State private var confirmDelete = false
+    @FocusState private var focused: Bool
+
+    init(model: ARExperienceModel, step: ARExperienceModel.ArtStep) {
+        _model = ObservedObject(wrappedValue: model)
+        self.step = step
+    }
+
+    var body: some View {
+        Group {
+            switch step {
+            case .choosing: choosing
+            case .composing: composing
+            case .placing: placing
+            case .saving:
+                HStack(spacing: 12) {
+                    ProgressView()
+                    Text("作品を置いています…").font(.subheadline).foregroundStyle(Theme.text)
+                }
+            case .selected(let id): selected(id)
+            }
+        }
+        .onChange(of: step) { _, _ in confirmDelete = false }
+    }
+
+    // 種類を選ぶ
+    private var choosing: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Title("どんな作品を置きますか？")
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                ForEach(ArtworkKind.allCases) { kind in
+                    Button {
+                        model.chooseArtKind(kind)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Image(systemName: kind.symbol)
+                                .font(.system(size: 20, weight: .semibold))
+                                .foregroundStyle(Theme.accent)
+                            Text(kind.label).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
+                            Text(kind.caption).font(.caption).foregroundStyle(Theme.textSecondary)
+                                .lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 92, alignment: .topLeading)
+                        .padding(12)
+                        .background(Theme.surfaceElevated, in: RoundedRectangle(cornerRadius: 14))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            Button("やめる") { model.cancelArt() }
+                .font(.subheadline)
+                .foregroundStyle(Theme.textSecondary)
+        }
+    }
+
+    // 中身
+    private var composing: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Title(model.draft.kind.label)
+            switch model.draft.kind {
+            case .photo: photoInput
+            case .text: textInput
+            case .petals, .light: EmptyView()
+            }
+            if model.draft.kind != .photo {
+                colorRow
+            }
+            actionRow
+            Picker("見せる人", selection: $model.draft.visibility) {
+                ForEach(Visibility.allCases) { v in Text(v.label).tag(v) }
+            }
+            .pickerStyle(.segmented)
+            Button("次へ（置く所を決める）") {
+                focused = false
+                model.beginArtPlacement()
+            }
+            .buttonStyle(PrimaryButtonStyle())
+            Button("種類を選び直す") { model.art = .choosing }
+                .font(.subheadline)
+                .foregroundStyle(Theme.textSecondary)
+        }
+        .onChange(of: pickerItem) { _, item in
+            guard let item else { return }
+            Task {
+                if let data = try? await item.loadTransferable(type: Data.self), let image = UIImage(data: data) {
+                    model.draft.image = image.downscaled(maxSide: 1600)
+                    model.notice = nil
+                }
+                pickerItem = nil
+            }
+        }
+    }
+
+    private var photoInput: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12).fill(Theme.surfaceElevated)
+                if let image = model.draft.image {
+                    Image(uiImage: image).resizable().scaledToFill()
+                } else {
+                    Image(systemName: "photo").foregroundStyle(Theme.textSecondary.opacity(0.6))
+                }
+            }
+            .frame(width: 72, height: 72)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            VStack(spacing: 8) {
+                PhotosPicker(selection: $pickerItem, matching: .images) {
+                    Label("写真を選ぶ", systemImage: "photo.on.rectangle")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity, minHeight: 36)
+                }
+                .buttonStyle(.bordered)
+                .tint(Theme.accent)
+                Button {
+                    model.useCameraForArtPhoto()
+                } label: {
+                    Label("いまの景色を写す", systemImage: "camera")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity, minHeight: 36)
+                }
+                .buttonStyle(.bordered)
+                .tint(Theme.accent)
+            }
+        }
+    }
+
+    private var textInput: some View {
+        VStack(alignment: .trailing, spacing: 4) {
+            TextField("例：また春に会おう", text: $model.draft.text, axis: .vertical)
+                .lineLimit(1...3)
+                .focused($focused)
+                .padding(12)
+                .background(Theme.surfaceElevated, in: RoundedRectangle(cornerRadius: 12))
+                .onChange(of: model.draft.text) { _, value in
+                    if value.count > ARExperienceModel.artTextLimit {
+                        model.draft.text = String(value.prefix(ARExperienceModel.artTextLimit))
+                    }
+                }
+            Text("\(model.draft.text.count)/\(ARExperienceModel.artTextLimit)")
+                .font(.caption2)
+                .foregroundStyle(Theme.textSecondary)
+        }
+    }
+
+    private var colorRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("色").font(.caption.weight(.semibold)).foregroundStyle(Theme.textSecondary)
+            HStack(spacing: 12) {
+                ForEach(ArtworkColor.allCases) { color in
+                    let selected = model.draft.color == color
+                    Button {
+                        model.draft.color = color
+                    } label: {
+                        VStack(spacing: 4) {
+                            Circle()
+                                .fill(color.swatch)
+                                .frame(width: 30, height: 30)
+                                .overlay(Circle().stroke(selected ? Theme.accent : Theme.line, lineWidth: selected ? 3 : 1))
+                            Text(color.label).font(.caption2).foregroundStyle(selected ? Theme.text : Theme.textSecondary)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(color.label)
+                }
+            }
+        }
+    }
+
+    private var actionRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("触れたとき").font(.caption.weight(.semibold)).foregroundStyle(Theme.textSecondary)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(ArtworkAction.allCases) { action in
+                        let selected = model.draft.action == action
+                        Button(action.label) { model.draft.action = action }
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(selected ? .white : Theme.text)
+                            .padding(.horizontal, 14)
+                            .frame(minHeight: 34)
+                            .background(selected ? Theme.accent : Theme.surfaceElevated, in: Capsule())
+                    }
+                }
+            }
+        }
+    }
+
+    // 置く所
+    private var placing: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Title(model.movingArtwork == nil ? "置く所を決める" : "置き直す")
+            Caption("置きたい所に iPhone を向けてください。見本がついてきます。歩いて近づいたり離れたりもできます。")
+            HStack(spacing: 10) {
+                Image(systemName: "minus.magnifyingglass").foregroundStyle(Theme.textSecondary)
+                Slider(value: Binding(get: { Double(model.draft.scale) },
+                                      set: { model.setPreviewScale(Float($0)) }),
+                       in: 0.5...2.0)
+                    .tint(Theme.accent)
+                Image(systemName: "plus.magnifyingglass").foregroundStyle(Theme.textSecondary)
+            }
+            .accessibilityLabel("大きさ")
+            if !model.previewInRange {
+                NoticeText(text: "扉から離れすぎています。扉から 4m 以内に向けてください。")
+            }
+            Button("ここに置く") { model.confirmArtPlacement() }
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(!model.previewInRange)
+            Button("戻る") { model.backFromPlacing() }
+                .font(.subheadline)
+                .foregroundStyle(Theme.textSecondary)
+        }
+    }
+
+    // 自分の作品
+    private func selected(_ id: UUID) -> some View {
+        let artwork = model.artScene?.artwork(id)
+        return VStack(alignment: .leading, spacing: 10) {
+            Title("あなたの\(artwork?.artKind.label ?? "作品")")
+            if let artwork {
+                Caption("見せる人：\(Visibility.label(of: artwork.visibility))・\(ServerDate.relative(artwork.created_at))")
+            }
+            Button("置き直す") { model.startMovingArtwork(id) }
+                .buttonStyle(SecondaryButtonStyle())
+            HStack(spacing: 10) {
+                Button("隠す") { model.hideArtwork(id) }
+                    .buttonStyle(SecondaryButtonStyle())
+                Button(confirmDelete ? "本当に消す" : "消す") {
+                    if confirmDelete {
+                        model.deleteArtwork(id)
+                    } else {
+                        confirmDelete = true
+                    }
+                }
+                .buttonStyle(DangerButtonStyle())
+            }
+            Button("閉じる") {
+                confirmDelete = false
+                model.cancelArt()
+            }
+            .font(.subheadline)
+            .foregroundStyle(Theme.textSecondary)
+        }
+    }
+}
+
+/// 指先の印（手が見えているあいだ。作品に近いと光り、触れるとふくらむ）
+private struct HandCursorView: View {
+    @ObservedObject var hand: HandTouch
+
+    var body: some View {
+        ZStack {
+            if let cursor = hand.cursor {
+                ZStack {
+                    Circle()
+                        .fill(Color.white.opacity(cursor.touching ? 0.95 : (cursor.near ? 0.55 : 0.25)))
+                        .frame(width: cursor.touching ? 26 : 16, height: cursor.touching ? 26 : 16)
+                    Circle()
+                        .stroke(Color.white.opacity(cursor.near ? 0.95 : 0.5), lineWidth: 2)
+                        .frame(width: cursor.near ? 44 : 30, height: cursor.near ? 44 : 30)
+                }
+                .shadow(color: Color(hex: 0xFFD79A).opacity(cursor.near ? 0.95 : 0.35), radius: cursor.touching ? 18 : 8)
+                .position(cursor.point)
+                .animation(.easeOut(duration: 0.12), value: cursor)
+                .transition(.opacity)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+        .animation(.easeInOut(duration: 0.2), value: hand.cursor == nil)
+    }
+}
+
+private extension ArtworkColor {
+    var swatch: Color {
+        let (r, g, b) = rgb
+        return Color(red: Double(r), green: Double(g), blue: Double(b))
     }
 }

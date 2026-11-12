@@ -30,6 +30,16 @@ struct MediaStore {
         return path
     }
 
+    /// 送ったけれど使わなかった自分の写真を消す（作品を置けなかったときなど。失敗しても続ける）
+    func removePhoto(path: String) async {
+        do {
+            _ = try await client.storage.from("gf-media").remove(paths: [path])
+            Self.photos.removeObject(forKey: path as NSString)
+        } catch {
+            Trace.log("使わなかった写真を消せませんでした：\(ErrorText.of(error))")
+        }
+    }
+
     /// 写真を受け取る（見てよくない写真は、サーバーが断る）
     func photo(path: String) async -> UIImage? {
         if let cached = Self.photos.object(forKey: path as NSString) { return cached }

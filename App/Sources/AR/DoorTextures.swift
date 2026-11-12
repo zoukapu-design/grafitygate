@@ -44,6 +44,60 @@ enum DoorTextures {
         return make(key: key, ctx: ctx)
     }
 
+    /// 作品のまわりのやわらかい光（色ごとに 1 枚）
+    static func halo(_ color: ArtworkColor) -> TextureResource? {
+        radial(key: "halo-\(color.rawValue)", rgb: color.rgb, alpha: 0.85)
+    }
+
+    /// 波紋の輪（中は透明、ふちが光る）
+    static func ring(_ color: ArtworkColor) -> TextureResource? {
+        let key = "ring-\(color.rawValue)"
+        if let t = cache[key] { return t }
+        let size = 256
+        guard let ctx = context(size: size) else { return nil }
+        let (r, g, b) = color.rgb
+        let colors = [UIColor(red: r, green: g, blue: b, alpha: 0).cgColor,
+                      UIColor(red: r, green: g, blue: b, alpha: 0).cgColor,
+                      UIColor(red: min(r + 0.1, 1), green: min(g + 0.1, 1), blue: min(b + 0.1, 1), alpha: 0.95).cgColor,
+                      UIColor(red: r, green: g, blue: b, alpha: 0).cgColor] as CFArray
+        guard let gradient = CGGradient(colorsSpace: CGColorSpace(name: CGColorSpace.sRGB), colors: colors,
+                                        locations: [0, 0.72, 0.86, 1]) else { return nil }
+        let c = CGPoint(x: size / 2, y: size / 2)
+        ctx.drawRadialGradient(gradient, startCenter: c, startRadius: 0, endCenter: c, endRadius: CGFloat(size) / 2,
+                               options: [])
+        return make(key: key, ctx: ctx)
+    }
+
+    /// 花びら 1 枚（先が少し割れた、ふちの淡い形）
+    static func petal(_ color: ArtworkColor) -> TextureResource? {
+        let key = "petal-\(color.rawValue)"
+        if let t = cache[key] { return t }
+        let size = 128
+        guard let ctx = context(size: size) else { return nil }
+        let s = CGFloat(size)
+        let path = CGMutablePath()
+        // 下（根もと）から上（先）へ。CGContext は下が y=0
+        path.move(to: CGPoint(x: s * 0.5, y: s * 0.04))
+        path.addCurve(to: CGPoint(x: s * 0.42, y: s * 0.92), control1: CGPoint(x: s * 0.06, y: s * 0.30),
+                      control2: CGPoint(x: s * 0.10, y: s * 0.86))
+        path.addLine(to: CGPoint(x: s * 0.5, y: s * 0.82))
+        path.addLine(to: CGPoint(x: s * 0.58, y: s * 0.92))
+        path.addCurve(to: CGPoint(x: s * 0.5, y: s * 0.04), control1: CGPoint(x: s * 0.90, y: s * 0.86),
+                      control2: CGPoint(x: s * 0.94, y: s * 0.30))
+        path.closeSubpath()
+        ctx.addPath(path)
+        ctx.clip()
+        let (r, g, b) = color.rgb
+        let colors = [UIColor(red: r * 0.92, green: g * 0.78, blue: b * 0.82, alpha: 1).cgColor,
+                      UIColor(red: r, green: g, blue: b, alpha: 1).cgColor,
+                      UIColor(red: min(r + 0.08, 1), green: min(g + 0.16, 1), blue: min(b + 0.14, 1), alpha: 0.92).cgColor] as CFArray
+        if let gradient = CGGradient(colorsSpace: CGColorSpace(name: CGColorSpace.sRGB), colors: colors,
+                                     locations: [0, 0.35, 1]) {
+            ctx.drawLinearGradient(gradient, start: CGPoint(x: s / 2, y: 0), end: CGPoint(x: s / 2, y: s), options: [])
+        }
+        return make(key: key, ctx: ctx)
+    }
+
     /// 写真の質感（扉の向こうに浮かべる思い出の写真）
     static func photo(_ image: UIImage) -> TextureResource? {
         let small = image.downscaled(maxSide: 1024)

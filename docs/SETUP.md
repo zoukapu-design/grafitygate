@@ -9,6 +9,7 @@
 3. [0001_gf_core.sql](https://github.com/zoukapu-design/grafitygate/blob/main/supabase/migrations/0001_gf_core.sql) を開き、右上の「Copy raw file」で中身を全部コピーして貼る
 4. **Run** を押す（何度実行しても大丈夫です）
 5. 同じように [0002_gf_place_maps.sql](https://github.com/zoukapu-design/grafitygate/blob/main/supabase/migrations/0002_gf_place_maps.sql)（場所の記憶）も貼って **Run**
+6. 同じように [0003_gf_artworks.sql](https://github.com/zoukapu-design/grafitygate/blob/main/supabase/migrations/0003_gf_artworks.sql)（AR の作品）も貼って **Run**
 
 `supabase/migrations/` に新しいファイルが増えたら、番号の順に同じように実行します。
 

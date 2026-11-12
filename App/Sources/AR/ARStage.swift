@@ -189,6 +189,15 @@ final class ARStage: NSObject, ObservableObject {
         }.value
     }
 
+    /// いまのカメラの景色を写真にする（AR の飾りは写らない。位置などの付加情報も入らない）
+    func grabPhoto() async -> UIImage? {
+        guard let buffer = arView.session.currentFrame?.capturedImage else { return nil }
+        let data = await Task.detached(priority: .userInitiated) {
+            FrameGrab.photo(from: buffer)
+        }.value
+        return data.flatMap(UIImage.init(data:))
+    }
+
     // MARK: 場所の記憶
 
     func captureWorldMap() async throws -> ARWorldMap {
