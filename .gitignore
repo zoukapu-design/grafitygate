@@ -1,0 +1,17 @@
+# 秘密の値（GitHub Secrets から CI が作る。リポジトリには入れない）
+**/Config/Secrets.xcconfig
+*.p8
+
+# XcodeGen が作るもの・組み立てでできるもの
+*.xcodeproj
+*.xcworkspace
+.spm/
+.build/
+build/
+DerivedData/
+*.xcarchive
+*.ipa
+*.log
+
+.DS_Store
+__pycache__/

@@ -1,0 +1,5 @@
+// 秘密の値はリポジトリに入れない。
+// GitHub Actions が Secrets から Secrets.xcconfig を作り、ここで読み込む（無ければ空のまま＝サーバーなしで起動する）。
+SUPABASE_URL =
+SUPABASE_ANON_KEY =
+#include? "Secrets.xcconfig"
