@@ -34,7 +34,7 @@ extension ARExperienceModel {
     static let artTextLimit = 40
 
     var canPlaceArt: Bool {
-        guard phase == .doorOpen, visitID != nil, artScene != nil else { return false }
+        guard phase == .doorOpen, visitID != nil, artScene != nil, placedPrecisely else { return false }
         if let expires = visitExpires, expires <= Date() { return false }
         return myArtworkCount < Self.artworksPerPerson
     }
@@ -159,7 +159,9 @@ extension ARExperienceModel {
 
     func startArt() {
         guard canPlaceArt else {
-            if myArtworkCount >= Self.artworksPerPerson {
+            if !placedPrecisely {
+                notice = "扉がおおよその位置に出ているため、作品は置けません（置くと、ほかの人にはずれた所に見えます）。作った人が扉を置いた辺りを見回して、扉を出し直してください。"
+            } else if myArtworkCount >= Self.artworksPerPerson {
                 notice = "1 つの GATE に置ける作品は、1 人 3 つまでです。前の作品を押して消すと置けます。"
             } else {
                 notice = "入場の時間が切れました。現地でもう一度入ると置けます。"
@@ -349,6 +351,10 @@ extension ARExperienceModel {
 
     func startMovingArtwork(_ id: UUID) {
         guard let scene = artScene, let artwork = scene.artwork(id) else { return }
+        guard placedPrecisely else {
+            notice = "扉がおおよその位置に出ているため、置き直せません。扉が作った人と同じ位置に出たときに置き直せます。"
+            return
+        }
         guard visitID != nil, (visitExpires ?? .distantFuture) > Date() else {
             notice = "入場の時間が切れました。現地でもう一度入ると置き直せます。"
             return

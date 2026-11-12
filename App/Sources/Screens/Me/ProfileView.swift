@@ -47,6 +47,14 @@ struct ProfileView: View {
                         .buttonStyle(following ? AnyButtonStyle(SecondaryButtonStyle()) : AnyButtonStyle(PrimaryButtonStyle()))
                         .disabled(busy)
                     }
+                    if isFriend && !blocked {
+                        NavigationLink {
+                            ChatView(other: userID, name: profile.display_name)
+                        } label: {
+                            Label("メッセージを送る", systemImage: "bubble.left")
+                        }
+                        .buttonStyle(SecondaryButtonStyle())
+                    }
                     if blocked {
                         Card {
                             VStack(alignment: .leading, spacing: 10) {

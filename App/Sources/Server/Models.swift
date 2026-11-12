@@ -429,7 +429,91 @@ enum ReportReason: String, CaseIterable, Identifiable {
 
 /// 通報できるもの（サーバーの gf_reports.target_kind と同じ）
 enum ReportTarget: String {
-    case gate, graffiti, artwork, thread, reply, memory, memory_item, letter, user
+    case gate, graffiti, artwork, thread, reply, memory, memory_item, letter, user, dm
+}
+
+// MARK: - お知らせと DM
+
+/// お知らせ（gf_my_notifications）。現地だけの中身は入っていない
+struct NotificationItem: Decodable, Identifiable, Hashable {
+    let kind: String
+    let actor: UUID
+    let actor_name: String
+    let gate_id: UUID?
+    let gate_title: String?
+    let ref_id: UUID?
+    let created_at: String
+    let unread: Bool
+
+    var id: String { "\(kind)-\(actor.uuidString)-\(ref_id?.uuidString ?? "")-\(created_at)" }
+
+    var text: String {
+        let who = "\(actor_name) さん"
+        let gate = gate_title.map { "「\($0)」" } ?? "GATE"
+        switch kind {
+        case "gate_graffiti": return "\(who)が\(gate)に記憶を残しました"
+        case "gate_artwork": return "\(who)が\(gate)に作品を置きました"
+        case "board_thread": return "\(who)が\(gate)の掲示板に話題を立てました"
+        case "board_reply": return "\(who)があなたの話題に返信しました（\(gate)）"
+        case "letter": return "\(who)から手紙が届きました。\(gate)で開けます"
+        case "letter_opened": return "\(who)があなたの手紙を開きました（\(gate)）"
+        case "memory_invite": return "\(who)が\(gate)の思い出の仲間に入れてくれました"
+        case "memory_photo": return "\(who)が思い出に写真を足しました（\(gate)）"
+        case "like": return "\(who)があなたの記憶にいいねしました（\(gate)）"
+        case "follow": return "\(who)があなたをフォローしました"
+        default: return "\(who)からのお知らせ"
+        }
+    }
+
+    var symbol: String {
+        switch kind {
+        case "gate_graffiti": return "square.stack"
+        case "gate_artwork": return "sparkles"
+        case "board_thread", "board_reply": return "bubble.left.and.bubble.right"
+        case "letter", "letter_opened": return "envelope"
+        case "memory_invite", "memory_photo": return "photo.stack"
+        case "like": return "heart"
+        case "follow": return "person.badge.plus"
+        default: return "bell"
+        }
+    }
+
+    /// 押したときに開く GATE の中の場所
+    var gateTab: GateTab {
+        switch kind {
+        case "board_thread", "board_reply": return .board
+        case "letter", "letter_opened": return .letters
+        case "memory_invite", "memory_photo": return .memories
+        default: return .graffiti
+        }
+    }
+}
+
+struct UnreadCounts: Decodable {
+    let notifications: Int
+    let messages: Int
+}
+
+/// DM の相手ごとの一覧（gf_dm_threads）
+struct DMThread: Decodable, Identifiable, Hashable {
+    let other: UUID
+    let other_name: String
+    let last_body: String
+    let last_at: String
+    let last_from_me: Bool
+    let unread: Int
+    let can_send: Bool
+
+    var id: UUID { other }
+}
+
+/// DM のメッセージ（gf_dm_messages_with）
+struct DMMessage: Decodable, Identifiable, Hashable {
+    let id: UUID
+    let sender: UUID
+    let body: String
+    let created_at: String
+    let read_at: String?
 }
 
 /// 場所の記憶の置き場所（gf_place_map）

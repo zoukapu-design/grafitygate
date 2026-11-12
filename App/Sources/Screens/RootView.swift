@@ -8,11 +8,14 @@ struct GateRoute: Hashable, Identifiable {
 /// 下のタブは 4 つ：ホーム／地図／撮る／わたし（設計書「画面の構成」）
 struct RootView: View {
     @EnvironmentObject private var session: SessionModel
+    @StateObject private var inbox = InboxModel()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         TabView {
             HomeView()
                 .tabItem { Label("ホーム", systemImage: "house") }
+                .badge(inbox.total)
             NearbyMapView()
                 .tabItem { Label("地図", systemImage: "map") }
             CaptureView()
@@ -21,6 +24,17 @@ struct RootView: View {
                 .tabItem { Label("わたし", systemImage: "person.crop.circle") }
         }
         .tint(Theme.accent)
+        .environmentObject(inbox)
+        .task(id: session.state) {
+            if session.state == .signedIn { inbox.start(session: session) }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            switch phase {
+            case .active: if session.state == .signedIn { inbox.start(session: session) }
+            case .background: inbox.stop()
+            default: break
+            }
+        }
         .safeAreaInset(edge: .top) {
             if let problem = session.problem {
                 Text(problem)

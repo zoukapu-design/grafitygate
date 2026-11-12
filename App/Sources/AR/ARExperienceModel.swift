@@ -460,6 +460,7 @@ final class ARExperienceModel: ObservableObject {
             if result.ok {
                 visitID = result.visit_id
                 visitExpires = result.expires_at.flatMap(ServerDate.parse)
+                placedPrecisely = true   // 作った人が置いたその場所（場所の記憶の印そのもの）
                 makeArtScene()
                 door?.open()
                 Haptics.open()

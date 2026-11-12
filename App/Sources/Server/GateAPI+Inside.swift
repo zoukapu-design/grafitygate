@@ -204,6 +204,12 @@ extension GateAPI {
     // MARK: 通報とブロック
 
     func report(_ target: ReportTarget, id: UUID, reason: ReportReason, note: String) async throws {
+        if target == .dm {
+            try await client.rpc("gf_report_dm",
+                                 params: ReportDMParams(p_id: id, p_reason: reason.rawValue, p_note: note.isEmpty ? nil : note))
+                .execute()
+            return
+        }
         try await client.rpc("gf_report",
                              params: ReportParams(p_kind: target.rawValue, p_id: id, p_reason: reason.rawValue,
                                                   p_note: note.isEmpty ? nil : note))
@@ -222,11 +228,42 @@ extension GateAPI {
         try await client.rpc("gf_my_blocks").execute().value
     }
 
+    // MARK: お知らせと DM
+
+    func notifications() async throws -> [NotificationItem] {
+        try await client.rpc("gf_my_notifications").execute().value
+    }
+
+    func unreadCounts() async throws -> UnreadCounts {
+        let rows: [UnreadCounts] = try await client.rpc("gf_unread_counts").execute().value
+        return rows.first ?? UnreadCounts(notifications: 0, messages: 0)
+    }
+
+    func markNotificationsSeen() async throws {
+        try await client.rpc("gf_mark_notifications_seen").execute()
+    }
+
+    func dmThreads() async throws -> [DMThread] {
+        try await client.rpc("gf_dm_threads").execute().value
+    }
+
+    func dmMessages(with other: UUID) async throws -> [DMMessage] {
+        try await client.rpc("gf_dm_messages_with", params: OtherParam(p_other: other)).execute().value
+    }
+
+    func sendDM(to other: UUID, body: String) async throws -> UUID {
+        try await client.rpc("gf_dm_send", params: DMSendParams(p_to: other, p_body: body)).execute().value
+    }
+
+    func deleteDM(_ id: UUID) async throws {
+        try await client.rpc("gf_dm_delete", params: IDOnlyParam(p_id: id)).execute()
+    }
+
     // MARK: 自分のデータ
 
     /// 自分のデータを 1 つの JSON にしたもの
     func exportMe() async throws -> Data {
-        let response = try await client.rpc("gf_export_me").execute()
+        let response = try await client.rpc("gf_export_me_social").execute()
         return response.data
     }
 
@@ -245,6 +282,27 @@ private struct MemoryIDParam: Encodable { let p_memory: UUID }
 private struct ItemIDParam: Encodable { let p_item: UUID }
 private struct UserParam: Encodable { let p_user: UUID }
 private struct KindParam: Encodable { let p_kind: String }
+private struct OtherParam: Encodable { let p_other: UUID }
+private struct IDOnlyParam: Encodable { let p_id: UUID }
+private struct DMSendParams: Encodable {
+    let p_to: UUID
+    let p_body: String
+}
+
+private struct ReportDMParams: Encodable {
+    let p_id: UUID
+    let p_reason: String
+    let p_note: String?
+
+    enum CodingKeys: String, CodingKey { case p_id, p_reason, p_note }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(p_id, forKey: .p_id)
+        try c.encode(p_reason, forKey: .p_reason)
+        try c.encode(p_note, forKey: .p_note)               // nil は null
+    }
+}
 private struct MemberRow: Decodable { let user_id: UUID }
 private struct LikeRow: Codable {
     let graffiti_id: UUID

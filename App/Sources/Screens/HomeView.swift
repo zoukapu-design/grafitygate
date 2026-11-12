@@ -3,6 +3,7 @@ import SwiftUI
 /// ホーム：友達が残した新しいグラフィティ（24 時間だけ）。押すと GATE の概要へ。中を見るには現地で入る。
 struct HomeView: View {
     @EnvironmentObject private var session: SessionModel
+    @EnvironmentObject private var inbox: InboxModel
     @State private var cards: [FeedCard] = []
     @State private var error: String?
     @State private var loaded = false
@@ -43,6 +44,22 @@ struct HomeView: View {
                 .refreshable { await load() }
             }
             .task(id: session.state) { await load() }
+            .toolbar {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    NavigationLink {
+                        MessagesView()
+                    } label: {
+                        BadgedIcon(systemImage: "bubble.left.and.bubble.right", count: inbox.messages)
+                    }
+                    .accessibilityLabel(inbox.messages > 0 ? "メッセージ（新しい \(inbox.messages) 件）" : "メッセージ")
+                    NavigationLink {
+                        NotificationsView()
+                    } label: {
+                        BadgedIcon(systemImage: "bell", count: inbox.notifications)
+                    }
+                    .accessibilityLabel(inbox.notifications > 0 ? "お知らせ（新しい \(inbox.notifications) 件）" : "お知らせ")
+                }
+            }
             .sheet(item: $report, onDismiss: { Task { await load() } }) { item in ReportSheet(item: item) }
         }
     }
@@ -88,5 +105,26 @@ private struct FeedRow: View {
         .clipShape(RoundedRectangle(cornerRadius: Theme.radiusCard))
         .overlay(RoundedRectangle(cornerRadius: Theme.radiusCard).stroke(Theme.line))
         .padding(.vertical, 4)
+    }
+}
+
+/// 右上に数の印が付くアイコン
+struct BadgedIcon: View {
+    let systemImage: String
+    let count: Int
+
+    var body: some View {
+        Image(systemName: systemImage)
+            .overlay(alignment: .topTrailing) {
+                if count > 0 {
+                    Text(count > 99 ? "99+" : "\(count)")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 4)
+                        .frame(minWidth: 16, minHeight: 16)
+                        .background(Theme.alert, in: Capsule())
+                        .offset(x: 10, y: -8)
+                }
+            }
     }
 }
