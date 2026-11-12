@@ -254,10 +254,40 @@ struct BoardReply: Decodable, Identifiable, Hashable {
     let author_name: String
     let body: String
     let created_at: String
+    /// 調べる話題のしるし（fact / observation / hypothesis / rumor）
+    var label: String?
+    var source: String?
+
+    var evidence: EvidenceLabel? { label.flatMap(EvidenceLabel.init(rawValue:)) }
+}
+
+/// 共同調査のしるし（書いた人が選ぶ。確かさをサーバーが決めるのではない）
+enum EvidenceLabel: String, CaseIterable, Identifiable {
+    case fact, observation, hypothesis, rumor
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .fact: return "事実"
+        case .observation: return "観察"
+        case .hypothesis: return "仮説"
+        case .rumor: return "噂"
+        }
+    }
+
+    var caption: String {
+        switch self {
+        case .fact: return "記録や出典で確かめられること"
+        case .observation: return "自分の目で見た・聞いたこと"
+        case .hypothesis: return "たぶんこうではないか、という考え"
+        case .rumor: return "人から聞いた話（確かではない）"
+        }
+    }
 }
 
 enum BoardTopic: String, CaseIterable, Identifiable {
-    case memory, question, notice, other
+    case memory, question, notice, investigation, other
 
     var id: String { rawValue }
 
@@ -266,6 +296,7 @@ enum BoardTopic: String, CaseIterable, Identifiable {
         case .memory: return "思い出話"
         case .question: return "質問"
         case .notice: return "お知らせ・注意"
+        case .investigation: return "調べる（歴史・謎）"
         case .other: return "そのほか"
         }
     }
@@ -275,6 +306,7 @@ enum BoardTopic: String, CaseIterable, Identifiable {
         case .memory: return "heart.text.square"
         case .question: return "questionmark.bubble"
         case .notice: return "exclamationmark.triangle"
+        case .investigation: return "magnifyingglass"
         case .other: return "text.bubble"
         }
     }

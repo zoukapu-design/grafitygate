@@ -41,8 +41,13 @@ extension GateAPI {
         try await client.rpc("gf_board_list", params: InsideGateParam(p_gate: gate)).execute().value
     }
 
+    /// 返信（共同調査のしるし・出典つき。0007 を入れる前のサーバーでは、しるしなしで読む）
     func boardReplies(_ thread: UUID) async throws -> [BoardReply] {
-        try await client.rpc("gf_board_replies_of", params: ThreadParam(p_thread: thread)).execute().value
+        do {
+            return try await client.rpc("gf_board_replies_of2", params: ThreadParam(p_thread: thread)).execute().value
+        } catch let error where ErrorText.isMissingFunction(error) {
+            return try await client.rpc("gf_board_replies_of", params: ThreadParam(p_thread: thread)).execute().value
+        }
     }
 
     func postThread(visit: UUID, topic: BoardTopic, title: String, body: String) async throws -> UUID {
@@ -51,8 +56,15 @@ extension GateAPI {
             .execute().value
     }
 
-    func reply(visit: UUID, thread: UUID, body: String) async throws -> UUID {
-        try await client.rpc("gf_board_reply", params: BoardReplyParams(p_visit: visit, p_thread: thread, p_body: body))
+    func reply(visit: UUID, thread: UUID, body: String, label: EvidenceLabel? = nil, source: String? = nil) async throws -> UUID {
+        if label == nil && (source ?? "").isEmpty {
+            return try await client.rpc("gf_board_reply", params: BoardReplyParams(p_visit: visit, p_thread: thread, p_body: body))
+                .execute().value
+        }
+        return try await client.rpc("gf_board_reply2",
+                                    params: EvidenceReplyParams(p_visit: visit, p_thread: thread, p_body: body,
+                                                                p_label: label?.rawValue,
+                                                                p_source: (source ?? "").isEmpty ? nil : source))
             .execute().value
     }
 
@@ -405,6 +417,25 @@ private struct BoardReplyParams: Encodable {
     let p_visit: UUID
     let p_thread: UUID
     let p_body: String
+}
+
+private struct EvidenceReplyParams: Encodable {
+    let p_visit: UUID
+    let p_thread: UUID
+    let p_body: String
+    let p_label: String?
+    let p_source: String?
+
+    enum CodingKeys: String, CodingKey { case p_visit, p_thread, p_body, p_label, p_source }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(p_visit, forKey: .p_visit)
+        try c.encode(p_thread, forKey: .p_thread)
+        try c.encode(p_body, forKey: .p_body)
+        try c.encode(p_label, forKey: .p_label)              // nil は null
+        try c.encode(p_source, forKey: .p_source)            // nil は null
+    }
 }
 
 private struct PinParams: Encodable {

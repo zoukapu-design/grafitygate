@@ -212,6 +212,9 @@ struct ThreadView: View {
     @State private var pinned: Bool
     @State private var report: ReportItem?
     @State private var confirmDelete = false
+    @State private var label: EvidenceLabel?
+    @State private var source = ""
+    @State private var filter: EvidenceLabel?
 
     init(context: GateContext, thread: BoardThread) {
         self.context = context
@@ -220,6 +223,11 @@ struct ThreadView: View {
     }
 
     private var isGateOwner: Bool { context.ownerID == session.userID }
+    private var isInvestigation: Bool { thread.boardTopic == .investigation }
+    private var shownReplies: [BoardReply] {
+        guard let filter else { return replies }
+        return replies.filter { $0.evidence == filter }
+    }
 
     var body: some View {
         ScrollView {
@@ -240,9 +248,12 @@ struct ThreadView: View {
                 .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radiusCard))
                 .overlay(RoundedRectangle(cornerRadius: Theme.radiusCard).stroke(Theme.line))
 
-                Text(replies.isEmpty ? "まだ返信はありません" : "返信 \(replies.count) 件")
+                if isInvestigation && !replies.isEmpty {
+                    evidenceFilter
+                }
+                Text(replies.isEmpty ? "まだ返信はありません" : "返信 \(shownReplies.count) 件")
                     .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.textSecondary)
-                ForEach(replies) { reply in
+                ForEach(shownReplies) { reply in
                     ReplyRow(reply: reply, canDelete: reply.author == session.userID || isGateOwner,
                              isMine: reply.author == session.userID,
                              onDelete: { Task { await deleteReply(reply) } },
@@ -260,26 +271,31 @@ struct ThreadView: View {
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .bottom) {
             if context.isInside {
-                HStack(spacing: 10) {
-                    TextField("返信を書く", text: $draft, axis: .vertical)
-                        .lineLimit(1...4)
-                        .padding(10)
-                        .background(Theme.surfaceElevated, in: RoundedRectangle(cornerRadius: 14))
-                    Button {
-                        Task { await send() }
-                    } label: {
-                        if sending {
-                            ProgressView()
-                        } else {
-                            Image(systemName: "paperplane.fill")
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundStyle(.white)
-                                .frame(width: 42, height: 42)
-                                .background(Theme.accent, in: Circle())
-                        }
+                VStack(spacing: 8) {
+                    if isInvestigation {
+                        evidenceComposer
                     }
-                    .disabled(sending || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .accessibilityLabel("送る")
+                    HStack(spacing: 10) {
+                        TextField("返信を書く", text: $draft, axis: .vertical)
+                            .lineLimit(1...4)
+                            .padding(10)
+                            .background(Theme.surfaceElevated, in: RoundedRectangle(cornerRadius: 14))
+                        Button {
+                            Task { await send() }
+                        } label: {
+                            if sending {
+                                ProgressView()
+                            } else {
+                                Image(systemName: "paperplane.fill")
+                                    .font(.system(size: 18, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 42, height: 42)
+                                    .background(Theme.accent, in: Circle())
+                            }
+                        }
+                        .disabled(sending || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .accessibilityLabel("送る")
+                    }
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
@@ -326,6 +342,51 @@ struct ThreadView: View {
         .refreshable { await load() }
     }
 
+    /// しるしごとに分けて見る
+    private var evidenceFilter: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                chip("すべて \(replies.count)", selected: filter == nil) { filter = nil }
+                ForEach(EvidenceLabel.allCases) { e in
+                    let n = replies.filter { $0.evidence == e }.count
+                    chip("\(e.label) \(n)", selected: filter == e) { filter = (filter == e ? nil : e) }
+                }
+            }
+        }
+    }
+
+    /// 返信に付けるしるしと出典
+    private var evidenceComposer: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(EvidenceLabel.allCases) { e in
+                        chip(e.label, selected: label == e) { label = (label == e ? nil : e) }
+                    }
+                }
+            }
+            if let label {
+                Text(label.caption).font(.caption2).foregroundStyle(Theme.textSecondary)
+            }
+            TextField("出典（本・記事・石碑など。なくても大丈夫）", text: $source)
+                .font(.footnote)
+                .padding(8)
+                .background(Theme.surfaceElevated, in: RoundedRectangle(cornerRadius: 10))
+        }
+    }
+
+    private func chip(_ text: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(text)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(selected ? .white : Theme.text)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(selected ? Theme.accent : Theme.surfaceElevated, in: Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
     private func load() async {
         guard let api = session.api else { return }
         do {
@@ -345,8 +406,11 @@ struct ThreadView: View {
         defer { sending = false }
         do {
             _ = try await api.reply(visit: visit, thread: thread.id,
-                                    body: String(draft.trimmingCharacters(in: .whitespacesAndNewlines).prefix(1000)))
+                                    body: String(draft.trimmingCharacters(in: .whitespacesAndNewlines).prefix(1000)),
+                                    label: isInvestigation ? label : nil,
+                                    source: isInvestigation ? String(source.trimmingCharacters(in: .whitespacesAndNewlines).prefix(300)) : nil)
             draft = ""
+            source = ""
             Haptics.tap()
             await load()
         } catch {
@@ -412,7 +476,20 @@ private struct ReplyRow: View {
                             .frame(width: 28, height: 20)
                     }
                 }
+                if let e = reply.evidence {
+                    Text(e.label)
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(e == .fact ? Theme.accent : (e == .rumor ? Theme.alert : Theme.warm))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Theme.surfaceElevated, in: Capsule())
+                }
                 Text(reply.body).font(.subheadline).foregroundStyle(Theme.text)
+                if let source = reply.source, !source.isEmpty {
+                    Label(source, systemImage: "book.closed")
+                        .font(.caption).foregroundStyle(Theme.textSecondary)
+                        .textSelection(.enabled)
+                }
             }
         }
         .padding(12)

@@ -13,6 +13,7 @@
 7. 同じように [0004_gf_inside.sql](https://github.com/zoukapu-design/grafitygate/blob/main/supabase/migrations/0004_gf_inside.sql)（掲示板・手紙・思い出・保存と図鑑・通報・アカウントの削除）も貼って **Run**
 8. 同じように [0005_gf_social.sql](https://github.com/zoukapu-design/grafitygate/blob/main/supabase/migrations/0005_gf_social.sql)（お知らせ・メッセージ）も貼って **Run**
 9. 同じように [0006_gf_trails_snapshots.sql](https://github.com/zoukapu-design/grafitygate/blob/main/supabase/migrations/0006_gf_trails_snapshots.sql)（TRAIL・今と昔）も貼って **Run**
+10. 同じように [0007_gf_investigations.sql](https://github.com/zoukapu-design/grafitygate/blob/main/supabase/migrations/0007_gf_investigations.sql)（共同調査）も貼って **Run**
 
 通報は表 `gf_reports` に入ります。Supabase の [Table Editor](https://supabase.com/dashboard/project/_/editor) で `gf_reports` を開くと見られます（アプリからはだれも読めません）。
 

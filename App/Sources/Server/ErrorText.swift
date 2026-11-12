@@ -24,6 +24,12 @@ enum ErrorText {
         return message
     }
 
+    /// サーバーに関数がまだ無い（新しい SQL を入れる前）
+    static func isMissingFunction(_ error: Error) -> Bool {
+        let message = (error as? PostgrestError)?.message ?? error.localizedDescription
+        return message.contains("Could not find the function") || message.contains("PGRST202")
+    }
+
     /// 入場がだめだった理由（gf_enter の reason）
     static func enterReason(_ reason: String?) -> String {
         switch reason {
