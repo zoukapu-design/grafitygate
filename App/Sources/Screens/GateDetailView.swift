@@ -3,7 +3,7 @@ import SwiftUI
 
 /// GATE の中のどこを見ているか
 enum GateTab: String, CaseIterable, Identifiable {
-    case graffiti, memories, board, letters
+    case graffiti, memories, board, letters, thenNow
 
     var id: String { rawValue }
 
@@ -13,6 +13,7 @@ enum GateTab: String, CaseIterable, Identifiable {
         case .memories: return "思い出"
         case .board: return "掲示板"
         case .letters: return "手紙"
+        case .thenNow: return "今と昔"
         }
     }
 }
@@ -23,6 +24,8 @@ struct GateContext: Equatable {
     let title: String
     let ownerID: UUID
     let ownerName: String
+    let coverPath: String?
+    let createdAt: String
     /// いま有効な入場券（現地で扉を開けているあいだだけ）
     let visit: UUID?
     let visitExpires: Date?
@@ -45,6 +48,7 @@ struct GateDetailView: View {
     @State private var report: ReportItem?
     @State private var refreshToken = 0
     @State private var actionMessage: String?
+    @State private var trails: [TrailSummary] = []
 
     init(gateID: UUID, tab: GateTab = .graffiti) {
         self.gateID = gateID
@@ -56,6 +60,9 @@ struct GateDetailView: View {
             VStack(alignment: .leading, spacing: 16) {
                 if let summary {
                     header(summary)
+                    if !trails.isEmpty {
+                        trailStrip
+                    }
                     TimelineView(.periodic(from: .now, by: 30)) { timeline in
                         let context = makeContext(summary, now: timeline.date)
                         VStack(alignment: .leading, spacing: 16) {
@@ -105,6 +112,7 @@ struct GateDetailView: View {
     private func makeContext(_ s: GateSummary, now: Date) -> GateContext {
         let active = (s.visitExpiresAt ?? .distantPast) > now
         return GateContext(gateID: s.id, title: s.title, ownerID: s.owner, ownerName: s.owner_name,
+                           coverPath: s.cover_path, createdAt: s.created_at,
                            visit: active ? s.my_visit : nil, visitExpires: active ? s.visitExpiresAt : nil)
     }
 
@@ -174,6 +182,28 @@ struct GateDetailView: View {
         .overlay(RoundedRectangle(cornerRadius: Theme.radiusCard).stroke(Theme.line))
     }
 
+    /// この GATE をふくむ TRAIL
+    private var trailStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(trails) { trail in
+                    NavigationLink {
+                        TrailDetailView(trailID: trail.id, title: trail.title)
+                    } label: {
+                        Label(trail.inProgress ? "\(trail.title)（\(trail.reached)/\(trail.stop_count)）" : trail.title,
+                              systemImage: "point.topleft.down.to.point.bottomright.curvepath")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Theme.accent)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(Theme.accentLight, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
     /// 入場中は残り時間、入る前は「現地で扉を開ける」
     @ViewBuilder private func visitBanner(_ context: GateContext, now: Date) -> some View {
         if let expires = context.visitExpires, context.isInside {
@@ -210,6 +240,8 @@ struct GateDetailView: View {
             BoardSection(context: context, refreshToken: refreshToken)
         case .letters:
             LetterSection(context: context, refreshToken: refreshToken)
+        case .thenNow:
+            SnapshotSection(context: context, refreshToken: refreshToken) { item in report = item }
         }
     }
 
@@ -223,6 +255,7 @@ struct GateDetailView: View {
             if let saved = try? await api.collection("saved") {
                 self.saved = saved.contains { $0.gate_id == gateID }
             }
+            trails = (try? await api.trails(including: gateID)) ?? []
         } catch {
             loadError = ErrorText.of(error)
         }

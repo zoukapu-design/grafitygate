@@ -10,6 +10,8 @@ struct NearbyMapView: View {
     @State private var error: String?
     @State private var position: MapCameraPosition = .userLocation(fallback: .automatic)
     @State private var lastQueried: CLLocation?
+    @State private var walking: TrailSummary?
+    @State private var nextStop: TrailStop?
 
     var body: some View {
         NavigationStack {
@@ -17,6 +19,16 @@ struct NearbyMapView: View {
                 VStack(spacing: 0) {
                     Map(position: $position) {
                         UserAnnotation()
+                        if let next = nextStop, let lat = next.approx_lat, let lon = next.approx_lon {
+                            Annotation("次：\(next.title)", coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon)) {
+                                Text("\(next.seq)")
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 30, height: 30)
+                                    .background(Theme.warm, in: Circle())
+                                    .overlay(Circle().stroke(.white, lineWidth: 2))
+                            }
+                        }
                         ForEach(gates) { gate in
                             Annotation(gate.title, coordinate: CLLocationCoordinate2D(latitude: gate.approx_lat,
                                                                                        longitude: gate.approx_lon)) {
@@ -39,12 +51,46 @@ struct NearbyMapView: View {
                 }
             }
             .task(id: location.location?.timestamp) { await refreshIfMoved() }
-            .task(id: session.state) { await refresh(force: true) }
+            .task(id: session.state) {
+                await refresh(force: true)
+                await loadWalking()
+            }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink {
+                        TrailListView()
+                    } label: {
+                        Label("TRAIL", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
+                            .labelStyle(.titleAndIcon)
+                            .font(.subheadline.weight(.semibold))
+                    }
+                }
+            }
         }
     }
 
     private var nearbyList: some View {
         VStack(alignment: .leading, spacing: 8) {
+            if let walking, let next = nextStop {
+                NavigationLink {
+                    TrailDetailView(trailID: walking.id, title: walking.title)
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "figure.walk").foregroundStyle(Theme.warm)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("TRAIL「\(walking.title)」\(walking.reached)/\(walking.stop_count)")
+                                .font(.caption).foregroundStyle(Theme.textSecondary)
+                            Text("次は \(next.seq). \(next.title)").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right").font(.caption).foregroundStyle(Theme.textSecondary)
+                    }
+                    .padding(12)
+                    .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16))
+                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(Theme.warm.opacity(0.5)))
+                }
+                .buttonStyle(.plain)
+            }
             Text("100m 以内の GATE").font(.headline).foregroundStyle(Theme.text)
             if let problem = location.fixProblem, location.location == nil || location.isDenied {
                 NoticeText(text: problem)
@@ -79,6 +125,18 @@ struct NearbyMapView: View {
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.background)
+    }
+
+    /// 歩いている TRAIL があれば、次の地点を地図に出す
+    private func loadWalking() async {
+        guard let api = session.api, session.state == .signedIn else { return }
+        guard let trail = (try? await api.trails())?.first(where: \.inProgress) else {
+            walking = nil
+            nextStop = nil
+            return
+        }
+        walking = trail
+        nextStop = (try? await api.trailStops(trail.id))?.first { !$0.reached }
     }
 
     /// 15m 以上動いたか、30 秒たったら探し直す（サーバーへの問い合わせを減らす）

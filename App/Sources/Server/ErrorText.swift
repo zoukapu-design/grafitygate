@@ -63,6 +63,8 @@ enum ErrorText {
         ("gf_letter_onsite", "この手紙は、現地で扉を開けると読めます。"),
         ("gf_memory_full", "この思い出には、もう写真を足せません。"),
         ("gf_bad_report", "通報を送れませんでした。理由を選び直してください。"),
+        ("gf_bad_trail", "TRAIL は、ちがう GATE を 2〜20 か所つないで作れます。題も入れてください。"),
+        ("gf_trail_not_visited", "TRAIL には、自分が扉を開けたことのある GATE だけを入れられます。"),
         ("gf_not_found", "見つかりませんでした。"),
         ("gf_not_signed_in", "サーバーにつながっていません。アプリを開き直してください。"),
     ]

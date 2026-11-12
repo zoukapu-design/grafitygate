@@ -259,6 +259,63 @@ extension GateAPI {
         try await client.rpc("gf_dm_delete", params: IDOnlyParam(p_id: id)).execute()
     }
 
+    // MARK: TRAIL
+
+    /// 自分の・友達の・歩いている TRAIL。gate を渡すと、その GATE をふくむ見てよい TRAIL
+    func trails(including gate: UUID? = nil) async throws -> [TrailSummary] {
+        try await client.rpc("gf_trail_list", params: OptionalGateParam(p_gate: gate)).execute().value
+    }
+
+    func trailStops(_ trail: UUID) async throws -> [TrailStop] {
+        try await client.rpc("gf_trail_stops_of", params: TrailParam(p_trail: trail)).execute().value
+    }
+
+    func createTrail(title: String, note: String, visibility: Visibility, gates: [UUID]) async throws -> UUID {
+        try await client.rpc("gf_create_trail",
+                             params: TrailCreateParams(p_title: title, p_note: note, p_visibility: visibility.rawValue,
+                                                       p_gates: gates))
+            .execute().value
+    }
+
+    func startTrail(_ trail: UUID) async throws {
+        try await client.rpc("gf_trail_start", params: TrailParam(p_trail: trail)).execute()
+    }
+
+    func quitTrail(_ trail: UUID) async throws {
+        try await client.rpc("gf_trail_quit", params: TrailParam(p_trail: trail)).execute()
+    }
+
+    func deleteTrail(_ trail: UUID) async throws {
+        try await client.rpc("gf_delete_trail", params: TrailParam(p_trail: trail)).execute()
+    }
+
+    /// この入場で進んだ TRAIL
+    func trailsReached(visit: UUID) async throws -> [TrailReached] {
+        try await client.rpc("gf_trails_reached_by", params: VisitParam(p_visit: visit)).execute().value
+    }
+
+    // MARK: 今と昔
+
+    func snapshots(in gate: UUID) async throws -> [Snapshot] {
+        try await client.from("gf_snapshots")
+            .select("id,gate_id,author,photo_path,visibility,created_at")
+            .eq("gate_id", value: gate.uuidString)
+            .order("created_at", ascending: true)
+            .limit(200)
+            .execute().value
+    }
+
+    func addSnapshot(visit: UUID, photoPath: String, visibility: Visibility) async throws -> UUID {
+        try await client.rpc("gf_add_snapshot",
+                             params: SnapshotParams(p_visit: visit, p_photo_path: photoPath, p_visibility: visibility.rawValue))
+            .execute().value
+    }
+
+    /// 消す。消した写真の置き場所の名前を返す
+    func deleteSnapshot(_ id: UUID) async throws -> String? {
+        try await client.rpc("gf_delete_snapshot", params: IDOnlyParam(p_id: id)).execute().value
+    }
+
     // MARK: 自分のデータ
 
     /// 自分のデータを 1 つの JSON にしたもの
@@ -283,6 +340,19 @@ private struct ItemIDParam: Encodable { let p_item: UUID }
 private struct UserParam: Encodable { let p_user: UUID }
 private struct KindParam: Encodable { let p_kind: String }
 private struct OtherParam: Encodable { let p_other: UUID }
+private struct TrailParam: Encodable { let p_trail: UUID }
+private struct VisitParam: Encodable { let p_visit: UUID }
+private struct TrailCreateParams: Encodable {
+    let p_title: String
+    let p_note: String
+    let p_visibility: String
+    let p_gates: [UUID]
+}
+private struct SnapshotParams: Encodable {
+    let p_visit: UUID
+    let p_photo_path: String
+    let p_visibility: String
+}
 private struct IDOnlyParam: Encodable { let p_id: UUID }
 private struct DMSendParams: Encodable {
     let p_to: UUID

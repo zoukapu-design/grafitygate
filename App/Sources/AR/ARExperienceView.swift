@@ -190,6 +190,11 @@ private struct ExperienceCard: View {
         case .doorClosed:
             VStack(alignment: .leading, spacing: 10) {
                 Title("扉が現れました")
+                if let note = model.trailNote {
+                    Label(note, systemImage: "figure.walk")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Theme.warm)
+                }
                 Caption(model.placedPrecisely ? "作った人が扉を置いた場所です。扉を押すと開きます。"
                                               : "おおよその位置に出しています。扉を押すと開きます。")
                 Button("扉を開く") { model.openDoor() }

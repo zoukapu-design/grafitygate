@@ -67,6 +67,8 @@ final class ARExperienceModel: ObservableObject {
     @Published var artworkCount = 0
     @Published var myArtworkCount = 0
     @Published var reportItem: ReportItem?
+    /// この入場で進んだ TRAIL（「TRAIL「…」の 2/5 に着きました」）
+    @Published var trailNote: String?
     let hand = HandTouch()
 
     let stage = ARStage()
@@ -133,6 +135,7 @@ final class ARExperienceModel: ObservableObject {
         enteredGate = nil
         visitID = nil
         visitExpires = nil
+        trailNote = nil
         phase = .scanning
     }
 
@@ -223,6 +226,7 @@ final class ARExperienceModel: ObservableObject {
             enteredGate = gate
             visitID = result.visit_id
             visitExpires = result.expires_at.flatMap(ServerDate.parse)
+            if let visit = result.visit_id { Task { await loadTrailNote(visit) } }
             await showDoor(for: gate)
         } catch {
             phase = .failed(ErrorText.of(error))
@@ -272,6 +276,15 @@ final class ARExperienceModel: ObservableObject {
             Trace.log("扉を組み立てられませんでした：\(error)")
             phase = .failed("扉を表示できませんでした。")
         }
+    }
+
+    private func loadTrailNote(_ visit: UUID) async {
+        guard let api = session?.api, let reached = try? await api.trailsReached(visit: visit), !reached.isEmpty else { return }
+        trailNote = reached.map { r in
+            r.completed ? "TRAIL「\(r.title)」を歩き終わりました！" : "TRAIL「\(r.title)」の \(r.reached)/\(r.stop_count) に着きました"
+        }.joined(separator: "\n")
+        Haptics.success()
+        Trace.log("TRAIL が進みました（\(reached.count) 本）")
     }
 
     /// 場所の記憶を探すのをやめて、おおよその位置に出す

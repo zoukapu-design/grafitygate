@@ -429,7 +429,60 @@ enum ReportReason: String, CaseIterable, Identifiable {
 
 /// 通報できるもの（サーバーの gf_reports.target_kind と同じ）
 enum ReportTarget: String {
-    case gate, graffiti, artwork, thread, reply, memory, memory_item, letter, user, dm
+    case gate, graffiti, artwork, thread, reply, memory, memory_item, letter, user, dm, trail, snapshot
+}
+
+// MARK: - TRAIL と今と昔
+
+/// TRAIL の一覧の 1 行（gf_trail_list）
+struct TrailSummary: Decodable, Identifiable, Hashable {
+    let id: UUID
+    let owner: UUID
+    let owner_name: String
+    let title: String
+    let note: String
+    let visibility: String
+    let created_at: String
+    let stop_count: Int
+    let cover_path: String?
+    let reached: Int
+    let completed: Bool
+    let started: Bool
+
+    var inProgress: Bool { started && !completed }
+}
+
+/// TRAIL の地点（gf_trail_stops_of）。見られない GATE は名前・位置が入っていない
+struct TrailStop: Decodable, Identifiable, Hashable {
+    let seq: Int
+    let gate_id: UUID?
+    let title: String
+    let cover_path: String?
+    let approx_lat: Double?
+    let approx_lon: Double?
+    let visible: Bool
+    let reached: Bool
+
+    var id: Int { seq }
+}
+
+/// この入場で進んだ TRAIL（gf_trails_reached_by）
+struct TrailReached: Decodable, Hashable {
+    let trail_id: UUID
+    let title: String
+    let reached: Int
+    let stop_count: Int
+    let completed: Bool
+}
+
+/// 今と昔の写真（表 gf_snapshots）
+struct Snapshot: Decodable, Identifiable, Hashable {
+    let id: UUID
+    let gate_id: UUID
+    let author: UUID
+    let photo_path: String
+    let visibility: String
+    let created_at: String
 }
 
 // MARK: - お知らせと DM
