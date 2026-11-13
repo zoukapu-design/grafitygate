@@ -38,7 +38,9 @@ jobs:
 
   build:
     needs: sql-tests
-    runs-on: macos-15
+    # Apple シリコンの Mac が混んでいて取りかかれないことがあるので、ふだんは Intel の Mac を使う。
+    # 変えたいときは、リポジトリの Settings → Variables の MAC_RUNNER に名前（例：macos-15）を入れる。
+    runs-on: ${{ vars.MAC_RUNNER || 'macos-15-intel' }}
     timeout-minutes: 60
     env:
       PROJECT_DIR: App
