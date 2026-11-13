@@ -37,7 +37,7 @@ struct OnboardingView: View {
                             GateMark(size: 140)
                         }
                         VStack(spacing: 14) {
-                            if index == 0 { Wordmark(size: 18) }
+                            if index == 0 { Wordmark(size: 26) }
                             Text(item.title)
                                 .font(.title2.weight(.semibold))
                                 .foregroundStyle(Theme.text)
