@@ -651,6 +651,13 @@ private struct ArtCard: View {
                 ForEach(Visibility.allCases) { v in Text(v.label).tag(v) }
             }
             .pickerStyle(.segmented)
+            Toggle(isOn: $model.draft.asDraft) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("まず自分だけで試す").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
+                    Text("下書きで置き、触れて動きを確かめてから公開します").font(.caption).foregroundStyle(Theme.textSecondary)
+                }
+            }
+            .tint(Theme.accent)
             Button("次へ（置く所を決める）") {
                 focused = false
                 model.beginArtPlacement()
@@ -905,10 +912,25 @@ private struct ArtCard: View {
     private func selected(_ id: UUID) -> some View {
         let artwork = model.artScene?.artwork(id)
         return VStack(alignment: .leading, spacing: 10) {
-            Title("あなたの\(artwork?.artKind.label ?? "作品")")
+            Title(artwork?.isDraft == true ? "下書きの\(artwork?.artKind.label ?? "作品")" : "あなたの\(artwork?.artKind.label ?? "作品")")
             if let artwork {
-                Caption("見せる人：\(Visibility.label(of: artwork.visibility))・\(ServerDate.relative(artwork.created_at))")
+                if artwork.isDraft {
+                    Caption("あなたにだけ見えています。触れたり近づいたりして動きを確かめたら、公開してください。")
+                } else {
+                    Caption("見せる人：\(Visibility.label(of: artwork.visibility))・\(ServerDate.relative(artwork.created_at))")
+                }
+                if artwork.needs_replace == true {
+                    Label("扉の場所の記憶が撮り直されました。位置がずれていたら、置き直してください。", systemImage: "exclamationmark.triangle")
+                        .font(.subheadline)
+                        .foregroundStyle(Theme.warm)
+                    Button("このままでよい") { model.keepArtworkPlace(id) }
+                        .buttonStyle(SecondaryButtonStyle())
+                }
                 playButton(id, artwork)
+                if artwork.isDraft {
+                    Button("公開する") { model.publishArtwork(id) }
+                        .buttonStyle(PrimaryButtonStyle())
+                }
             }
             Button("置き直す") { model.startMovingArtwork(id) }
                 .buttonStyle(SecondaryButtonStyle())

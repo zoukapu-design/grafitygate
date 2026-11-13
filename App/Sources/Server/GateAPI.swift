@@ -99,35 +99,44 @@ struct GateAPI {
 
     /// GATE の作品（入場中なら公開範囲が合うもの、そうでなければ自分のものだけが返る）
     func artworks(in gate: UUID) async throws -> [Artwork] {
-        let columns = "id,gate_id,owner,kind,body,photo_path,color,px,py,pz,yaw,scale,rules,visibility,status,revision,created_at"
-        do {
-            return try await client.from("gf_artworks")
-                .select(columns + ",thumb_path,duration")
-                .eq("gate_id", value: gate.uuidString)
-                .order("created_at", ascending: true)
-                .limit(60)
-                .execute().value
-        } catch let error where ErrorText.isMissingColumn(error) {
-            // 0010 を入れる前のサーバー（映像・声の作品はまだ無い）
-            return try await client.from("gf_artworks")
-                .select(columns)
-                .eq("gate_id", value: gate.uuidString)
-                .order("created_at", ascending: true)
-                .limit(60)
-                .execute().value
+        let base = "id,gate_id,owner,kind,body,photo_path,color,px,py,pz,yaw,scale,rules,visibility,status,revision,created_at"
+        // 新しいサーバーから順に試す（0011：置き直しの印、0010：映像・声、それより前）
+        let attempts = [base + ",thumb_path,duration,needs_replace", base + ",thumb_path,duration", base]
+        var lastError: Error?
+        for columns in attempts {
+            do {
+                return try await client.from("gf_artworks")
+                    .select(columns)
+                    .eq("gate_id", value: gate.uuidString)
+                    .order("created_at", ascending: true)
+                    .limit(60)
+                    .execute().value
+            } catch let error where ErrorText.isMissingColumn(error) {
+                lastError = error
+            }
         }
+        throw lastError ?? URLError(.badServerResponse)
     }
 
     /// 作品を置く（入場中だけ）。置いた作品の ID を返す。
     /// 映像・声は path にファイル、映像は thumbPath に表紙の絵、duration に長さ（秒）
     func placeArtwork(visit: UUID, kind: ArtworkKind, body: String, photoPath: String?, thumbPath: String? = nil,
                       duration: Double? = nil, color: ArtworkColor, position: SIMD3<Float>, yaw: Float, scale: Float,
-                      rules: [ArtworkRule], visibility: Visibility) async throws -> UUID {
+                      rules: [ArtworkRule], visibility: Visibility, draft: Bool = false) async throws -> UUID {
         let params = PlaceArtworkParams(p_visit: visit, p_kind: kind.rawValue, p_body: body,
                                         p_photo_path: photoPath, p_color: color.rawValue,
                                         p_px: position.x, p_py: position.y, p_pz: position.z,
                                         p_yaw: yaw, p_scale: scale, p_rules: rules,
                                         p_visibility: visibility.rawValue)
+        do {
+            return try await client.rpc("gf_place_artwork3",
+                                        params: PlaceArtwork2Params(base: params, p_thumb: thumbPath,
+                                                                    p_duration: duration.map { Float($0) },
+                                                                    p_status: draft ? "draft" : "published"))
+                .execute().value
+        } catch let error where ErrorText.isMissingFunction(error) && !draft {
+            // 0011 を入れる前のサーバー（下書きはまだ無い）
+        }
         do {
             return try await client.rpc("gf_place_artwork2",
                                         params: PlaceArtwork2Params(base: params, p_thumb: thumbPath,
@@ -150,9 +159,18 @@ struct GateAPI {
     }
 
     func setArtworkStatus(_ id: UUID, hidden: Bool) async throws {
-        try await client.rpc("gf_set_artwork_status",
-                             params: ArtworkStatusParams(p_id: id, p_status: hidden ? "hidden" : "published"))
+        try await setArtworkStatus(id, status: hidden ? "hidden" : "published")
+    }
+
+    /// 自分の作品の状態（draft 下書き／published 公開／hidden 非公開）
+    func setArtworkStatus(_ id: UUID, status: String) async throws {
+        try await client.rpc("gf_set_artwork_status", params: ArtworkStatusParams(p_id: id, p_status: status))
             .execute()
+    }
+
+    /// 「置き直しが必要」を、いまの位置のままで外す
+    func keepArtworkPlace(_ id: UUID) async throws {
+        try await client.rpc("gf_keep_artwork_place", params: IDParam(p_id: id)).execute()
     }
 
     /// 自分の作品を消す。消したファイルの名前を返す（映像は表紙の絵も。ファイルも消すため）
@@ -350,10 +368,12 @@ private struct PlaceArtwork2Params: Encodable {
     let base: PlaceArtworkParams
     let p_thumb: String?
     let p_duration: Float?
+    /// gf_place_artwork3 のときだけ（draft / published）
+    var p_status: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case p_visit, p_kind, p_body, p_path, p_thumb, p_duration, p_color, p_px, p_py, p_pz, p_yaw, p_scale, p_rules,
-             p_visibility
+             p_visibility, p_status
     }
 
     func encode(to encoder: Encoder) throws {
@@ -372,6 +392,7 @@ private struct PlaceArtwork2Params: Encodable {
         try c.encode(base.p_scale, forKey: .p_scale)
         try c.encode(base.p_rules, forKey: .p_rules)
         try c.encode(base.p_visibility, forKey: .p_visibility)
+        if let p_status { try c.encode(p_status, forKey: .p_status) }
     }
 }
 

@@ -92,6 +92,8 @@ final class ArtworkItem {
     private var spreadVelocity: Float = 0
     private var swirlBoost: Float = 0
     private var reveal: Float = 1
+    /// 下書きのあいだ、うすく呼吸するように見せている
+    private var draftFading = false
     private var lastFired: [Int: TimeInterval] = [:]
 
     private var color: ArtworkColor { artwork.artColor }
@@ -123,6 +125,12 @@ final class ArtworkItem {
         root.position = artwork.position
         root.orientation = simd_quatf(angle: artwork.yaw, axis: [0, 1, 0])
         root.scale = .one * artwork.scale
+    }
+
+    /// 状態が変わった（下書き → 公開・置き直しの印を外した など）
+    func update(status: String? = nil, needsReplace: Bool? = nil) {
+        if let status { artwork.status = status }
+        if let needsReplace { artwork.needs_replace = needsReplace }
     }
 
     func setPose(position: SIMD3<Float>, yaw: Float, scale: Float, revision: Int? = nil) {
@@ -593,6 +601,13 @@ final class ArtworkItem {
         }
         if isPreview {
             Fade.set(root, 0.62 + 0.18 * sin(time * 4))
+        } else if artwork.isDraft, reveal >= 1 {
+            // 下書き（自分にだけ見えている）は、うすく呼吸するように
+            Fade.set(root, 0.7 + 0.15 * sin(time * 2.2))
+            draftFading = true
+        } else if draftFading {
+            Fade.set(root, 1)
+            draftFading = false
         }
         body.orientation = simd_quatf(angle: swayAngle, axis: [0, 1, 0]) * simd_quatf(angle: swayAngle * 0.3, axis: [0, 0, 1])
 

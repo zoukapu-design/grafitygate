@@ -114,6 +114,11 @@ final class ArtworkScene {
 
     func artwork(_ id: UUID) -> Artwork? { items[id]?.artwork }
 
+    /// 作品の状態を変える（下書き → 公開・置き直しの印を外す）
+    func update(_ id: UUID, status: String? = nil, needsReplace: Bool? = nil) {
+        items[id]?.update(status: status, needsReplace: needsReplace)
+    }
+
     // MARK: 流す
 
     /// 手もとのファイルを流す（ほかに流しているものは止める）

@@ -28,6 +28,8 @@ extension ARExperienceModel {
         /// 声の玉の声
         var voiceFile: URL?
         var voiceDuration: Double = 0
+        /// まず自分だけで試す（下書き。ほかの人には見えない）
+        var asDraft = false
         var color: ArtworkColor = .warm
         var action: ArtworkAction = .glow
         var visibility: Visibility = .friends
@@ -72,13 +74,23 @@ extension ARExperienceModel {
     func loadArtworks(_ gate: UUID) async {
         guard let api = session?.api else { return }
         do {
-            let list = try await api.artworks(in: gate).filter { $0.status == "published" }
+            // 公開中と、自分の下書き（ほかの人の下書きはサーバーが返さない）
+            let list = try await api.artworks(in: gate).filter { $0.status != "hidden" }
             guard enteredGate == gate, let scene = artScene else { return }
             for artwork in list { scene.add(artwork, image: nil, animated: false) }
             refreshArtCounts()
             Trace.log("作品を \(list.count) 個受け取りました（写真パネル \(list.filter { $0.artKind == .photo }.count) 個・"
                       + "映像 \(list.filter { $0.artKind == .video }.count) 個・声 \(list.filter { $0.artKind == .voice }.count) 個）")
             if phase == .doorOpen { startHandIfNeeded() }
+            let me = session?.userID
+            let mine = list.filter { $0.owner == me }
+            let toCheck = mine.filter { $0.needs_replace == true }.count
+            let drafts = mine.filter(\.isDraft).count
+            if toCheck > 0 {
+                showToast("扉の場所の記憶が撮り直されました。あなたの作品 \(toCheck) つの位置を確かめてください。")
+            } else if drafts > 0 {
+                showToast("あなたの下書きの作品が \(drafts) つあります。押すと公開できます。")
+            }
             let owners = Array(Set(list.map(\.owner)))
             if let names = try? await api.names(of: owners) { artNames.merge(names) { _, new in new } }
             await loadArtPhotos(list)
@@ -396,16 +408,17 @@ extension ARExperienceModel {
             }
             let text = String(draft.text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(Self.artTextLimit))
             let rules = Self.rules(for: draft.action, kind: draft.kind)
+            let asDraft = draft.asDraft
             let id = try await api.placeArtwork(visit: visit, kind: draft.kind, body: draft.kind == .text ? text : "",
                                                 photoPath: mainPath, thumbPath: thumbPath, duration: duration,
                                                 color: draft.color, position: pose.position,
                                                 yaw: pose.yaw, scale: pose.scale, rules: rules,
-                                                visibility: draft.visibility)
+                                                visibility: draft.visibility, draft: asDraft)
             var placed = Artwork(id: id, gate_id: gate, owner: me, kind: draft.kind.rawValue,
                                  body: draft.kind == .text ? text : "", photo_path: mainPath,
                                  color: draft.color.rawValue, px: pose.position.x, py: pose.position.y,
                                  pz: pose.position.z, yaw: pose.yaw, scale: pose.scale, rules: rules,
-                                 visibility: draft.visibility.rawValue, status: "published", revision: 1,
+                                 visibility: draft.visibility.rawValue, status: asDraft ? "draft" : "published", revision: 1,
                                  created_at: ISO8601DateFormatter().string(from: Date()))
             placed.thumb_path = thumbPath
             placed.duration = duration
@@ -417,10 +430,13 @@ extension ARExperienceModel {
             item.perform(placed.artKind.isMedia ? .play : draft.action)
             refreshArtCounts()
             startHandIfNeeded()
-            art = nil
+            // 下書きなら、試したあとに公開できるカードを出したままにする
+            art = asDraft ? .selected(id) : nil
             Haptics.success()
-            Trace.log(String(format: "作品を置きました（%@・扉から 横 %.2f 高さ %.2f 奥 %.2f m・大きさ %.1f）",
-                             draft.kind.label, pose.position.x, pose.position.y, pose.position.z, pose.scale))
+            if asDraft { showToast("下書きで置きました。あなたにだけ見えています。") }
+            Trace.log(String(format: "作品を置きました（%@・%@・扉から 横 %.2f 高さ %.2f 奥 %.2f m・大きさ %.1f）",
+                             placed.artKind.label, asDraft ? "下書き" : "公開", pose.position.x, pose.position.y,
+                             pose.position.z, pose.scale))
         } catch {
             for path in uploaded { await media.removePhoto(path: path) }
             let message = ErrorText.of(error)
@@ -444,6 +460,7 @@ extension ARExperienceModel {
                                                      scale: pose.scale, revision: current.revision)
             scene.endPreview()
             scene.items[current.id]?.setPose(position: pose.position, yaw: pose.yaw, scale: pose.scale, revision: revision)
+            scene.update(current.id, needsReplace: false)
             scene.items[current.id]?.perform(.glow)
             movingArtwork = nil
             art = nil
@@ -486,6 +503,39 @@ extension ARExperienceModel {
         scene.beginPreview(artwork, image: artImages[id], hiding: id)
         previewInRange = true
         art = .placing
+    }
+
+    /// 下書きを公開する（ほかの人にも見えるようになる）
+    func publishArtwork(_ id: UUID) {
+        Task {
+            guard let api = session?.api else { return }
+            do {
+                try await api.setArtworkStatus(id, status: "published")
+                artScene?.update(id, status: "published")
+                artScene?.items[id]?.perform(.glow)
+                art = nil
+                Haptics.success()
+                showToast("公開しました。友達がここで扉を開けると見えます。")
+                Trace.log("下書きの作品を公開しました")
+            } catch {
+                notice = ErrorText.of(error)
+            }
+        }
+    }
+
+    /// 「置き直しが必要」を、いまの位置のままで外す
+    func keepArtworkPlace(_ id: UUID) {
+        Task {
+            guard let api = session?.api else { return }
+            do {
+                try await api.keepArtworkPlace(id)
+                artScene?.update(id, needsReplace: false)
+                art = nil
+                Trace.log("作品の位置をこのままにしました")
+            } catch {
+                notice = ErrorText.of(error)
+            }
+        }
     }
 
     func hideArtwork(_ id: UUID) {

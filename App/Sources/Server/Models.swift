@@ -129,6 +129,11 @@ struct Artwork: Decodable, Identifiable, Hashable {
     var thumb_path: String? = nil
     /// 映像・声の長さ（秒）
     var duration: Double? = nil
+    /// 場所の記憶が撮り直されたので、置き直したほうがよいかもしれない（0011 を入れる前のサーバーでは無い）
+    var needs_replace: Bool? = nil
+
+    /// 下書き（置いた本人にだけ見える）
+    var isDraft: Bool { status == "draft" }
 
     var artKind: ArtworkKind { ArtworkKind(rawValue: kind) ?? .light }
     /// 一覧や見本に使う絵（写真パネルは写真、映像パネルは表紙の絵）
