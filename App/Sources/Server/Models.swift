@@ -140,7 +140,7 @@ struct Artwork: Decodable, Identifiable, Hashable {
     var picturePath: String? {
         switch artKind {
         case .photo: return photo_path
-        case .video: return thumb_path
+        case .video, .person: return thumb_path
         default: return nil
         }
     }
@@ -172,7 +172,7 @@ struct ArtworkRule: Codable, Hashable {
 
 enum ArtworkKind: String, CaseIterable, Identifiable {
     // 選ぶ画面の並び順（2 列）
-    case photo, video, text, voice, petals, light
+    case photo, video, person, voice, text, petals, light
 
     var id: String { rawValue }
 
@@ -180,6 +180,7 @@ enum ArtworkKind: String, CaseIterable, Identifiable {
         switch self {
         case .photo: return "写真パネル"
         case .video: return "映像パネル"
+        case .person: return "人物の映像"
         case .text: return "光る文字"
         case .voice: return "声の玉"
         case .petals: return "花びら"
@@ -191,6 +192,7 @@ enum ArtworkKind: String, CaseIterable, Identifiable {
         switch self {
         case .photo: return "思い出の写真を宙に飾る"
         case .video: return "15 秒までの動画を、触れると流す"
+        case .person: return "動画から人だけ切り抜き、扉の前に立たせる"
         case .text: return "ひとことを光の文字で"
         case .voice: return "触れると、そこから声が聞こえる"
         case .petals: return "花びらがくるくる舞う"
@@ -202,6 +204,7 @@ enum ArtworkKind: String, CaseIterable, Identifiable {
         switch self {
         case .photo: return "photo.on.rectangle"
         case .video: return "play.rectangle"
+        case .person: return "figure.stand"
         case .text: return "textformat"
         case .voice: return "waveform.circle"
         case .petals: return "leaf"
@@ -210,13 +213,13 @@ enum ArtworkKind: String, CaseIterable, Identifiable {
     }
 
     /// 映像・声（触れると流れる。動きは選ばない）
-    var isMedia: Bool { self == .video || self == .voice }
+    var isMedia: Bool { self == .video || self == .voice || self == .person }
 
     /// はじめに選んでおく「触れたときの動き」
     var defaultAction: ArtworkAction {
         switch self {
         case .photo: return .sway
-        case .video, .voice: return .play
+        case .video, .voice, .person: return .play
         case .text: return .glow
         case .petals: return .burst
         case .light: return .ripple

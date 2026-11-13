@@ -1,3 +1,5 @@
+import CoreLocation
+import MapKit
 import PhotosUI
 import SwiftUI
 
@@ -39,6 +41,7 @@ struct GateDetailView: View {
     let gateID: UUID
 
     @EnvironmentObject private var session: SessionModel
+    @EnvironmentObject private var location: LocationModel
     @State private var summary: GateSummary?
     @State private var loadError: String?
     @State private var loaded = false
@@ -68,7 +71,7 @@ struct GateDetailView: View {
                     TimelineView(.periodic(from: .now, by: 30)) { timeline in
                         let context = makeContext(summary, now: timeline.date)
                         VStack(alignment: .leading, spacing: 16) {
-                            visitBanner(context, now: timeline.date)
+                            visitBanner(context, summary: summary, now: timeline.date)
                             Picker("GATE の中", selection: $tab) {
                                 ForEach(GateTab.allCases) { t in Text(t.label).tag(t) }
                             }
@@ -246,7 +249,7 @@ struct GateDetailView: View {
     }
 
     /// 入場中は残り時間、入る前は「現地で扉を開ける」
-    @ViewBuilder private func visitBanner(_ context: GateContext, now: Date) -> some View {
+    @ViewBuilder private func visitBanner(_ context: GateContext, summary: GateSummary, now: Date) -> some View {
         if let expires = context.visitExpires, context.isInside {
             let minutes = max(1, Int(expires.timeIntervalSince(now) / 60 + 0.5))
             Label("扉が開いています・あと約 \(minutes) 分", systemImage: "door.left.hand.open")
@@ -256,17 +259,40 @@ struct GateDetailView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Theme.accentLight, in: RoundedRectangle(cornerRadius: 14))
         } else {
+            let distance = location.location?.distance(from: CLLocation(latitude: summary.approx_lat,
+                                                                         longitude: summary.approx_lon))
+            let far = (distance ?? 0) > 150
             VStack(alignment: .leading, spacing: 8) {
-                Button {
-                    showAR = true
-                } label: {
-                    Label("現地で扉を開ける", systemImage: "door.left.hand.open")
+                if far, let distance {
+                    // 遠いとき：まず現地へ（地図アプリで歩く道）
+                    Button {
+                        openWalking(summary)
+                    } label: {
+                        Label("ここへ行く（\(TrailGuide.distanceText(distance))）", systemImage: "figure.walk")
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
+                    Button {
+                        showAR = true
+                    } label: {
+                        Label("着いたら、扉を開ける", systemImage: "door.left.hand.open")
+                    }
+                    .buttonStyle(SecondaryButtonStyle())
+                    .disabled(session.api == nil)
+                    Text("扉は GATE の近く（120m 以内）で開けます。地図アプリで、おおよその場所までの歩く道を出します。")
+                        .font(.caption)
+                        .foregroundStyle(Theme.textSecondary)
+                } else {
+                    Button {
+                        showAR = true
+                    } label: {
+                        Label("現地で扉を開ける", systemImage: "door.left.hand.open")
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
+                    .disabled(session.api == nil)
+                    Text("作った人が写した場所・物にカメラを向けます。位置（120m 以内）と景色の両方が合うと扉が現れ、20 分のあいだ中の記憶を読んだり残したりできます。")
+                        .font(.caption)
+                        .foregroundStyle(Theme.textSecondary)
                 }
-                .buttonStyle(PrimaryButtonStyle())
-                .disabled(session.api == nil)
-                Text("作った人が写した場所・物にカメラを向けます。位置（120m 以内）と景色の両方が合うと扉が現れ、20 分のあいだ中の記憶を読んだり残したりできます。")
-                    .font(.caption)
-                    .foregroundStyle(Theme.textSecondary)
             }
         }
     }
@@ -287,6 +313,15 @@ struct GateDetailView: View {
     }
 
     // MARK: 動き
+
+    /// 地図アプリで、GATE のおおよその場所までの歩く道を出す
+    private func openWalking(_ summary: GateSummary) {
+        let item = MKMapItem(placemark: MKPlacemark(coordinate: CLLocationCoordinate2D(latitude: summary.approx_lat,
+                                                                                    longitude: summary.approx_lon)))
+        item.name = summary.title
+        item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeWalking])
+        Trace.log("GATE へ行く道を地図アプリで開きました")
+    }
 
     private func reload() async {
         guard let api = session.api else { return }

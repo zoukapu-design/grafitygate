@@ -70,11 +70,16 @@ struct MediaStore {
 
     /// 動画・声のファイルを送る（iPhone の中で作り直して、位置などの付加情報を消したもの）。置き場所の名前を返す。
     func uploadFile(_ url: URL, owner: UUID, kind: MemoryMediaKind) async throws -> String {
+        try await uploadFile(url, owner: owner, fileExtension: kind.fileExtension,
+                             contentType: kind == .video ? "video/mp4" : "audio/mp4", label: kind == .video ? "動画" : "声")
+    }
+
+    /// ファイルを送る（拡張子と種類を決めて）。人物の映像は .mov（video/quicktime）
+    func uploadFile(_ url: URL, owner: UUID, fileExtension: String, contentType: String, label: String) async throws -> String {
         let data = try Data(contentsOf: url)
-        let contentType = kind == .video ? "video/mp4" : "audio/mp4"
-        let path = "\(owner.uuidString.lowercased())/\(UUID().uuidString.lowercased()).\(kind.fileExtension)"
+        let path = "\(owner.uuidString.lowercased())/\(UUID().uuidString.lowercased()).\(fileExtension)"
         try await client.storage.from("gf-media").upload(path, data: data, options: FileOptions(contentType: contentType))
-        Trace.log("\(kind == .video ? "動画" : "声")を送りました（\(data.count / 1024)KB）")
+        Trace.log("\(label)を送りました（\(data.count / 1024)KB）")
         // 送ったものは、そのまま再生できるように手もとに残す
         let local = Self.localURL(for: path)
         try? FileManager.default.createDirectory(at: local.deletingLastPathComponent(), withIntermediateDirectories: true)

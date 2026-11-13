@@ -570,6 +570,9 @@ private struct ArtCard: View {
     @State private var pickerItem: PhotosPickerItem?
     @State private var videoItem: PhotosPickerItem?
     @State private var loadingVideo = false
+    @State private var personItem: PhotosPickerItem?
+    /// 人を切り抜いているあいだの進み具合（0〜1）
+    @State private var personProgress: Double?
     @State private var recordingVoice = false
     @State private var confirmDelete = false
     @FocusState private var focused: Bool
@@ -635,11 +638,12 @@ private struct ArtCard: View {
             switch model.draft.kind {
             case .photo: photoInput
             case .video: videoInput
+            case .person: personInput
             case .text: textInput
             case .voice: voiceInput
             case .petals, .light: EmptyView()
             }
-            if model.draft.kind != .photo, model.draft.kind != .video {
+            if model.draft.kind != .photo, model.draft.kind != .video, model.draft.kind != .person {
                 colorRow
             }
             if model.draft.kind.isMedia {
@@ -663,7 +667,7 @@ private struct ArtCard: View {
                 model.beginArtPlacement()
             }
             .buttonStyle(PrimaryButtonStyle())
-            .disabled(loadingVideo)
+            .disabled(loadingVideo || personProgress != nil)
             Button("種類を選び直す") { model.art = .choosing }
                 .font(.subheadline)
                 .foregroundStyle(Theme.textSecondary)
@@ -695,6 +699,28 @@ private struct ArtCard: View {
                 } catch {
                     Trace.log("映像パネルの動画を読み込めませんでした：\(error.localizedDescription)")
                     model.notice = (error as? LocalizedError)?.errorDescription ?? "動画を読み込めませんでした。"
+                }
+            }
+        }
+        .onChange(of: personItem) { _, item in
+            guard let item else { return }
+            Task {
+                personProgress = 0
+                defer {
+                    personProgress = nil
+                    personItem = nil
+                }
+                do {
+                    guard let movie = try await item.loadTransferable(type: PickedMovie.self) else {
+                        throw PersonCutout.Failure.unreadable
+                    }
+                    let result = try await PersonCutout.make(from: movie.url) { value in
+                        Task { @MainActor in personProgress = value }
+                    }
+                    model.setArtPerson(result)
+                } catch {
+                    Trace.log("人物の映像を作れませんでした：\(error.localizedDescription)")
+                    model.notice = (error as? LocalizedError)?.errorDescription ?? "人物の映像を作れませんでした。"
                 }
             }
         }
@@ -740,6 +766,43 @@ private struct ArtCard: View {
                 Text(loadingVideo ? "動画を整えています…" : "15 秒まで。位置などの情報は消して送ります。")
                     .font(.caption)
                     .foregroundStyle(Theme.textSecondary)
+            }
+        }
+    }
+
+    private var personInput: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                // 透けるところが分かるように、夜空の色の上に重ねる
+                LinearGradient(colors: [Color(hex: 0x0A1029), Color(hex: 0x2C1445), Color(hex: 0x6B2A3D)],
+                               startPoint: .top, endPoint: .bottom)
+                if let image = model.draft.person?.poster {
+                    Image(uiImage: image).resizable().scaledToFit()
+                } else {
+                    Image(systemName: "figure.stand").font(.title2).foregroundStyle(.white.opacity(0.7))
+                }
+                if personProgress != nil { ProgressView().tint(.white) }
+            }
+            .frame(width: 64, height: 88)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            VStack(alignment: .leading, spacing: 6) {
+                PhotosPicker(selection: $personItem, matching: .videos) {
+                    Label(model.draft.person == nil ? "人が写った動画を選ぶ" : "動画を選び直す", systemImage: "film")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity, minHeight: 36)
+                }
+                .buttonStyle(.bordered)
+                .tint(Theme.accent)
+                .disabled(personProgress != nil)
+                if let progress = personProgress {
+                    ProgressView(value: progress).tint(Theme.accent)
+                    Text("人を切り抜いています… \(Int(progress * 100))%（iPhone の中だけで行います）")
+                        .font(.caption).foregroundStyle(Theme.textSecondary)
+                } else {
+                    Text(model.draft.person.map { "\(durationText($0.duration)) の人物の映像ができました" }
+                         ?? "10 秒まで。全身か上半身がはっきり写っている動画が向いています。")
+                        .font(.caption).foregroundStyle(Theme.textSecondary)
+                }
             }
         }
     }

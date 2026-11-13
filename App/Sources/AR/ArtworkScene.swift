@@ -216,10 +216,14 @@ final class ArtworkScene {
         let worldTarget = camPos + forward * previewDistance
         let local = container.convert(position: worldTarget, from: nil)
         let limit = Self.horizontalLimit
-        let clamped = SIMD3<Float>(min(max(local.x, -limit), limit),
-                                   min(max(local.y, Self.heightRange.lowerBound), Self.heightRange.upperBound),
-                                   min(max(local.z, -limit), limit))
-        let inRange = simd_distance(clamped, local) < 0.01
+        // 人物の映像は、扉と同じ地面に立たせる（高さは見ている向きに関係なく 0）
+        let standsOnGround = preview.artwork.artKind == .person
+        var target = local
+        if standsOnGround { target.y = 0 }
+        let clamped = SIMD3<Float>(min(max(target.x, -limit), limit),
+                                   min(max(target.y, Self.heightRange.lowerBound), Self.heightRange.upperBound),
+                                   min(max(target.z, -limit), limit))
+        let inRange = simd_distance(clamped, target) < 0.01
         if inRange != previewInRange {
             previewInRange = inRange
             onPreviewRangeChange?(inRange)

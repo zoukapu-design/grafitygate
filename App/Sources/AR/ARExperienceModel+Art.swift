@@ -25,6 +25,8 @@ extension ARExperienceModel {
         var image: UIImage?
         /// 映像パネルの動画（iPhone の中で作り直したもの）
         var video: MediaPrep.PreparedVideo?
+        /// 人物の映像（切り抜いたもの）
+        var person: PersonCutout.Result?
         /// 声の玉の声
         var voiceFile: URL?
         var voiceDuration: Double = 0
@@ -102,7 +104,8 @@ extension ARExperienceModel {
 
     private func loadArtPhotos(_ list: [Artwork]) async {
         guard let media = session?.media else { return }
-        for artwork in list {
+        // 人物の映像は、一覧用の絵（透けない）ではなく、動画の最初の 1 コマ（透ける）を出す＝prefetchArtMedia で
+        for artwork in list where artwork.artKind != .person {
             guard let path = artwork.picturePath, let image = await media.photo(path: path) else { continue }
             artImages[artwork.id] = image
             artScene?.setPhoto(image, for: artwork.id)
@@ -112,17 +115,30 @@ extension ARExperienceModel {
     /// 声（小さい）と、新しい映像 4 つまでを先に受け取っておく（触れたらすぐ流れるように）
     private func prefetchArtMedia(_ list: [Artwork]) async {
         guard let media = session?.media else { return }
+        // 人物（立ち姿を出すのに要る）を先に、次に声（小さい）、映像は新しい 4 つまで
+        let persons = list.filter { $0.artKind == .person }
         let voices = list.filter { $0.artKind == .voice }
         let videos = list.filter { $0.artKind == .video }.suffix(4)
         var count = 0
-        for artwork in voices + videos {
-            guard enteredGate == artwork.gate_id, let path = artwork.photo_path,
-                  media.cachedFile(path: path) == nil, !artMediaLoading.contains(artwork.id) else { continue }
-            artMediaLoading.insert(artwork.id)
-            if await media.localFile(path: path) != nil { count += 1 }
-            artMediaLoading.remove(artwork.id)
+        for artwork in persons + voices + videos {
+            guard enteredGate == artwork.gate_id, let path = artwork.photo_path, !artMediaLoading.contains(artwork.id) else { continue }
+            var file = media.cachedFile(path: path)
+            if file == nil {
+                artMediaLoading.insert(artwork.id)
+                file = await media.localFile(path: path)
+                artMediaLoading.remove(artwork.id)
+                if file != nil { count += 1 }
+            }
+            if artwork.artKind == .person, let file { await showPersonPoster(artwork.id, file: file) }
         }
         if count > 0 { Trace.log("作品の映像・声を \(count) 個、先に受け取りました") }
+    }
+
+    /// 人物の映像の最初の 1 コマ（透けるところのある絵）を、立ち姿として出す
+    func showPersonPoster(_ id: UUID, file: URL) async {
+        guard artImages[id] == nil, let image = await PersonCutout.poster(of: file) else { return }
+        artImages[id] = image
+        artScene?.setPhoto(image, for: id)
     }
 
     // MARK: 流す
@@ -148,6 +164,7 @@ extension ARExperienceModel {
                 return
             }
             scene.play(id, file: file)
+            if artwork.artKind == .person { await showPersonPoster(id, file: file) }
         }
     }
 
@@ -275,6 +292,14 @@ extension ARExperienceModel {
         notice = video.trimmed ? "15 秒より長い動画は、はじめの 15 秒にしました。" : nil
     }
 
+    /// 人物の映像を決める（前に作ったものは消す）
+    func setArtPerson(_ result: PersonCutout.Result) {
+        if let old = draft.person, old.file != result.file { try? FileManager.default.removeItem(at: old.file) }
+        draft.person = result
+        draft.image = result.poster
+        notice = result.trimmed ? "10 秒より長い動画は、はじめの 10 秒にしました。" : nil
+    }
+
     /// 声の玉の声を決める（前に録ったものは消す）
     func setArtVoice(_ file: URL, duration: Double) {
         if let old = draft.voiceFile, old != file { try? FileManager.default.removeItem(at: old) }
@@ -286,6 +311,8 @@ extension ARExperienceModel {
     /// 置かなかった動画・声の一時ファイルを消す
     func discardArtMedia() {
         if let video = draft.video { try? FileManager.default.removeItem(at: video.file) }
+        if let person = draft.person { try? FileManager.default.removeItem(at: person.file) }
+        draft.person = nil
         if let voice = draft.voiceFile { try? FileManager.default.removeItem(at: voice) }
         draft.video = nil
         draft.voiceFile = nil
@@ -296,6 +323,7 @@ extension ARExperienceModel {
         switch draft.kind {
         case .photo where draft.image == nil: return "写真を選ぶか、いまの景色を写してください。"
         case .video where draft.video == nil: return "動画を選んでください（15 秒まで）。"
+        case .person where draft.person == nil: return "人が写っている動画を選んでください（10 秒まで）。"
         case .voice where draft.voiceFile == nil: return "声を録ってください（60 秒まで）。"
         case .text where draft.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty: return "文字を入れてください。"
         default: return nil
@@ -316,7 +344,11 @@ extension ARExperienceModel {
                              px: 0, py: 1.2, pz: 1, yaw: 0, scale: draft.scale,
                              rules: Self.rules(for: draft.action, kind: draft.kind), visibility: draft.visibility.rawValue,
                              status: "published", revision: 1, created_at: "")
-        scene.previewDistance = draft.kind == .photo || draft.kind == .text || draft.kind == .video ? 1.0 : 0.9
+        switch draft.kind {
+        case .person: scene.previewDistance = 1.8
+        case .photo, .text, .video: scene.previewDistance = 1.0
+        default: scene.previewDistance = 0.9
+        }
         scene.beginPreview(sample, image: draft.image)
         previewInRange = true
         art = .placing
@@ -397,6 +429,16 @@ extension ARExperienceModel {
                 uploaded.append(path)
                 mainPath = path
                 duration = video.duration
+            case .person:
+                guard let person = draft.person else { throw MediaPrep.Failure.unreadable }
+                let thumb = try await media.uploadPhoto(person.thumbnail, owner: me)
+                uploaded.append(thumb)
+                thumbPath = thumb
+                let path = try await media.uploadFile(person.file, owner: me, fileExtension: "mov",
+                                                      contentType: "video/quicktime", label: "人物の映像")
+                uploaded.append(path)
+                mainPath = path
+                duration = person.duration
             case .voice:
                 guard let file = draft.voiceFile else { throw MediaPrep.Failure.unreadable }
                 let path = try await media.uploadFile(file, owner: me, kind: .voice)

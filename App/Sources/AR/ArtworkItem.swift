@@ -26,6 +26,12 @@ final class ArtworkItem {
 
     // 流す
     private var player: AVPlayer?
+    /// 人物の映像を流すもの（透けるところのある動画を、毎コマ質感に写す）
+    private var personPlayer: PersonVideoPlayer?
+    private var personMaterialSet = false
+    /// 人物の背の高さ（m・大きさを掛ける前）と、触れる判定の中心（足もとからの高さ）
+    private static let personHeight: Float = 1.65
+    private var centerOffset: SIMD3<Float> = .zero
     private var endObserver: NSObjectProtocol?
     private var audio: AudioPlaybackController?
     private var fallbackAudio: AVAudioPlayer?
@@ -108,15 +114,21 @@ final class ArtworkItem {
             case .photo, .video: buildPhoto(image)
             case .text: buildText()
             case .voice: buildVoice()
+            case .person: buildPerson(image)
             case .petals: buildPetals()
             case .light: buildLight()
             }
         }
         applyPose()
-        if !preview {
-            root.components.set(CollisionComponent(shapes: [.generateSphere(radius: radius)]))
-        }
+        if !preview { setCollision() }
         Fade.set(root, preview ? 0.75 : 1)
+    }
+
+    /// 押した・触れたの当たり判定（人物は足もとではなく胸の高さを中心に）
+    private func setCollision() {
+        guard !isPreview else { return }
+        root.components.set(CollisionComponent(shapes: [ShapeResource.generateSphere(radius: radius)
+                .offsetBy(translation: centerOffset)]))
     }
 
     // MARK: 置き場所
@@ -154,7 +166,7 @@ final class ArtworkItem {
     }
 
     /// 作品の中心（世界の座標）と、触れる判定の半径（m）
-    var worldCenter: SIMD3<Float> { root.position(relativeTo: nil) }
+    var worldCenter: SIMD3<Float> { root.convert(position: centerOffset, to: nil) }
     var worldRadius: Float { radius * artwork.scale }
 
     // MARK: 種類ごとの見た目
@@ -168,6 +180,10 @@ final class ArtworkItem {
     /// 映像パネルも同じ形で、ふだんは表紙の絵と「▶」の印を見せる。
     func setPhoto(_ image: UIImage?) {
         let kind = artwork.artKind
+        if kind == .person {
+            if !isPlaying { setPersonPoster(image) }
+            return
+        }
         guard kind == .photo || kind == .video, !isPlaying else { return }
         panel.children.removeAll()
         let longest: Float = 0.55
@@ -221,9 +237,7 @@ final class ArtworkItem {
             haloBaseOpacity = 0.75
         }
         radius = max(w, h) / 2 + 0.08
-        if !isPreview {
-            root.components.set(CollisionComponent(shapes: [.generateSphere(radius: radius)]))
-        }
+        setCollision()
     }
 
     /// 光る文字：ひらがな・漢字も読める太めの字を、厚みのある光の文字にする
@@ -292,6 +306,49 @@ final class ArtworkItem {
             haloBaseOpacity = 0.35
         }
         radius = 0.36
+    }
+
+    /// 人物の映像：地面に立つ人（透けるところのある絵）。いつもこちらを向き、足もとにうすい影。
+    /// ふだんは最初の 1 コマ、流すあいだは動画。絵がまだ無いときは、やわらかい光の柱で場所だけ見せる。
+    private func buildPerson(_ image: UIImage?) {
+        if let shadowTexture = DoorTextures.radial(key: "person-shadow", rgb: (0, 0, 0), alpha: 0.42) {
+            var m = UnlitMaterial()
+            m.color = .init(tint: .white, texture: .init(shadowTexture))
+            m.blending = .transparent(opacity: .init(floatLiteral: 1))
+            let shadow = ModelEntity(mesh: .generatePlane(width: 0.7, depth: 0.4), materials: [m])
+            shadow.position = [0, 0.004, 0]
+            root.addChild(shadow)
+        }
+        body.addChild(panel)
+        setPersonPoster(image)
+    }
+
+    /// 人物の最初の 1 コマ（透けるところのある絵）を出す
+    private func setPersonPoster(_ image: UIImage?) {
+        panel.children.removeAll()
+        screen = nil
+        posterMaterial = nil
+        let h = Self.personHeight
+        var aspect: Float = 9 / 16
+        if let image, image.size.height > 0 { aspect = Float(image.size.width / image.size.height) }
+        aspect = min(max(aspect, 0.3), 1.6)
+        let w = h * aspect
+        var material = UnlitMaterial()
+        material.blending = .transparent(opacity: .init(floatLiteral: 1))
+        if let image, let texture = DoorTextures.photo(image) {
+            material.color = .init(tint: .white, texture: .init(texture))
+        } else if let glow = DoorTextures.halo(.white) {
+            // 絵が届くまで：やわらかい光の柱
+            material.color = .init(tint: UIColor(white: 1, alpha: 0.6), texture: .init(glow))
+        }
+        let plane = ModelEntity(mesh: .generatePlane(width: w, height: h), materials: [material])
+        plane.position = [0, h / 2, 0]
+        panel.addChild(plane)
+        screen = plane
+        posterMaterial = material
+        centerOffset = [0, h * 0.55, 0]
+        radius = max(0.35, h * 0.38)
+        setCollision()
     }
 
     /// 声の玉：小さな光の芯と、まわりの音の輪。流すあいだは輪がふるえ、波紋が広がる
@@ -461,6 +518,15 @@ final class ArtworkItem {
             }
             player = p
             p.play()
+        case .person:
+            let p = PersonVideoPlayer(url: file)
+            p.onEnd = { [weak self] in
+                guard let self, self.playToken == token else { return }
+                self.stopPlayback(notify: true)
+            }
+            personPlayer = p
+            personMaterialSet = false
+            p.play()
         case .voice:
             do {
                 let resource = try AudioFileResource.load(contentsOf: file, inputMode: .spatial,
@@ -501,6 +567,9 @@ final class ArtworkItem {
         endObserver = nil
         player?.pause()
         player = nil
+        personPlayer?.stop()
+        personPlayer = nil
+        personMaterialSet = false
         if let screen, let posterMaterial { screen.model?.materials = [posterMaterial] }
         badge?.isEnabled = true
         audio?.completionHandler = nil
@@ -590,7 +659,12 @@ final class ArtworkItem {
         hover += (hoverTarget - hover) * min(1, dt * 6)
 
         let kind = artwork.artKind
-        let bob: Float = (kind == .photo || kind == .text || kind == .video) ? sin(time * 0.9) * 0.012 : sin(time * 0.7) * 0.02
+        let bob: Float
+        switch kind {
+        case .person: bob = 0   // 地面に立っている
+        case .photo, .text, .video: bob = sin(time * 0.9) * 0.012
+        default: bob = sin(time * 0.7) * 0.02
+        }
         if reveal < 1 {
             reveal = min(1, reveal + dt / 0.8)
             let e = 1 - pow(1 - reveal, 3)
@@ -609,10 +683,15 @@ final class ArtworkItem {
             Fade.set(root, 1)
             draftFading = false
         }
-        body.orientation = simd_quatf(angle: swayAngle, axis: [0, 1, 0]) * simd_quatf(angle: swayAngle * 0.3, axis: [0, 0, 1])
-
         // カメラの位置（作品の中の座標）。光と波紋をカメラに向ける
         let camera = root.convert(position: cameraWorld, from: nil)
+        if kind == .person {
+            // 人物は、いつも見ている人の方を向く（縦の軸だけ回す）
+            let yaw = atan2(camera.x, camera.z)
+            body.orientation = simd_quatf(angle: yaw + swayAngle * 0.3, axis: [0, 1, 0])
+        } else {
+            body.orientation = simd_quatf(angle: swayAngle, axis: [0, 1, 0]) * simd_quatf(angle: swayAngle * 0.3, axis: [0, 0, 1])
+        }
 
         // 光の強さ：近づく・手が近い・反応で明るく
         let intensity = min(1, 0.42 + 0.22 * near + 0.25 * hover + 0.7 * glow)
@@ -641,6 +720,18 @@ final class ArtworkItem {
                 }
             }
             if let player { player.volume = min(1, 1.6 / (distance + 0.6)) }
+            if let personPlayer {
+                personPlayer.volume = min(1, 1.8 / (distance + 0.6))
+                // 動画の新しい絵を質感に写す（はじめて写せたら、面の質感を動画に替える）
+                if personPlayer.pump() || (!personMaterialSet && personPlayer.texture != nil),
+                   let texture = personPlayer.texture, let screen {
+                    var m = UnlitMaterial()
+                    m.color = .init(tint: .white, texture: .init(texture))
+                    m.blending = .transparent(opacity: .init(floatLiteral: 1))
+                    screen.model?.materials = [m]
+                    personMaterialSet = true
+                }
+            }
             if let fallbackAudio {
                 fallbackAudio.volume = min(1, 1.6 / (distance + 0.6))
                 if !fallbackAudio.isPlaying { stopPlayback(notify: true) }

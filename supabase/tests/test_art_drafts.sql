@@ -70,3 +70,24 @@ select gf_move_artwork(:'am', :'va', 0.3, 1.3, 0.6, 0, 1, :ar);
 select t_ok(not (select needs_replace from gf_artworks where id = :'am'), '置き直すと「置き直しが必要」が外れる');
 reset role;
 \echo '== AR の作品の下書きと置き直し：すべて通りました'
+
+\echo '== 切り抜いた人物の映像'
+:as_admin
+delete from gf_rate;
+insert into storage.objects (bucket_id, name) values ('gf-media', :'bob' || '/p.mov'), ('gf-media', :'bob' || '/p.jpg');
+:as_bob
+select gf_place_artwork3(:'vb', 'person', '', :'bob' || '/p.mov', :'bob' || '/p.jpg', 8.5, 'warm', 0.5, 0, 1.0, 0, 1,
+  '[{"trigger":"approach","action":"play","cooldown_ms":10000},{"trigger":"tap","action":"play"}]'::jsonb, 'friends', 'published') as pp \gset
+select t_ok(:'pp' is not null, '10 秒までの人物の映像を、表紙の絵つきで置ける（近づくと流れる）');
+select t_throws(format('select gf_place_artwork3(%L, %L, %L, %L, %L, 14, null, 0, 0, 1, 0, 1, null, null, %L)',
+  :'vb', 'person', '', :'bob' || '/p.mov', :'bob' || '/p.jpg', 'published'), 'gf_bad_artwork', '10 秒より長い人物の映像は置けない');
+select t_throws(format('select gf_place_artwork3(%L, %L, %L, %L, null, 5, null, 0, 0, 1, 0, 1, null, null, %L)',
+  :'vb', 'person', '', :'bob' || '/p.mov', 'published'), 'gf_bad_artwork', '表紙の絵のない人物の映像は置けない');
+:as_alice
+select t_ok((select count(*) from storage.objects where name in (:'bob' || '/p.mov', :'bob' || '/p.jpg')) = 2,
+  '友達で入場中なら、人物の映像と表紙の絵を受け取れる');
+:as_bob
+select t_ok((select gf_delete_artwork2(:'pp')) = array[:'bob' || '/p.mov', :'bob' || '/p.jpg'],
+  '人物の映像を消すと、映像と表紙の絵の名前が返る');
+reset role;
+\echo '== 切り抜いた人物の映像：すべて通りました'

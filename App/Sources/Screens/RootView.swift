@@ -33,6 +33,9 @@ struct RootView: View {
         .environmentObject(inbox)
         .sheet(item: $nav.friendInvite) { invite in
             FriendInviteSheet(handle: invite.handle)
+                .environmentObject(session)
+                .environmentObject(location)
+                .environmentObject(nav)
         }
         .sheet(item: $nav.gateLink) { route in
             GateLinkSheet(gateID: route.id)
