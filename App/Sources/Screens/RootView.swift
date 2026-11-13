@@ -9,6 +9,7 @@ struct GateRoute: Hashable, Identifiable {
 struct RootView: View {
     @EnvironmentObject private var session: SessionModel
     @EnvironmentObject private var nav: AppNavigator
+    @EnvironmentObject private var location: LocationModel
     @StateObject private var inbox = InboxModel()
     @Environment(\.scenePhase) private var scenePhase
 
@@ -32,6 +33,12 @@ struct RootView: View {
         .environmentObject(inbox)
         .sheet(item: $nav.friendInvite) { invite in
             FriendInviteSheet(handle: invite.handle)
+        }
+        .sheet(item: $nav.gateLink) { route in
+            GateLinkSheet(gateID: route.id)
+                .environmentObject(session)
+                .environmentObject(location)
+                .environmentObject(nav)
         }
         .task(id: session.state) {
             if session.state == .signedIn { inbox.start(session: session) }
@@ -81,5 +88,20 @@ struct EmptyNote: View {
     var body: some View {
         ContentUnavailableView(title, systemImage: systemImage, description: Text(message))
             .foregroundStyle(Theme.textSecondary)
+    }
+}
+
+/// リンクで届いた GATE の画面（閉じるボタン付き）
+struct GateLinkSheet: View {
+    let gateID: UUID
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            GateDetailView(gateID: gateID)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button("閉じる") { dismiss() } }
+                }
+        }
     }
 }

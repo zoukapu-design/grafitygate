@@ -28,6 +28,8 @@ final class ARExperienceModel: ObservableObject {
         case createPlace
         case createMapping
         case createSaving(String)
+        /// 送れなかった（写真・名前・扉の位置は残っている。「もう一度送る」で続きから）
+        case createRetry(String)
         /// 作った人が、場所の記憶を撮り直している（扉のまわりを見回す）
         case remapping
         case failed(String)
@@ -108,6 +110,10 @@ final class ARExperienceModel: ObservableObject {
     var captionTask: Task<Void, Never>?
     private var lastPrint: [Float]?
     private var clientKey = UUID().uuidString
+    /// 送り直しのための途中の記録（できた GATE・送った表紙・場所の記憶を保存したか）
+    private var createdGate: UUID?
+    private var uploadedCover: String?
+    private var placeMapSaved = false
     private var stopFindingRequested = false
     private var mappingTask: Task<Void, Never>?
 
@@ -384,6 +390,9 @@ final class ARExperienceModel: ObservableObject {
         visitExpires = nil
         shots = []
         clientKey = UUID().uuidString
+        createdGate = nil
+        uploadedCover = nil
+        placeMapSaved = false
         form = GateForm()
         notice = nil
         mapWarning = nil
@@ -517,30 +526,46 @@ final class ARExperienceModel: ObservableObject {
             return
         }
         mappingTask?.cancel()
-        phase = .createSaving("GATE を作っています…")
+        notice = nil
+        let retrying = createdGate != nil || uploadedCover != nil
+        phase = .createSaving(retrying ? "続きから送っています…" : "GATE を作っています…")
         do {
-            var cover: String?
-            if form.useCover, let jpeg = shots.first?.jpeg {
-                cover = try await media.uploadJPEG(jpeg, owner: me)
-            }
-            let gate = try await api.createGate(clientKey: clientKey,
+            // 1. GATE を作る（同じ client_key なので、送り直しても 1 つしかできない）
+            let gate: UUID
+            if let createdGate {
+                gate = createdGate
+            } else {
+                if form.useCover, uploadedCover == nil, let jpeg = shots.first?.jpeg {
+                    uploadedCover = try await media.uploadJPEG(jpeg, owner: me)
+                }
+                gate = try await api.createGate(clientKey: clientKey,
                                                 title: form.title.trimmingCharacters(in: .whitespacesAndNewlines),
                                                 note: form.note.trimmingCharacters(in: .whitespacesAndNewlines),
                                                 kind: form.kind, visibility: form.visibility, location: fix,
-                                                heading: location?.heading, coverPath: cover,
+                                                heading: location?.heading, coverPath: form.useCover ? uploadedCover : nil,
                                                 prints: shots.map(\.print))
-            Trace.log(String(format: "GATE を作りました（位置の精度 ±%.0fm）", fix.horizontalAccuracy))
-
-            phase = .createSaving("場所の記憶を保存しています…")
-            do {
-                let map = try await stage.captureWorldMap()
-                let saved = try await media.uploadWorldMap(map, owner: me, gate: gate)
-                try await api.registerPlaceMap(gate: gate, path: saved.path, size: saved.size, anchorName: "gg.gate")
-            } catch {
-                Trace.log("場所の記憶を保存できませんでした：\(ErrorText.of(error))")
-                mapWarning = "場所の記憶を保存できませんでした。友達の iPhone では、扉がおおよその位置に出ます。"
+                createdGate = gate
+                Trace.log(String(format: "GATE を作りました（位置の精度 ±%.0fm%@）", fix.horizontalAccuracy,
+                                 retrying ? "・送り直し" : ""))
             }
 
+            // 2. 場所の記憶（失敗しても GATE は使える。友達の iPhone では、おおよその位置に出る）
+            if !placeMapSaved {
+                phase = .createSaving("場所の記憶を保存しています…")
+                do {
+                    let map = try await stage.captureWorldMap()
+                    let saved = try await media.uploadWorldMap(map, owner: me, gate: gate)
+                    try await api.registerPlaceMap(gate: gate, path: saved.path, size: saved.size, anchorName: "gg.gate")
+                    placeMapSaved = true
+                    mapWarning = nil
+                } catch {
+                    Trace.log("場所の記憶を保存できませんでした：\(ErrorText.of(error))")
+                    mapWarning = "場所の記憶を保存できませんでした。友達の iPhone では、扉がおおよその位置に出ます。"
+                    placeMapSaved = true   // 送り直しのたびに見回しをやり直させない（あとで「撮り直す」ができる）
+                }
+            }
+
+            // 3. 作った人も、同じ手順で入る
             phase = .createSaving("扉を開けています…")
             let shot = try await stage.grabShot(withPhoto: false)
             let result = try await api.enter(gate: gate, location: fix, print: shot.print)
@@ -549,6 +574,7 @@ final class ARExperienceModel: ObservableObject {
                 visitID = result.visit_id
                 visitExpires = result.expires_at.flatMap(ServerDate.parse)
                 placedPrecisely = true   // 作った人が置いたその場所（場所の記憶の印そのもの）
+                isGateOwner = true
                 makeArtScene()
                 door?.open()
                 Haptics.open()
@@ -556,12 +582,26 @@ final class ARExperienceModel: ObservableObject {
                 revealArtworks()
             } else {
                 Trace.log("作ったあとの入場ができませんでした：\(result.reason ?? "不明")")
-                phase = .failed("GATE はできました。ただ、入場の確かめが通りませんでした。" + ErrorText.enterReason(result.reason))
+                phase = .createRetry("GATE はできました。ただ、扉を開ける確かめが通りませんでした。"
+                                     + ErrorText.enterReason(result.reason))
             }
         } catch {
-            phase = .failed(ErrorText.of(error))
+            let message = ErrorText.of(error)
+            Trace.log("GATE を送れませんでした（\(createdGate == nil ? "作る前" : "作ったあと")）：\(message)")
+            phase = .createRetry(message)
         }
     }
+
+    /// 送れなかったあと：やめる（GATE ができていれば、それは残る）
+    func abandonCreate() {
+        if createdGate != nil {
+            showToast("GATE はできています。「わたし」→「自分の GATE」から開けます。")
+        }
+        resetToScanning()
+    }
+
+    /// 送れなかったときに、まだ GATE ができていないか（画面の言葉を変える）
+    var createRetryHasGate: Bool { createdGate != nil }
 }
 
 // MARK: - 扉の位置を指で合わせる・場所の記憶を撮り直す

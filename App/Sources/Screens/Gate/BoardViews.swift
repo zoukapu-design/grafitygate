@@ -31,7 +31,7 @@ struct BoardSection: View {
                     Label("話題を立てる", systemImage: "square.and.pencil")
                 }
                 .buttonStyle(SecondaryButtonStyle())
-                if threads.count > 4 {
+                if threads.count >= 3 {
                     HStack {
                         Image(systemName: "magnifyingglass").foregroundStyle(Theme.textSecondary)
                         TextField("話題を探す", text: $query)
@@ -49,6 +49,10 @@ struct BoardSection: View {
             if let error { NoticeText(text: error) }
             if context.isInside && threads.isEmpty && error == nil {
                 Text("まだ話題はありません。最初の話題を立ててみましょう。")
+                    .font(.subheadline).foregroundStyle(Theme.textSecondary)
+            }
+            if !query.trimmingCharacters(in: .whitespaces).isEmpty && filtered.isEmpty && !threads.isEmpty {
+                Text("「\(query)」をふくむ話題は見つかりませんでした。")
                     .font(.subheadline).foregroundStyle(Theme.textSecondary)
             }
             ForEach(filtered) { thread in

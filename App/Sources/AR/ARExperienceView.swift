@@ -8,6 +8,8 @@ struct ARExperienceView: View {
     @EnvironmentObject private var session: SessionModel
     @EnvironmentObject private var location: LocationModel
     @StateObject private var model: ARExperienceModel
+    /// 歩いている TRAIL の次の地点（撮る画面で、方向と距離を出す）
+    @State private var trailTarget: TrailGuide.Target?
     private let onClose: (() -> Void)?
 
     init(mode: ARExperienceModel.Mode, onClose: (() -> Void)? = nil) {
@@ -37,6 +39,11 @@ struct ARExperienceView: View {
             HandCursorView(hand: model.hand)
             VStack(spacing: 12) {
                 ARTopBar(stage: model.stage, onClose: onClose)
+                if let trailTarget, model.mode == .explore, model.phase == .scanning {
+                    TrailCompassPill(target: trailTarget)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .transition(.opacity)
+                }
                 if let caption = model.toast ?? model.artCaption {
                     Text(caption)
                         .font(.footnote.weight(.semibold))
@@ -61,6 +68,19 @@ struct ARExperienceView: View {
         }
         .onDisappear {
             model.stop()
+        }
+        .task(id: session.state) {
+            guard model.mode == .explore, let api = session.api, session.state == .signedIn else { return }
+            trailTarget = await TrailGuide.load(api: api, nearby: model.nearby)
+        }
+        .onChange(of: model.phase) { _, phase in
+            // 扉を開けて TRAIL が進んだあと、撮る画面に戻ったら次の地点を取り直す
+            guard phase == .scanning, model.mode == .explore, let api = session.api, session.state == .signedIn else { return }
+            Task { trailTarget = await TrailGuide.load(api: api, nearby: model.nearby) }
+        }
+        .onChange(of: model.nearby) { _, nearby in
+            // 次の地点が 100m 以内に入ったら、少し細かい位置で案内する
+            if let t = trailTarget { trailTarget = TrailGuide.target(trail: t.trail, stop: t.stop, nearby: nearby) ?? t }
         }
         .sheet(item: $model.reportItem) { item in
             ReportSheet(item: item) { model.removeArtworks(of: item.userID) }
@@ -296,6 +316,17 @@ private struct ExperienceCard: View {
             HStack(spacing: 12) {
                 ProgressView()
                 Text(text).font(.subheadline).foregroundStyle(Theme.text)
+            }
+        case .createRetry(let message):
+            VStack(alignment: .leading, spacing: 10) {
+                Title(model.createRetryHasGate ? "続きを送れませんでした" : "GATE を送れませんでした")
+                NoticeText(text: message)
+                Caption("写真・名前・扉の位置はそのままです。電波の良い所で「もう一度送る」を押してください（同じ GATE が 2 つできることはありません）。")
+                Button("もう一度送る") { model.saveGate() }
+                    .buttonStyle(PrimaryButtonStyle())
+                Button(model.createRetryHasGate ? "ここで終える" : "作るのをやめる") { model.abandonCreate() }
+                    .font(.subheadline)
+                    .foregroundStyle(Theme.textSecondary)
             }
         case .failed(let message):
             VStack(alignment: .leading, spacing: 10) {

@@ -15,6 +15,8 @@ final class AppNavigator: ObservableObject {
 
     @Published var tab: Tab = .home
     @Published var friendInvite: FriendInvite?
+    /// リンクで届いた GATE（見てよいかはサーバーが決める）
+    @Published var gateLink: GateRoute?
 
     /// アプリを開くリンクの頭（`grafitygate://friend/<ID>`）
     nonisolated static let scheme = "grafitygate"
@@ -22,6 +24,16 @@ final class AppNavigator: ObservableObject {
     /// 友達になってもらうためのリンク（QR の中身にも使う）
     nonisolated static func friendURL(handle: String) -> URL {
         URL(string: "\(scheme)://friend/\(handle)") ?? URL(string: "\(scheme)://")!
+    }
+
+    /// GATE を友達に送るリンク
+    nonisolated static func gateURL(_ id: UUID) -> URL {
+        URL(string: "\(scheme)://gate/\(id.uuidString.lowercased())") ?? URL(string: "\(scheme)://")!
+    }
+
+    /// GATE を送るときの文（現地でしか中は見られないことも書く）
+    nonisolated static func gateShareText(title: String, id: UUID) -> String {
+        "Grafity Gate の「\(title)」\n現地で扉を開けると、中の記憶が見られます。\n\(gateURL(id).absoluteString)"
     }
 
     /// QR・リンク・打った文字から、友達の ID を取り出す（ID の形でなければ nil）
@@ -39,6 +51,13 @@ final class AppNavigator: ObservableObject {
 
     /// アプリを開いたリンク（QR を iPhone のカメラで読んだときなど）
     func open(_ url: URL) {
+        if url.scheme?.lowercased() == Self.scheme, url.host?.lowercased() == "gate",
+           let raw = url.pathComponents.filter({ $0 != "/" }).first, let id = UUID(uuidString: raw) {
+            Trace.log("GATE のリンクで開きました")
+            friendInvite = nil
+            gateLink = GateRoute(id: id)
+            return
+        }
         guard let handle = Self.handle(from: url.absoluteString) else {
             Trace.log("知らないリンクで開きました（\(url.scheme ?? "")://\(url.host ?? "")）")
             return

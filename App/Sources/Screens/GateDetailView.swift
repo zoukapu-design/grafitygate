@@ -121,6 +121,12 @@ struct GateDetailView: View {
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
         if let summary {
             ToolbarItemGroup(placement: .topBarTrailing) {
+                if summary.status == "published", summary.visibility != "private" {
+                    ShareLink(item: AppNavigator.gateShareText(title: summary.title, id: summary.id)) {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                    .accessibilityLabel("この GATE のリンクを送る")
+                }
                 Button {
                     Task { await toggleSaved() }
                 } label: {
