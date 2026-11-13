@@ -25,6 +25,9 @@ final class SessionModel: ObservableObject {
         case failed(String)
     }
 
+    /// はじめの案内で決めた名前（サーバーにつながってプロフィールが「ゲスト」のままなら、この名前にする）
+    static let pendingNameKey = "gg.pendingName"
+
     @Published private(set) var state: State = .starting
     @Published private(set) var userID: UUID?
     @Published private(set) var profile: ProfileRow?
@@ -61,6 +64,7 @@ final class SessionModel: ObservableObject {
             userID = user.id
             profile = try await ensureProfile(client: client, id: user.id)
             state = .signedIn
+            await applyPendingName()
         } catch {
             state = .failed(ErrorText.of(error))
         }
@@ -86,6 +90,20 @@ final class SessionModel: ObservableObject {
         profile = nil
         state = .starting
         await start()
+    }
+
+    /// はじめの案内で決めた名前を、まだ「ゲスト」なら使う（失敗しても、次に開いたときにもう一度）
+    func applyPendingName() async {
+        let pending = (UserDefaults.standard.string(forKey: Self.pendingNameKey) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !pending.isEmpty, profile?.display_name == "ゲスト" else { return }
+        do {
+            try await rename(pending)
+            UserDefaults.standard.removeObject(forKey: Self.pendingNameKey)
+            Trace.log("はじめに決めた名前を使いました")
+        } catch {
+            Trace.log("はじめに決めた名前を保存できませんでした：\(ErrorText.of(error))")
+        }
     }
 
     func rename(_ name: String) async throws {

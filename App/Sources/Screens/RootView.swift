@@ -8,23 +8,31 @@ struct GateRoute: Hashable, Identifiable {
 /// 下のタブは 4 つ：ホーム／地図／撮る／わたし（設計書「画面の構成」）
 struct RootView: View {
     @EnvironmentObject private var session: SessionModel
+    @EnvironmentObject private var nav: AppNavigator
     @StateObject private var inbox = InboxModel()
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        TabView {
+        TabView(selection: $nav.tab) {
             HomeView()
                 .tabItem { Label("ホーム", systemImage: "house") }
                 .badge(inbox.total)
+                .tag(AppNavigator.Tab.home)
             NearbyMapView()
                 .tabItem { Label("地図", systemImage: "map") }
+                .tag(AppNavigator.Tab.map)
             CaptureView()
                 .tabItem { Label("撮る", systemImage: "camera.viewfinder") }
+                .tag(AppNavigator.Tab.capture)
             MeView()
                 .tabItem { Label("わたし", systemImage: "person.crop.circle") }
+                .tag(AppNavigator.Tab.me)
         }
         .tint(Theme.accent)
         .environmentObject(inbox)
+        .sheet(item: $nav.friendInvite) { invite in
+            FriendInviteSheet(handle: invite.handle)
+        }
         .task(id: session.state) {
             if session.state == .signedIn { inbox.start(session: session) }
         }

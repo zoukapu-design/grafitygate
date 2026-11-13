@@ -6,6 +6,7 @@ import SwiftUI
 struct NearbyMapView: View {
     @EnvironmentObject private var session: SessionModel
     @EnvironmentObject private var location: LocationModel
+    @EnvironmentObject private var nav: AppNavigator
     @State private var gates: [NearbyGate] = []
     @State private var error: String?
     @State private var position: MapCameraPosition = .userLocation(fallback: .automatic)
@@ -97,9 +98,15 @@ struct NearbyMapView: View {
             } else if let error {
                 NoticeText(text: error)
             } else if gates.isEmpty {
-                Text("近くに GATE はありません。「撮る」から、この場所に GATE を作れます。")
+                Text("近くに GATE はありません。この場所に、最初の扉を置いてみませんか。")
                     .font(.subheadline)
                     .foregroundStyle(Theme.textSecondary)
+                Button {
+                    nav.tab = .capture
+                } label: {
+                    Label("ここに GATE を作る", systemImage: "door.left.hand.open")
+                }
+                .buttonStyle(SecondaryButtonStyle())
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) {

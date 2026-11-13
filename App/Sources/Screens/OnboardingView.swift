@@ -5,6 +5,9 @@ struct OnboardingView: View {
     let onFinish: () -> Void
 
     @State private var page = 0
+    /// はじめに決める名前（サーバーにつながったら、そのまま使う。あとで「わたし」で変えられる）
+    @AppStorage(SessionModel.pendingNameKey) private var name = ""
+    @FocusState private var nameFocused: Bool
 
     init(onFinish: @escaping () -> Void) {
         self.onFinish = onFinish
@@ -48,6 +51,22 @@ struct OnboardingView: View {
                                 .multilineTextAlignment(.center)
                                 .lineSpacing(4)
                                 .fixedSize(horizontal: false, vertical: true)
+                            if index == pages.count - 1 {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("友達に見える名前").font(.caption.weight(.semibold)).foregroundStyle(Theme.textSecondary)
+                                    TextField("例：そうた", text: $name)
+                                        .focused($nameFocused)
+                                        .submitLabel(.done)
+                                        .padding(12)
+                                        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12))
+                                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.line))
+                                        .onChange(of: name) { _, value in
+                                            if value.count > 30 { name = String(value.prefix(30)) }
+                                        }
+                                    Text("あとで「わたし」で変えられます。").font(.caption).foregroundStyle(Theme.textSecondary)
+                                }
+                                .padding(.top, 6)
+                            }
                         }
                         .padding(.horizontal, 28)
                         Spacer()
@@ -81,6 +100,8 @@ struct OnboardingView: View {
     }
 
     private func finish() {
+        nameFocused = false
+        name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         Trace.log("はじめの案内を終えました（\(page + 1)/\(pages.count) 枚目で）")
         onFinish()
     }

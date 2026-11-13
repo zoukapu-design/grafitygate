@@ -5,6 +5,7 @@ import UIKit
 struct GrafityGateApp: App {
     @StateObject private var session = SessionModel()
     @StateObject private var location = LocationModel()
+    @StateObject private var nav = AppNavigator()
     @AppStorage("gg.onboarded") private var onboarded = false
 
     var body: some Scene {
@@ -17,12 +18,16 @@ struct GrafityGateApp: App {
                     OnboardingView {
                         withAnimation(.easeInOut(duration: 0.35)) { onboarded = true }
                         location.start()
+                        Task { await session.applyPendingName() }
                     }
                     .transition(.opacity)
                 }
             }
             .environmentObject(session)
             .environmentObject(location)
+            .environmentObject(nav)
+            // 友達の QR を iPhone のカメラで読んだときなど（grafitygate://friend/<ID>）
+            .onOpenURL { nav.open($0) }
             .task {
                 MainWatch.shared.start()
                 let info = Bundle.main.infoDictionary

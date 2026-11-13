@@ -31,8 +31,11 @@ struct MeView: View {
                             Button("名前を保存") { Task { await rename() } }
                                 .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
                         }
+                        AddFriendButtons()
+                            .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 12, trailing: 12))
+                            .listRowBackground(Color.clear)
                     } footer: {
-                        Text("ID を友達に教えると、フォローしてもらえます。")
+                        Text("QR を見せるか ID を送ると、友達がフォローできます。お互いにフォローすると「友達」です。")
                     }
 
                     Section("友達") {
@@ -194,6 +197,13 @@ struct FriendsView: View {
 
     var body: some View {
         List {
+            Section {
+                AddFriendButtons()
+                    .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
+                    .listRowBackground(Color.clear)
+            } header: {
+                Text("友達を足す")
+            }
             Section {
                 HStack {
                     TextField("友達の ID", text: $handle)
