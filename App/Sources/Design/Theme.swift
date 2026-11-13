@@ -1,17 +1,22 @@
 import SwiftUI
 
-/// 白を基調にした色と形（設計書「画面の構成」の色の案）。ロゴが決まったら見直す。
+/// 白を基調にした色と形。強調の色はアイコンのネオンに合わせる（2026-11-14 オーナーが見本 B「ネオンの帯」を選んだ）：
+/// ふだんの強調は夜空のむらさき、いちばん大事なボタンだけ夕焼け→夜空の帯（`PrimaryButtonStyle`）、自分のもの・TRAIL は夕焼けのだいだい。
 enum Theme {
     static let background = Color(hex: 0xFAFBF9)
     static let surface = Color.white
-    static let surfaceElevated = Color(hex: 0xF2F4F1)
-    static let text = Color(hex: 0x17201D)
-    static let textSecondary = Color(hex: 0x68736D)
-    static let line = Color(hex: 0xE5E9E5)
-    static let accent = Color(hex: 0x227D69)
-    static let accentLight = Color(hex: 0xD6F4E9)
-    static let warm = Color(hex: 0xC59C66)
-    static let alert = Color(hex: 0xB94242)
+    static let surfaceElevated = Color(hex: 0xF3F3F7)
+    static let text = Color(hex: 0x17181F)
+    static let textSecondary = Color(hex: 0x6A6D78)
+    static let line = Color(hex: 0xE6E6EE)
+    /// 夜空のむらさき（白い地で読みやすい濃さ）
+    static let accent = Color(hex: 0x5B3FE0)
+    static let accentLight = Color(hex: 0xECE8FF)
+    /// 夕焼けのだいだい（自分の GATE・TRAIL）
+    static let warm = Color(hex: 0xF0702A)
+    static let alert = Color(hex: 0xC83A3A)
+    /// いちばん大事なボタンの帯（アイコンのネオンと同じ並び）
+    static let neonBand = LinearGradient(colors: Brand.neonOnLight, startPoint: .leading, endPoint: .trailing)
 
     static let radiusCard: CGFloat = 20
     static let radiusButton: CGFloat = 14
@@ -34,8 +39,11 @@ struct PrimaryButtonStyle: ButtonStyle {
             .font(.headline)
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity, minHeight: 50)
-            .background(Theme.accent.opacity(isEnabled ? (configuration.isPressed ? 0.8 : 1) : 0.35),
-                        in: RoundedRectangle(cornerRadius: Theme.radiusButton))
+            .background(
+                RoundedRectangle(cornerRadius: Theme.radiusButton)
+                    .fill(Theme.neonBand)
+                    .opacity(isEnabled ? (configuration.isPressed ? 0.82 : 1) : 0.32)
+            )
     }
 }
 

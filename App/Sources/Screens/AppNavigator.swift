@@ -17,15 +17,15 @@ final class AppNavigator: ObservableObject {
     @Published var friendInvite: FriendInvite?
 
     /// アプリを開くリンクの頭（`grafitygate://friend/<ID>`）
-    static let scheme = "grafitygate"
+    nonisolated static let scheme = "grafitygate"
 
     /// 友達になってもらうためのリンク（QR の中身にも使う）
-    static func friendURL(handle: String) -> URL {
+    nonisolated static func friendURL(handle: String) -> URL {
         URL(string: "\(scheme)://friend/\(handle)") ?? URL(string: "\(scheme)://")!
     }
 
     /// QR・リンク・打った文字から、友達の ID を取り出す（ID の形でなければ nil）
-    static func handle(from text: String) -> String? {
+    nonisolated static func handle(from text: String) -> String? {
         var raw = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if let url = URL(string: raw), url.scheme?.lowercased() == scheme, url.host?.lowercased() == "friend" {
             raw = url.pathComponents.filter { $0 != "/" }.first ?? ""
