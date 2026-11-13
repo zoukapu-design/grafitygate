@@ -46,6 +46,16 @@ for pass in 1 2; do
 done
 echo "migrations: 2 回流して、どちらもエラーなし"
 
+# 1 回で貼る用の setup_all.sql が migrations と食い違っていないか（作り直して比べる）
+bash "$root/tools/make_setup_sql.sh" "$work/setup_all.sql" >/dev/null
+if ! cmp -s "$work/setup_all.sql" "$root/supabase/setup_all.sql"; then
+  echo "supabase/setup_all.sql が古いままです。bash tools/make_setup_sql.sh を実行して保存してください" >&2
+  exit 1
+fi
+# setup_all.sql そのものも、もう一度流してエラーにならないこと
+run_sql "$root/supabase/setup_all.sql"
+echo "setup_all.sql：migrations と同じで、流してもエラーなし"
+
 # NOTICE（ok - …）だけを見やすく出す。失敗すると FAIL の行で止まる。
 set +e
 PGOPTIONS='-c client_min_messages=notice' "$PSQL" -q -X -t -A -v ON_ERROR_STOP=1 -f "$here/test_core.sql" 2>&1 \

@@ -6,18 +6,12 @@
 
 1. [Supabase のプロジェクト一覧](https://supabase.com/dashboard/projects) を開き、Lyric Path と同じプロジェクトを選ぶ
 2. 左の **SQL Editor** を開き、**New query** を押す
-3. [0001_gf_core.sql](https://github.com/zoukapu-design/grafitygate/blob/main/supabase/migrations/0001_gf_core.sql) を開き、右上の「Copy raw file」で中身を全部コピーして貼る
-4. **Run** を押す（何度実行しても大丈夫です）
-5. 同じように [0002_gf_place_maps.sql](https://github.com/zoukapu-design/grafitygate/blob/main/supabase/migrations/0002_gf_place_maps.sql)（場所の記憶）も貼って **Run**
-6. 同じように [0003_gf_artworks.sql](https://github.com/zoukapu-design/grafitygate/blob/main/supabase/migrations/0003_gf_artworks.sql)（AR の作品）も貼って **Run**
-7. 同じように [0004_gf_inside.sql](https://github.com/zoukapu-design/grafitygate/blob/main/supabase/migrations/0004_gf_inside.sql)（掲示板・手紙・思い出・保存と図鑑・通報・アカウントの削除）も貼って **Run**
-8. 同じように [0005_gf_social.sql](https://github.com/zoukapu-design/grafitygate/blob/main/supabase/migrations/0005_gf_social.sql)（お知らせ・メッセージ）も貼って **Run**
-9. 同じように [0006_gf_trails_snapshots.sql](https://github.com/zoukapu-design/grafitygate/blob/main/supabase/migrations/0006_gf_trails_snapshots.sql)（TRAIL・今と昔）も貼って **Run**
-10. 同じように [0007_gf_investigations.sql](https://github.com/zoukapu-design/grafitygate/blob/main/supabase/migrations/0007_gf_investigations.sql)（共同調査）も貼って **Run**
+3. [setup_all.sql](https://github.com/zoukapu-design/grafitygate/blob/main/supabase/setup_all.sql) を開き、右上の「Copy raw file」で中身を全部コピーして貼る
+4. **Run** を押す（何度実行しても大丈夫です。新しい機能が増えたら、同じファイルをもう一度貼って Run すれば足りるものが入ります）
+
+`setup_all.sql` は `supabase/migrations/` の 0001〜を番号の順につないだものです（1 つずつ入れても同じです）。
 
 通報は表 `gf_reports` に入ります。Supabase の [Table Editor](https://supabase.com/dashboard/project/_/editor) で `gf_reports` を開くと見られます（アプリからはだれも読めません）。
-
-`supabase/migrations/` に新しいファイルが増えたら、番号の順に同じように実行します。
 
 前提：Lyric Path の SQL（`profiles`・`follows`・`lp_blocks` を作るもの）がもう入っていること。
 **Authentication → Sign In / Providers** で「Allow anonymous sign-ins」が入っていること（Lyric Path と同じ設定）。
