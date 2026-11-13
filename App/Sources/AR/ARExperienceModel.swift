@@ -200,6 +200,7 @@ final class ARExperienceModel: ObservableObject {
         }
         guard let fix = location?.usableFix else {
             notice = location?.fixProblem
+            location?.askFullAccuracyIfNeeded()
             return
         }
         if let problem = stage.shotProblem() {
@@ -233,6 +234,7 @@ final class ARExperienceModel: ObservableObject {
     func choose(_ candidate: MatchCandidate) {
         guard let fix = location?.usableFix, let print = lastPrint else {
             notice = location?.fixProblem
+            location?.askFullAccuracyIfNeeded()
             return
         }
         Task { await enter(candidate.id, fix: fix, print: print) }
@@ -511,6 +513,7 @@ final class ARExperienceModel: ObservableObject {
         }
         guard let fix = location?.usableFix else {
             notice = location?.fixProblem
+            location?.askFullAccuracyIfNeeded()
             return
         }
         mappingTask?.cancel()

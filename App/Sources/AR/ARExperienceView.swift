@@ -135,13 +135,22 @@ private struct ARTopBar: View {
                 .accessibilityLabel("閉じる")
             }
             if let text = stage.guidance.text ?? location.fixProblem {
-                Text(text)
-                    .font(.footnote.weight(.medium))
-                    .foregroundStyle(Theme.text)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
-                    .transition(.opacity)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(text)
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(Theme.text)
+                    // 設定アプリでしか直せないとき（カメラ・位置情報の許可、正確な位置情報）
+                    if stage.guidance == .cameraDenied || (stage.guidance.text == nil && location.needsSettings),
+                       let url = URL(string: UIApplication.openSettingsURLString) {
+                        Button("設定アプリを開く") { UIApplication.shared.open(url) }
+                            .font(.footnote.weight(.bold))
+                            .foregroundStyle(Theme.accent)
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+                .transition(.opacity)
             }
             Spacer(minLength: 0)
         }

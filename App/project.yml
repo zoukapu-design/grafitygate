@@ -46,6 +46,8 @@ targets:
             CFBundleURLSchemes: [grafitygate]
         NSMicrophoneUsageDescription: "思い出に声を残すときに、マイクを使います。録った声は、残すと決めたときだけ送ります。"
         NSLocationWhenInUseUsageDescription: "近くの GATE を見つけ、GATE の近くにいることを確かめるために、現在地を使います。"
+        NSLocationTemporaryUsageDescriptionDictionary:
+          GateEntry: "GATE の近く（120m 以内）にいるかを確かめるために、正確な位置を使います。ほかの人に見えるのは、おおよその位置だけです。"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.zoukapu.grafitygate

@@ -1,3 +1,4 @@
+import AVFoundation
 import ARKit
 import Foundation
 import RealityKit
@@ -12,6 +13,10 @@ import Vision
 final class ARStage: NSObject, ObservableObject {
     enum Guidance: Equatable {
         case starting, ready, lookAround, moveSlowly, tooDark, featureless, relocalizing, interrupted
+        /// カメラが許可されていない（設定アプリでしか直せない）
+        case cameraDenied
+        /// カメラ・センサーが使えない
+        case unavailable
 
         var text: String? {
             switch self {
@@ -23,6 +28,8 @@ final class ARStage: NSObject, ObservableObject {
             case .featureless: return "模様の少ない所です。形や文字のある物の方に向けてください"
             case .relocalizing: return "扉の場所を探しています。作った人が扉を置いた辺りを見回してください"
             case .interrupted: return "カメラが止まりました。少し待つと戻ります"
+            case .cameraDenied: return "カメラが許可されていません。設定アプリの「Grafity Gate」で「カメラ」を入れてください"
+            case .unavailable: return "カメラを使えませんでした。ほかのアプリでカメラを使っていたら閉じて、もう一度開いてください"
             }
         }
     }
@@ -65,6 +72,12 @@ final class ARStage: NSObject, ObservableObject {
     // MARK: 始める・止める
 
     func run(initialMap: ARWorldMap? = nil, reset: Bool = false) {
+        if AVCaptureDevice.authorizationStatus(for: .video) == .denied
+            || AVCaptureDevice.authorizationStatus(for: .video) == .restricted {
+            guidance = .cameraDenied
+            Trace.log("AR：カメラが許可されていないので始めません")
+            return
+        }
         let config = ARWorldTrackingConfiguration()
         config.planeDetection = [.horizontal, .vertical]
         config.environmentTexturing = Perf.isLowMemoryDevice ? .none : .automatic
@@ -314,8 +327,14 @@ extension ARStage: ARSessionDelegate {
 
     nonisolated func session(_ session: ARSession, didFailWithError error: Error) {
         let message = error.localizedDescription
+        let code = (error as? ARError)?.code
         MainActor.assumeIsolated {
             Trace.log("AR のエラー：\(message)")
+            switch code {
+            case .cameraUnauthorized: self.guidance = .cameraDenied
+            case .sensorUnavailable, .sensorFailed, .unsupportedConfiguration: self.guidance = .unavailable
+            default: break
+            }
         }
     }
 

@@ -93,8 +93,8 @@ struct NearbyMapView: View {
                 .buttonStyle(.plain)
             }
             Text("100m 以内の GATE").font(.headline).foregroundStyle(Theme.text)
-            if let problem = location.fixProblem, location.location == nil || location.isDenied {
-                NoticeText(text: problem)
+            if location.fixProblem != nil, location.location == nil || location.needsSettings {
+                LocationProblemView()
             } else if let error {
                 NoticeText(text: error)
             } else if gates.isEmpty {
