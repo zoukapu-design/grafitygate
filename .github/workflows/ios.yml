@@ -69,7 +69,8 @@ jobs:
           # xcconfig では // がコメントになるので /$()/ に置き換える
           [ -n "$SUPABASE_URL" ] && echo "SUPABASE_URL = ${SUPABASE_URL//\/\//\/\$()\/}" >> "$F"
           [ -n "$SUPABASE_ANON_KEY" ] && echo "SUPABASE_ANON_KEY = $SUPABASE_ANON_KEY" >> "$F"
-          if [ -s "$F" ]; then echo "Supabase の鍵：あり"; else echo "Supabase の鍵：なし（サーバーなしで組み立てる）"; fi
+          if [ -s "$F" ]; then echo "::notice title=鍵::Supabase の鍵：あり"; else echo "::warning title=鍵::Supabase の鍵：なし（サーバーなしで組み立てる）"; fi
+          if [ "$HAS_SIGNING" = "true" ]; then echo "::notice title=鍵::TestFlight の鍵：あり"; else echo "::warning title=鍵::TestFlight の鍵：なし（APPLE_TEAM_ID・ASC_KEY_ID・ASC_ISSUER_ID・ASC_KEY_P8）"; fi
 
       - name: Xcode プロジェクトを作る
         run: xcodegen generate --spec "$PROJECT_DIR/project.yml"
