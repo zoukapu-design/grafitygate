@@ -35,6 +35,12 @@ final class ArtworkScene {
     var onPreviewRangeChange: ((Bool) -> Void)?
     /// 近づいて作品が動いたとき（手ざわりの合図などに使う）
     var onApproach: ((UUID) -> Void)?
+    /// 映像・声を流してほしいとき（ファイルを受け取って `play` を呼ぶ）
+    var onPlayRequest: ((UUID) -> Void)?
+    /// 流している作品が変わったとき（nil は止まった）
+    var onPlaybackChange: ((UUID?) -> Void)?
+    /// いま流している作品（同時に流すのは 1 つだけ）
+    private(set) var playingID: UUID?
 
     private weak var arView: ARView?
     private var subscription: Cancellable?
@@ -62,6 +68,13 @@ final class ArtworkScene {
     func add(_ artwork: Artwork, image: UIImage?, animated: Bool) -> ArtworkItem {
         if let old = items[artwork.id] { old.remove() }
         let item = ArtworkItem(artwork, image: image)
+        let id = artwork.id
+        item.onPlay = { [weak self] in self?.onPlayRequest?(id) }
+        item.onPlaybackEnd = { [weak self] in
+            guard let self, self.playingID == id else { return }
+            self.playingID = nil
+            self.onPlaybackChange?(nil)
+        }
         items[artwork.id] = item
         if !order.contains(artwork.id) { order.append(artwork.id) }
         container.addChild(item.root)
@@ -79,6 +92,10 @@ final class ArtworkScene {
     }
 
     func remove(_ id: UUID) {
+        if playingID == id {
+            playingID = nil
+            onPlaybackChange?(nil)
+        }
         items[id]?.remove()
         items[id] = nil
         order.removeAll { $0 == id }
@@ -86,6 +103,7 @@ final class ArtworkScene {
 
     func removeAll() {
         endPreview()
+        playingID = nil
         for item in items.values { item.remove() }
         items.removeAll()
         order.removeAll()
@@ -95,6 +113,25 @@ final class ArtworkScene {
     }
 
     func artwork(_ id: UUID) -> Artwork? { items[id]?.artwork }
+
+    // MARK: 流す
+
+    /// 手もとのファイルを流す（ほかに流しているものは止める）
+    func play(_ id: UUID, file: URL) {
+        guard let item = items[id], item.root.isEnabled else { return }
+        if let current = playingID, current != id { items[current]?.stopPlayback(notify: false) }
+        item.startPlayback(file)
+        playingID = item.isPlaying ? id : nil
+        onPlaybackChange?(playingID)
+    }
+
+    func stopPlayback() {
+        guard let current = playingID else { return }
+        items[current]?.stopPlayback(notify: false)
+        playingID = nil
+        onPlaybackChange?(nil)
+        Trace.log("作品を流すのを止めました")
+    }
 
     /// 扉が開いたとき：作品が順に現れ、「扉が開いたとき」のルールが動く
     func reveal() {
@@ -139,6 +176,7 @@ final class ArtworkScene {
 
     func beginPreview(_ draft: Artwork, image: UIImage?, hiding: UUID? = nil) {
         endPreview()
+        if let hiding, playingID == hiding { stopPlayback() }
         let item = ArtworkItem(draft, image: image, preview: true)
         preview = item
         previewHides = hiding

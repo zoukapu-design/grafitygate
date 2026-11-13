@@ -21,7 +21,13 @@ extension ARExperienceModel {
     struct ArtDraft {
         var kind: ArtworkKind = .text
         var text = ""
+        /// 写真パネルの写真・映像パネルの表紙の絵
         var image: UIImage?
+        /// 映像パネルの動画（iPhone の中で作り直したもの）
+        var video: MediaPrep.PreparedVideo?
+        /// 声の玉の声
+        var voiceFile: URL?
+        var voiceDuration: Double = 0
         var color: ArtworkColor = .warm
         var action: ArtworkAction = .glow
         var visibility: Visibility = .friends
@@ -52,6 +58,8 @@ extension ARExperienceModel {
         let scene = ArtworkScene(parent: door.base, arView: stage.arView)
         scene.onPreviewRangeChange = { [weak self] inRange in self?.previewInRange = inRange }
         scene.onApproach = { _ in Haptics.soft() }
+        scene.onPlayRequest = { [weak self] id in self?.playArtwork(id) }
+        scene.onPlaybackChange = { [weak self] id in self?.playingArtwork = id }
         artScene = scene
         hand.targets = { [weak scene] in scene?.targets(within: 2.5) ?? [] }
         hand.onTouch = { [weak self] id in
@@ -68,11 +76,13 @@ extension ARExperienceModel {
             guard enteredGate == gate, let scene = artScene else { return }
             for artwork in list { scene.add(artwork, image: nil, animated: false) }
             refreshArtCounts()
-            Trace.log("作品を \(list.count) 個受け取りました（写真パネル \(list.filter { $0.artKind == .photo }.count) 個）")
+            Trace.log("作品を \(list.count) 個受け取りました（写真パネル \(list.filter { $0.artKind == .photo }.count) 個・"
+                      + "映像 \(list.filter { $0.artKind == .video }.count) 個・声 \(list.filter { $0.artKind == .voice }.count) 個）")
             if phase == .doorOpen { startHandIfNeeded() }
             let owners = Array(Set(list.map(\.owner)))
             if let names = try? await api.names(of: owners) { artNames.merge(names) { _, new in new } }
             await loadArtPhotos(list)
+            await prefetchArtMedia(list)
         } catch {
             Trace.log("作品を受け取れませんでした：\(ErrorText.of(error))")
         }
@@ -80,11 +90,57 @@ extension ARExperienceModel {
 
     private func loadArtPhotos(_ list: [Artwork]) async {
         guard let media = session?.media else { return }
-        for artwork in list where artwork.artKind == .photo {
-            guard let path = artwork.photo_path, let image = await media.photo(path: path) else { continue }
+        for artwork in list {
+            guard let path = artwork.picturePath, let image = await media.photo(path: path) else { continue }
             artImages[artwork.id] = image
             artScene?.setPhoto(image, for: artwork.id)
         }
+    }
+
+    /// 声（小さい）と、新しい映像 4 つまでを先に受け取っておく（触れたらすぐ流れるように）
+    private func prefetchArtMedia(_ list: [Artwork]) async {
+        guard let media = session?.media else { return }
+        let voices = list.filter { $0.artKind == .voice }
+        let videos = list.filter { $0.artKind == .video }.suffix(4)
+        var count = 0
+        for artwork in voices + videos {
+            guard enteredGate == artwork.gate_id, let path = artwork.photo_path,
+                  media.cachedFile(path: path) == nil, !artMediaLoading.contains(artwork.id) else { continue }
+            artMediaLoading.insert(artwork.id)
+            if await media.localFile(path: path) != nil { count += 1 }
+            artMediaLoading.remove(artwork.id)
+        }
+        if count > 0 { Trace.log("作品の映像・声を \(count) 個、先に受け取りました") }
+    }
+
+    // MARK: 流す
+
+    func playArtwork(_ id: UUID) {
+        guard let scene = artScene, let artwork = scene.artwork(id), artwork.artKind.isMedia,
+              let path = artwork.photo_path, let media = session?.media else { return }
+        if scene.playingID == id { return }
+        if let file = media.cachedFile(path: path) {
+            scene.play(id, file: file)
+            return
+        }
+        guard !artMediaLoading.contains(id) else { return }
+        artMediaLoading.insert(id)
+        showToast(artwork.artKind == .video ? "映像を受け取っています…" : "声を受け取っています…")
+        Task {
+            let file = await media.localFile(path: path)
+            artMediaLoading.remove(id)
+            guard artScene === scene, scene.artwork(id) != nil else { return }
+            guard let file else {
+                showToast("受け取れませんでした。電波の良い所で、もう一度触れてください。")
+                Trace.log("作品の映像・声を受け取れませんでした")
+                return
+            }
+            scene.play(id, file: file)
+        }
+    }
+
+    func stopArtworkPlayback() {
+        artScene?.stopPlayback()
     }
 
     func revealArtworks() {
@@ -169,11 +225,16 @@ extension ARExperienceModel {
             return
         }
         notice = nil
+        discardArtMedia()
         draft = ArtDraft()
         art = .choosing
     }
 
     func chooseArtKind(_ kind: ArtworkKind) {
+        if draft.kind != kind {
+            discardArtMedia()
+            draft.image = nil
+        }
         draft.kind = kind
         draft.action = kind.defaultAction
         draft.color = kind == .petals ? .sakura : .warm
@@ -194,9 +255,36 @@ extension ARExperienceModel {
         }
     }
 
+    /// 映像パネルの動画を決める（前に選んだものは消す）
+    func setArtVideo(_ video: MediaPrep.PreparedVideo) {
+        if let old = draft.video, old.file != video.file { try? FileManager.default.removeItem(at: old.file) }
+        draft.video = video
+        draft.image = video.thumbnail
+        notice = video.trimmed ? "15 秒より長い動画は、はじめの 15 秒にしました。" : nil
+    }
+
+    /// 声の玉の声を決める（前に録ったものは消す）
+    func setArtVoice(_ file: URL, duration: Double) {
+        if let old = draft.voiceFile, old != file { try? FileManager.default.removeItem(at: old) }
+        draft.voiceFile = file
+        draft.voiceDuration = duration
+        notice = nil
+    }
+
+    /// 置かなかった動画・声の一時ファイルを消す
+    func discardArtMedia() {
+        if let video = draft.video { try? FileManager.default.removeItem(at: video.file) }
+        if let voice = draft.voiceFile { try? FileManager.default.removeItem(at: voice) }
+        draft.video = nil
+        draft.voiceFile = nil
+        draft.voiceDuration = 0
+    }
+
     var draftProblem: String? {
         switch draft.kind {
         case .photo where draft.image == nil: return "写真を選ぶか、いまの景色を写してください。"
+        case .video where draft.video == nil: return "動画を選んでください（15 秒まで）。"
+        case .voice where draft.voiceFile == nil: return "声を録ってください（60 秒まで）。"
         case .text where draft.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty: return "文字を入れてください。"
         default: return nil
         }
@@ -214,9 +302,9 @@ extension ARExperienceModel {
         let sample = Artwork(id: UUID(), gate_id: gate, owner: me, kind: draft.kind.rawValue,
                              body: draft.kind == .text ? text : "", photo_path: nil, color: draft.color.rawValue,
                              px: 0, py: 1.2, pz: 1, yaw: 0, scale: draft.scale,
-                             rules: Self.rules(for: draft.action), visibility: draft.visibility.rawValue,
+                             rules: Self.rules(for: draft.action, kind: draft.kind), visibility: draft.visibility.rawValue,
                              status: "published", revision: 1, created_at: "")
-        scene.previewDistance = draft.kind == .photo || draft.kind == .text ? 1.0 : 0.9
+        scene.previewDistance = draft.kind == .photo || draft.kind == .text || draft.kind == .video ? 1.0 : 0.9
         scene.beginPreview(sample, image: draft.image)
         previewInRange = true
         art = .placing
@@ -227,9 +315,10 @@ extension ARExperienceModel {
         artScene?.previewScale = value
     }
 
-    /// 決まった形のルール：触れる・押すと選んだ動き、近づく・扉が開くとやわらかく光る
-    static func rules(for action: ArtworkAction) -> [ArtworkRule] {
-        [ArtworkRule(.touch, action, cooldownMS: 1200),
+    /// 決まった形のルール：触れる・押すと選んだ動き（映像・声は流す）、近づく・扉が開くとやわらかく光る
+    static func rules(for action: ArtworkAction, kind: ArtworkKind) -> [ArtworkRule] {
+        let action = kind.isMedia ? ArtworkAction.play : (action == .play ? .glow : action)
+        return [ArtworkRule(.touch, action, cooldownMS: 1200),
          ArtworkRule(.tap, action, cooldownMS: 600),
          ArtworkRule(.approach, .glow, cooldownMS: 5000),
          ArtworkRule(.open, .glow)]
@@ -247,6 +336,7 @@ extension ARExperienceModel {
 
     func cancelArt() {
         artScene?.endPreview()
+        if art == .placing || art == .composing || art == .choosing { discardArtMedia() }
         movingArtwork = nil
         notice = nil
         art = nil
@@ -274,28 +364,57 @@ extension ARExperienceModel {
             return
         }
 
-        var uploaded: String?
+        var uploaded: [String] = []
         do {
-            if draft.kind == .photo, let image = draft.image {
-                uploaded = try await media.uploadPhoto(image, owner: me)
+            var mainPath: String?
+            var thumbPath: String?
+            var duration: Double?
+            switch draft.kind {
+            case .photo:
+                if let image = draft.image {
+                    let path = try await media.uploadPhoto(image, owner: me)
+                    uploaded.append(path)
+                    mainPath = path
+                }
+            case .video:
+                guard let video = draft.video else { throw MediaPrep.Failure.unreadable }
+                let thumb = try await media.uploadPhoto(video.thumbnail, owner: me)
+                uploaded.append(thumb)
+                thumbPath = thumb
+                let path = try await media.uploadFile(video.file, owner: me, kind: .video)
+                uploaded.append(path)
+                mainPath = path
+                duration = video.duration
+            case .voice:
+                guard let file = draft.voiceFile else { throw MediaPrep.Failure.unreadable }
+                let path = try await media.uploadFile(file, owner: me, kind: .voice)
+                uploaded.append(path)
+                mainPath = path
+                duration = draft.voiceDuration
+            case .text, .petals, .light:
+                break
             }
             let text = String(draft.text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(Self.artTextLimit))
-            let rules = Self.rules(for: draft.action)
+            let rules = Self.rules(for: draft.action, kind: draft.kind)
             let id = try await api.placeArtwork(visit: visit, kind: draft.kind, body: draft.kind == .text ? text : "",
-                                                photoPath: uploaded, color: draft.color, position: pose.position,
+                                                photoPath: mainPath, thumbPath: thumbPath, duration: duration,
+                                                color: draft.color, position: pose.position,
                                                 yaw: pose.yaw, scale: pose.scale, rules: rules,
                                                 visibility: draft.visibility)
-            let placed = Artwork(id: id, gate_id: gate, owner: me, kind: draft.kind.rawValue,
-                                 body: draft.kind == .text ? text : "", photo_path: uploaded,
+            var placed = Artwork(id: id, gate_id: gate, owner: me, kind: draft.kind.rawValue,
+                                 body: draft.kind == .text ? text : "", photo_path: mainPath,
                                  color: draft.color.rawValue, px: pose.position.x, py: pose.position.y,
                                  pz: pose.position.z, yaw: pose.yaw, scale: pose.scale, rules: rules,
                                  visibility: draft.visibility.rawValue, status: "published", revision: 1,
                                  created_at: ISO8601DateFormatter().string(from: Date()))
+            placed.thumb_path = thumbPath
+            placed.duration = duration
+            discardArtMedia()
             scene.endPreview()
             let item = scene.add(placed, image: draft.image, animated: true)
             if let image = draft.image { artImages[id] = image }
             item.perform(.glow)
-            item.perform(draft.action)
+            item.perform(placed.artKind.isMedia ? .play : draft.action)
             refreshArtCounts()
             startHandIfNeeded()
             art = nil
@@ -303,7 +422,7 @@ extension ARExperienceModel {
             Trace.log(String(format: "作品を置きました（%@・扉から 横 %.2f 高さ %.2f 奥 %.2f m・大きさ %.1f）",
                              draft.kind.label, pose.position.x, pose.position.y, pose.position.z, pose.scale))
         } catch {
-            if let uploaded { await media.removePhoto(path: uploaded) }
+            for path in uploaded { await media.removePhoto(path: path) }
             let message = ErrorText.of(error)
             Trace.log("作品を置けませんでした：\(message)")
             notice = message
@@ -388,13 +507,14 @@ extension ARExperienceModel {
         Task {
             guard let api = session?.api else { return }
             do {
-                let photo = artScene?.artwork(id)?.photo_path
-                try await api.deleteArtwork(id)
+                let artwork = artScene?.artwork(id)
+                let known = [artwork?.photo_path, artwork?.thumb_path].compactMap { $0 }
+                let paths = try await api.deleteArtwork(id, knownPaths: known)
                 artScene?.remove(id)
                 artImages[id] = nil
                 refreshArtCounts()
                 art = nil
-                if let photo { await session?.media?.removePhoto(path: photo) }
+                for path in paths { await session?.media?.removePhoto(path: path) }
                 Trace.log("自分の作品を消しました")
             } catch {
                 notice = ErrorText.of(error)

@@ -99,6 +99,25 @@ enum DoorTextures {
     }
 
     /// 写真の質感（扉の向こうに浮かべる思い出の写真）
+    /// 映像パネルの「▶」の印（白い丸に三角）
+    static func playBadge() -> TextureResource? {
+        let key = "play-badge"
+        if let t = cache[key] { return t }
+        let size = 128
+        guard let ctx = context(size: size) else { return nil }
+        let s = CGFloat(size)
+        ctx.setFillColor(UIColor(white: 1, alpha: 0.88).cgColor)
+        ctx.fillEllipse(in: CGRect(x: s * 0.06, y: s * 0.06, width: s * 0.88, height: s * 0.88))
+        ctx.setFillColor(UIColor(red: 0.13, green: 0.49, blue: 0.41, alpha: 1).cgColor)
+        ctx.beginPath()
+        ctx.move(to: CGPoint(x: s * 0.40, y: s * 0.30))
+        ctx.addLine(to: CGPoint(x: s * 0.72, y: s * 0.50))
+        ctx.addLine(to: CGPoint(x: s * 0.40, y: s * 0.70))
+        ctx.closePath()
+        ctx.fillPath()
+        return make(key: key, ctx: ctx)
+    }
+
     static func photo(_ image: UIImage) -> TextureResource? {
         let small = image.downscaled(maxSide: 1024)
         guard let cg = small.cgImage else { return nil }

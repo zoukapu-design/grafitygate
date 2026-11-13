@@ -92,6 +92,12 @@ struct MediaStore {
         return local
     }
 
+    /// もう手もとにある動画・声のファイル（なければ nil。受け取りはしない）
+    func cachedFile(path: String) -> URL? {
+        let local = Self.localURL(for: path)
+        return FileManager.default.fileExists(atPath: local.path) ? local : nil
+    }
+
     private static func localURL(for path: String) -> URL {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
         return caches.appendingPathComponent("gf-media", isDirectory: true)

@@ -1,8 +1,26 @@
 import AVFoundation
 import Foundation
 
+/// AR の画面の音（作品の鐘・映像・声）の決まり。
+/// 作品の音は、触れた・押したときだけ鳴るので、消音スイッチが入っていても鳴らす（playback）。
+/// ほかのアプリの音（音楽など）は止めずに重ねる（mixWithOthers）。
+/// 途中で種類を変えると鐘の音の仕組みが止まるので、AR の画面ではいつもこの 1 つにそろえる。
+enum ARAudio {
+    static func prepare() {
+        let session = AVAudioSession.sharedInstance()
+        do {
+            if session.category != .playback || !session.categoryOptions.contains(.mixWithOthers) {
+                try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+            }
+            try session.setActive(true)
+        } catch {
+            Trace.log("AR の音の準備ができませんでした：\(error.localizedDescription)")
+        }
+    }
+}
+
 /// 作品の「鳴る」：やさしい鐘の音をその場で作って鳴らす（音のファイルは持たない）。
-/// 消音スイッチに従い、ほかのアプリの音は止めない（ambient）。同時に鳴るのは 4 つまで。
+/// 音の決まりは `ARAudio`。同時に鳴るのは 4 つまで。
 final class ChimePlayer: @unchecked Sendable {
     static let shared = ChimePlayer()
 
@@ -16,6 +34,11 @@ final class ChimePlayer: @unchecked Sendable {
 
     private init() {
         format = AVAudioFormat(standardFormatWithSampleRate: 44_100, channels: 1)
+        // 声を録ったあとなど、音の決まりが変わると仕組みが止まる。次に鳴らすときに動かし直す
+        NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine,
+                                               queue: nil) { [weak self] _ in
+            self?.queue.async { self?.started = false }
+        }
     }
 
     /// 色ごとに音の高さを変える（夕日＝ド、白＝ミ、桜＝ソ、若葉＝ラ、空＝高いド）
@@ -39,11 +62,10 @@ final class ChimePlayer: @unchecked Sendable {
     }
 
     private func startIfNeeded() -> Bool {
-        if started { return true }
+        if started, engine.isRunning { return true }
         guard let format else { return false }
         do {
-            try AVAudioSession.sharedInstance().setCategory(.ambient, mode: .default, options: [.mixWithOthers])
-            try AVAudioSession.sharedInstance().setActive(true)
+            ARAudio.prepare()
             if players.isEmpty {
                 for _ in 0..<4 {
                     let p = AVAudioPlayerNode()

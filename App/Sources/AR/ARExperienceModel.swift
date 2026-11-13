@@ -70,6 +70,8 @@ final class ARExperienceModel: ObservableObject {
     @Published var artCaption: String?
     @Published var artworkCount = 0
     @Published var myArtworkCount = 0
+    /// いま流している映像パネル・声の玉
+    @Published var playingArtwork: UUID?
     @Published var reportItem: ReportItem?
     /// この入場で進んだ TRAIL（「TRAIL「…」の 2/5 に着きました」）
     @Published var trailNote: String?
@@ -101,6 +103,8 @@ final class ARExperienceModel: ObservableObject {
     var artImages: [UUID: UIImage] = [:]
     var artNames: [UUID: String] = [:]
     var movingArtwork: UUID?
+    /// 受け取っている途中の映像・声（同じものを何度も受け取らない）
+    var artMediaLoading: Set<UUID> = []
     var captionTask: Task<Void, Never>?
     private var lastPrint: [Float]?
     private var clientKey = UUID().uuidString
@@ -159,8 +163,11 @@ final class ARExperienceModel: ObservableObject {
         hand.stop()
         artScene?.removeAll()
         artScene = nil
+        discardArtMedia()
         art = nil
         artImages.removeAll()
+        playingArtwork = nil
+        artMediaLoading.removeAll()
         artworkCount = 0
         myArtworkCount = 0
         movingArtwork = nil

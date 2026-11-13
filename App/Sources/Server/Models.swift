@@ -125,8 +125,20 @@ struct Artwork: Decodable, Identifiable, Hashable {
     var status: String
     var revision: Int
     let created_at: String
+    /// 映像パネルの表紙の絵（0010 を入れる前のサーバーでは無い）
+    var thumb_path: String? = nil
+    /// 映像・声の長さ（秒）
+    var duration: Double? = nil
 
     var artKind: ArtworkKind { ArtworkKind(rawValue: kind) ?? .light }
+    /// 一覧や見本に使う絵（写真パネルは写真、映像パネルは表紙の絵）
+    var picturePath: String? {
+        switch artKind {
+        case .photo: return photo_path
+        case .video: return thumb_path
+        default: return nil
+        }
+    }
     var artColor: ArtworkColor { ArtworkColor(rawValue: color) ?? .warm }
     var position: SIMD3<Float> { [px, py, pz] }
 }
@@ -154,14 +166,17 @@ struct ArtworkRule: Codable, Hashable {
 }
 
 enum ArtworkKind: String, CaseIterable, Identifiable {
-    case photo, text, petals, light
+    // 選ぶ画面の並び順（2 列）
+    case photo, video, text, voice, petals, light
 
     var id: String { rawValue }
 
     var label: String {
         switch self {
         case .photo: return "写真パネル"
+        case .video: return "映像パネル"
         case .text: return "光る文字"
+        case .voice: return "声の玉"
         case .petals: return "花びら"
         case .light: return "光の玉"
         }
@@ -170,7 +185,9 @@ enum ArtworkKind: String, CaseIterable, Identifiable {
     var caption: String {
         switch self {
         case .photo: return "思い出の写真を宙に飾る"
+        case .video: return "15 秒までの動画を、触れると流す"
         case .text: return "ひとことを光の文字で"
+        case .voice: return "触れると、そこから声が聞こえる"
         case .petals: return "花びらがくるくる舞う"
         case .light: return "やわらかく光って波紋が広がる"
         }
@@ -179,16 +196,22 @@ enum ArtworkKind: String, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .photo: return "photo.on.rectangle"
+        case .video: return "play.rectangle"
         case .text: return "textformat"
+        case .voice: return "waveform.circle"
         case .petals: return "leaf"
         case .light: return "sparkle"
         }
     }
 
+    /// 映像・声（触れると流れる。動きは選ばない）
+    var isMedia: Bool { self == .video || self == .voice }
+
     /// はじめに選んでおく「触れたときの動き」
     var defaultAction: ArtworkAction {
         switch self {
         case .photo: return .sway
+        case .video, .voice: return .play
         case .text: return .glow
         case .petals: return .burst
         case .light: return .ripple
@@ -235,6 +258,8 @@ enum ArtworkTrigger: String {
 
 enum ArtworkAction: String, CaseIterable, Identifiable {
     case glow, sway, ripple, burst, bounce, chime
+    /// 映像・声を流す（映像パネル・声の玉だけ）
+    case play
 
     var id: String { rawValue }
 
@@ -246,8 +271,12 @@ enum ArtworkAction: String, CaseIterable, Identifiable {
         case .burst: return "はじける"
         case .bounce: return "はねる"
         case .chime: return "鳴る"
+        case .play: return "流す"
         }
     }
+
+    /// 写真・文字などで選べる動き（「流す」は映像・声だけ）
+    static var visual: [ArtworkAction] { allCases.filter { $0 != .play } }
 }
 
 // MARK: - GATE の中の機能

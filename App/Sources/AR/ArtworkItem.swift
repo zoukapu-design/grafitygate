@@ -1,7 +1,8 @@
+import AVFoundation
 import RealityKit
 import UIKit
 
-/// GATE に置かれた作品 1 つ。種類ごとの見た目と、触れたときの動き（光る・ゆれる・波紋・はじける・はねる）。
+/// GATE に置かれた作品 1 つ。種類ごとの見た目と、触れたときの動き（光る・ゆれる・波紋・はじける・はねる・流す）。
 /// 位置・向き・大きさは扉が基準（`root` を扉の印の下に置く）。毎コマ `update` で動かす。
 @MainActor
 final class ArtworkItem {
@@ -15,6 +16,26 @@ final class ArtworkItem {
     private let body = Entity()
     /// 写真パネルの面（写真が届いたら作り直す）
     private let panel = Entity()
+
+    /// 映像パネルの面（流すあいだは映像、ふだんは表紙の絵）と「▶」の印
+    private var screen: ModelEntity?
+    private var posterMaterial: UnlitMaterial?
+    private var badge: ModelEntity?
+    /// 声の玉のまわりの音の輪
+    private var soundRings: [ModelEntity] = []
+
+    // 流す
+    private var player: AVPlayer?
+    private var endObserver: NSObjectProtocol?
+    private var audio: AudioPlaybackController?
+    private var fallbackAudio: AVAudioPlayer?
+    private var playToken = UUID()
+    private var pulseClock: Float = 0
+    private(set) var isPlaying = false
+    /// 「流す」の動きが起きたとき（ファイルを受け取って流すのは ArtworkScene・ARExperienceModel）
+    var onPlay: (() -> Void)?
+    /// 流し終えた・止めたとき
+    var onPlaybackEnd: (() -> Void)?
 
     private var halo: ModelEntity?
     private var haloFacesCamera = false
@@ -82,8 +103,9 @@ final class ArtworkItem {
         root.addChild(body)
         MainWatch.run("作品を組み立てる（\(artwork.artKind.label)）") {
             switch artwork.artKind {
-            case .photo: buildPhoto(image)
+            case .photo, .video: buildPhoto(image)
             case .text: buildText()
+            case .voice: buildVoice()
             case .petals: buildPetals()
             case .light: buildLight()
             }
@@ -134,9 +156,11 @@ final class ArtworkItem {
         setPhoto(image)
     }
 
-    /// 写真パネル：白い額（つやのある厚み）に写真、後ろにやわらかい光
+    /// 写真パネル：白い額（つやのある厚み）に写真、後ろにやわらかい光。
+    /// 映像パネルも同じ形で、ふだんは表紙の絵と「▶」の印を見せる。
     func setPhoto(_ image: UIImage?) {
-        guard artwork.artKind == .photo else { return }
+        let kind = artwork.artKind
+        guard kind == .photo || kind == .video, !isPlaying else { return }
         panel.children.removeAll()
         let longest: Float = 0.55
         var aspect: Float = 4 / 3
@@ -163,6 +187,19 @@ final class ArtworkItem {
                                   materials: [pictureMaterial])
         picture.position = [0, 0, 0.0075]
         panel.addChild(picture)
+        if kind == .video {
+            screen = picture
+            posterMaterial = pictureMaterial
+            if let texture = DoorTextures.playBadge() {
+                var m = UnlitMaterial()
+                m.color = .init(tint: .white, texture: .init(texture))
+                m.blending = .transparent(opacity: .init(floatLiteral: 1))
+                let mark = ModelEntity(mesh: .generatePlane(width: 0.11, height: 0.11), materials: [m])
+                mark.position = [0, 0, 0.0095]
+                panel.addChild(mark)
+                badge = mark
+            }
+        }
 
         if let texture = DoorTextures.halo(color) {
             var m = UnlitMaterial()
@@ -249,6 +286,38 @@ final class ArtworkItem {
         radius = 0.36
     }
 
+    /// 声の玉：小さな光の芯と、まわりの音の輪。流すあいだは輪がふるえ、波紋が広がる
+    private func buildVoice() {
+        let (r, g, b) = color.rgb
+        let coreEntity = ModelEntity(mesh: .generateSphere(radius: 0.05),
+                                     materials: [UnlitMaterial(color: UIColor(red: min(r + 0.2, 1), green: min(g + 0.2, 1),
+                                                                              blue: min(b + 0.2, 1), alpha: 1))])
+        body.addChild(coreEntity)
+        core = coreEntity
+        if let texture = DoorTextures.halo(color) {
+            var m = UnlitMaterial()
+            m.color = .init(tint: .white, texture: .init(texture))
+            m.blending = .transparent(opacity: .init(floatLiteral: 1))
+            let inner = ModelEntity(mesh: .generatePlane(width: 0.36, height: 0.36), materials: [m])
+            root.addChild(inner)
+            halo = inner
+            haloFacesCamera = true
+            haloBaseOpacity = 0.85
+        }
+        if let texture = DoorTextures.ring(color) {
+            var m = UnlitMaterial()
+            m.color = .init(tint: .white, texture: .init(texture))
+            m.blending = .transparent(opacity: .init(floatLiteral: 1))
+            for size: Float in [0.2, 0.3] {
+                let ring = ModelEntity(mesh: .generatePlane(width: size, height: size), materials: [m])
+                Fade.set(ring, 0.3)
+                body.addChild(ring)
+                soundRings.append(ring)
+            }
+        }
+        radius = 0.24
+    }
+
     /// 光の玉：芯・内と外の光・まわりをめぐる小さな光
     private func buildLight() {
         let (r, g, b) = color.rgb
@@ -323,6 +392,11 @@ final class ArtworkItem {
     static var reduceMotion: Bool { UIAccessibility.isReduceMotionEnabled }
 
     func perform(_ action: ArtworkAction) {
+        if action == .play {
+            glow = max(glow, 0.6)
+            if !isPreview { onPlay?() }
+            return
+        }
         if Self.reduceMotion, action != .chime {
             glow = max(glow, 0.6)
             return
@@ -350,7 +424,85 @@ final class ArtworkItem {
         case .chime:
             ChimePlayer.shared.play(color)
             glow = max(glow, 0.7)
+        case .play:
+            break
         }
+    }
+
+    // MARK: 流す（映像パネル・声の玉）
+
+    /// 手もとのファイルを流す（映像はパネルの面に、声は玉の位置から聞こえる音で）
+    func startPlayback(_ file: URL) {
+        stopPlayback(notify: false)
+        ARAudio.prepare()
+        let token = UUID()
+        playToken = token
+        switch artwork.artKind {
+        case .video:
+            guard let screen else { return }
+            let item = AVPlayerItem(url: file)
+            let p = AVPlayer(playerItem: item)
+            screen.model?.materials = [VideoMaterial(avPlayer: p)]
+            badge?.isEnabled = false
+            endObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item,
+                                                                 queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self, self.playToken == token else { return }
+                    self.stopPlayback(notify: true)
+                }
+            }
+            player = p
+            p.play()
+        case .voice:
+            do {
+                let resource = try AudioFileResource.load(contentsOf: file, inputMode: .spatial,
+                                                          loadingStrategy: .stream, shouldLoop: false)
+                let controller = body.playAudio(resource)
+                controller.completionHandler = { [weak self] in
+                    DispatchQueue.main.async {
+                        MainActor.assumeIsolated {
+                            guard let self, self.playToken == token else { return }
+                            self.stopPlayback(notify: true)
+                        }
+                    }
+                }
+                audio = controller
+            } catch {
+                // 位置から聞こえる音にできないときは、ふつうに流す（遠いと小さく）
+                Trace.log("声の玉：位置から聞こえる音にできませんでした（\(error.localizedDescription)）。ふつうに流します")
+                guard let p = try? AVAudioPlayer(contentsOf: file) else {
+                    Trace.log("声の玉：声のファイルを開けませんでした")
+                    return
+                }
+                p.play()
+                fallbackAudio = p
+            }
+        default:
+            return
+        }
+        isPlaying = true
+        pulseClock = 0
+        glow = max(glow, 0.8)
+        Trace.log("作品を流します（\(artwork.artKind.label)・\(String(format: "%.1f", artwork.duration ?? 0)) 秒）")
+    }
+
+    /// 止める（notify が true なら、流し終えたことを知らせる）
+    func stopPlayback(notify: Bool = true) {
+        playToken = UUID()
+        if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
+        endObserver = nil
+        player?.pause()
+        player = nil
+        if let screen, let posterMaterial { screen.model?.materials = [posterMaterial] }
+        badge?.isEnabled = true
+        audio?.completionHandler = nil
+        audio?.stop()
+        audio = nil
+        fallbackAudio?.stop()
+        fallbackAudio = nil
+        let was = isPlaying
+        isPlaying = false
+        if was, notify { onPlaybackEnd?() }
     }
 
     /// 近づいたか（1.4m 以内で近い、1.9m より離れたら離れた）。近づいた瞬間だけ true。
@@ -430,7 +582,7 @@ final class ArtworkItem {
         hover += (hoverTarget - hover) * min(1, dt * 6)
 
         let kind = artwork.artKind
-        let bob: Float = (kind == .photo || kind == .text) ? sin(time * 0.9) * 0.012 : sin(time * 0.7) * 0.02
+        let bob: Float = (kind == .photo || kind == .text || kind == .video) ? sin(time * 0.9) * 0.012 : sin(time * 0.7) * 0.02
         if reveal < 1 {
             reveal = min(1, reveal + dt / 0.8)
             let e = 1 - pow(1 - reveal, 3)
@@ -460,6 +612,33 @@ final class ArtworkItem {
         }
         if let core {
             core.scale = .one * (1 + 0.06 * sin(time * 2.1) + 0.3 * glow)
+        }
+
+        // 流しているあいだ：声は波紋を少しずつ広げ、映像は遠いと小さく聞こえる
+        if isPlaying {
+            let distance = simd_length(camera) * artwork.scale
+            glow = max(glow, 0.35)
+            if kind == .voice, !Self.reduceMotion {
+                pulseClock += dt
+                if pulseClock > 0.85 {
+                    pulseClock = 0
+                    spawnRipple()
+                }
+            }
+            if let player { player.volume = min(1, 1.6 / (distance + 0.6)) }
+            if let fallbackAudio {
+                fallbackAudio.volume = min(1, 1.6 / (distance + 0.6))
+                if !fallbackAudio.isPlaying { stopPlayback(notify: true) }
+            }
+        }
+
+        // 声の玉の音の輪
+        for (i, ring) in soundRings.enumerated() {
+            let phase = Float(i) * 1.7
+            let wave = isPlaying ? 0.12 * sin(time * 7 + phase) : 0.04 * sin(time * 1.6 + phase)
+            ring.scale = .one * (1 + wave)
+            Fade.set(ring, isPlaying ? 0.55 : 0.28 + 0.1 * near)
+            face(ring, toward: body.convert(position: camera, from: root))
         }
 
         // 花びら
@@ -524,6 +703,7 @@ final class ArtworkItem {
     }
 
     func remove() {
+        stopPlayback(notify: false)
         root.removeFromParent()
         ripples.removeAll()
         sparks.removeAll()

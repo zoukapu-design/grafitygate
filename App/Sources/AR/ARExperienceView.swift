@@ -528,6 +528,9 @@ private struct ArtCard: View {
     @ObservedObject var model: ARExperienceModel
     let step: ARExperienceModel.ArtStep
     @State private var pickerItem: PhotosPickerItem?
+    @State private var videoItem: PhotosPickerItem?
+    @State private var loadingVideo = false
+    @State private var recordingVoice = false
     @State private var confirmDelete = false
     @FocusState private var focused: Bool
 
@@ -591,13 +594,19 @@ private struct ArtCard: View {
             Title(model.draft.kind.label)
             switch model.draft.kind {
             case .photo: photoInput
+            case .video: videoInput
             case .text: textInput
+            case .voice: voiceInput
             case .petals, .light: EmptyView()
             }
-            if model.draft.kind != .photo {
+            if model.draft.kind != .photo, model.draft.kind != .video {
                 colorRow
             }
-            actionRow
+            if model.draft.kind.isMedia {
+                Caption("触れる・押すと流れます。近づくと、やわらかく光ります。")
+            } else {
+                actionRow
+            }
             Picker("見せる人", selection: $model.draft.visibility) {
                 ForEach(Visibility.allCases) { v in Text(v.label).tag(v) }
             }
@@ -607,6 +616,7 @@ private struct ArtCard: View {
                 model.beginArtPlacement()
             }
             .buttonStyle(PrimaryButtonStyle())
+            .disabled(loadingVideo)
             Button("種類を選び直す") { model.art = .choosing }
                 .font(.subheadline)
                 .foregroundStyle(Theme.textSecondary)
@@ -619,6 +629,95 @@ private struct ArtCard: View {
                     model.notice = nil
                 }
                 pickerItem = nil
+            }
+        }
+        .onChange(of: videoItem) { _, item in
+            guard let item else { return }
+            Task {
+                loadingVideo = true
+                defer {
+                    loadingVideo = false
+                    videoItem = nil
+                }
+                do {
+                    guard let movie = try await item.loadTransferable(type: PickedMovie.self) else {
+                        throw MediaPrep.Failure.unreadable
+                    }
+                    let video = try await MediaPrep.prepareVideo(movie.url)
+                    model.setArtVideo(video)
+                } catch {
+                    Trace.log("映像パネルの動画を読み込めませんでした：\(error.localizedDescription)")
+                    model.notice = (error as? LocalizedError)?.errorDescription ?? "動画を読み込めませんでした。"
+                }
+            }
+        }
+        .sheet(isPresented: $recordingVoice) {
+            VoiceRecorderSheet { url, seconds in
+                model.setArtVoice(url, duration: seconds)
+            }
+        }
+    }
+
+    private var videoInput: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12).fill(Theme.surfaceElevated)
+                if let image = model.draft.image {
+                    Image(uiImage: image).resizable().scaledToFill()
+                } else {
+                    Image(systemName: "play.rectangle").foregroundStyle(Theme.textSecondary.opacity(0.6))
+                }
+                if loadingVideo { ProgressView() }
+            }
+            .frame(width: 72, height: 72)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(alignment: .bottomLeading) {
+                if let video = model.draft.video {
+                    Text(durationText(video.duration))
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 5).padding(.vertical, 2)
+                        .background(.black.opacity(0.5), in: Capsule())
+                        .padding(4)
+                }
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                PhotosPicker(selection: $videoItem, matching: .videos) {
+                    Label(model.draft.video == nil ? "動画を選ぶ" : "動画を選び直す", systemImage: "film")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity, minHeight: 36)
+                }
+                .buttonStyle(.bordered)
+                .tint(Theme.accent)
+                .disabled(loadingVideo)
+                Text(loadingVideo ? "動画を整えています…" : "15 秒まで。位置などの情報は消して送ります。")
+                    .font(.caption)
+                    .foregroundStyle(Theme.textSecondary)
+            }
+        }
+    }
+
+    private var voiceInput: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle().fill(Theme.accentLight)
+                Image(systemName: "waveform").font(.title3).foregroundStyle(Theme.accent)
+            }
+            .frame(width: 56, height: 56)
+            VStack(alignment: .leading, spacing: 6) {
+                Button {
+                    recordingVoice = true
+                } label: {
+                    Label(model.draft.voiceFile == nil ? "声を録る" : "録り直す", systemImage: "mic")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity, minHeight: 36)
+                }
+                .buttonStyle(.bordered)
+                .tint(Theme.accent)
+                Text(model.draft.voiceFile == nil ? "60 秒まで。この場所で聞いてほしいことを。"
+                                                  : "\(durationText(model.draft.voiceDuration)) の声を録りました")
+                    .font(.caption)
+                    .foregroundStyle(Theme.textSecondary)
             }
         }
     }
@@ -703,7 +802,7 @@ private struct ArtCard: View {
             Text("触れたとき").font(.caption.weight(.semibold)).foregroundStyle(Theme.textSecondary)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    ForEach(ArtworkAction.allCases) { action in
+                    ForEach(ArtworkAction.visual) { action in
                         let selected = model.draft.action == action
                         Button(action.label) { model.draft.action = action }
                             .font(.subheadline.weight(.semibold))
@@ -749,7 +848,9 @@ private struct ArtCard: View {
         return VStack(alignment: .leading, spacing: 10) {
             Title("\(model.artworkOwnerName(id)) さんの\(artwork?.artKind.label ?? "作品")")
             if let artwork {
-                Caption("\(ServerDate.relative(artwork.created_at))に置かれました。近づいたり、手で触れたりすると動きます。")
+                Caption("\(ServerDate.relative(artwork.created_at))に置かれました。"
+                        + (artwork.artKind.isMedia ? "触れる・押すと流れます。" : "近づいたり、手で触れたりすると動きます。"))
+                playButton(id, artwork)
             }
             HStack(spacing: 10) {
                 Button("閉じる") { model.cancelArt() }
@@ -767,6 +868,7 @@ private struct ArtCard: View {
             Title("あなたの\(artwork?.artKind.label ?? "作品")")
             if let artwork {
                 Caption("見せる人：\(Visibility.label(of: artwork.visibility))・\(ServerDate.relative(artwork.created_at))")
+                playButton(id, artwork)
             }
             Button("置き直す") { model.startMovingArtwork(id) }
                 .buttonStyle(SecondaryButtonStyle())
@@ -788,6 +890,23 @@ private struct ArtCard: View {
             }
             .font(.subheadline)
             .foregroundStyle(Theme.textSecondary)
+        }
+    }
+}
+
+extension ArtCard {
+    /// 映像パネル・声の玉の「流す／止める」
+    @ViewBuilder
+    func playButton(_ id: UUID, _ artwork: Artwork) -> some View {
+        if artwork.artKind.isMedia {
+            let playing = model.playingArtwork == id
+            Button {
+                playing ? model.stopArtworkPlayback() : model.playArtwork(id)
+            } label: {
+                Label(playing ? "止める" : "流す（\(durationText(artwork.duration ?? 0))）",
+                      systemImage: playing ? "stop.fill" : "play.fill")
+            }
+            .buttonStyle(SecondaryButtonStyle())
         }
     }
 }
