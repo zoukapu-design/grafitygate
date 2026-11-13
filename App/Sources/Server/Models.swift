@@ -39,6 +39,27 @@ struct GateSummary: Decodable, Identifiable, Hashable {
     var visitExpiresAt: Date? { my_visit_expires_at.flatMap(ServerDate.parse) }
 }
 
+/// GATE の数字（gf_gate_stats）
+struct GateStats: Decodable, Hashable {
+    let visitor_count: Int
+    let last_activity_at: String?
+    let my_visits: Int
+}
+
+/// 場所の記憶の見つかりやすさ（gf_place_map_health。作った本人だけ）
+struct PlaceMapHealth: Decodable, Hashable {
+    let has_map: Bool
+    let map_saved_at: String?
+    let attempts: Int
+    let found: Int
+    let recent_attempts: Int
+    let recent_found: Int
+    let last_found_at: String?
+
+    /// 撮り直したほうがよいか（場所の記憶が無い・最近 3 回以上探して、半分も見つかっていない）
+    var looksStale: Bool { !has_map || (recent_attempts >= 3 && Double(recent_found) / Double(recent_attempts) < 0.5) }
+}
+
 /// 写真が近い候補（gf_match_candidates）。similarity は strong / weak / none / unknown
 struct MatchCandidate: Decodable, Identifiable, Hashable {
     let id: UUID
@@ -537,6 +558,8 @@ struct NotificationItem: Decodable, Identifiable, Hashable {
         let who = "\(actor_name) さん"
         let gate = gate_title.map { "「\($0)」" } ?? "GATE"
         switch kind {
+        case "place_map_stale":
+            return "\(gate)の場所の記憶が、ほかの人の iPhone で見つかりにくくなっています。現地で扉を開けて「場所の記憶を撮り直す」を押してください"
         case "gate_graffiti": return "\(who)が\(gate)に記憶を残しました"
         case "gate_artwork": return "\(who)が\(gate)に作品を置きました"
         case "board_thread": return "\(who)が\(gate)の掲示板に話題を立てました"
@@ -560,6 +583,7 @@ struct NotificationItem: Decodable, Identifiable, Hashable {
         case "memory_invite", "memory_photo": return "photo.stack"
         case "like": return "heart"
         case "follow": return "person.badge.plus"
+        case "place_map_stale": return "arrow.triangle.2.circlepath.camera"
         default: return "bell"
         }
     }

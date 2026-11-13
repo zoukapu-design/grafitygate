@@ -22,6 +22,14 @@ struct ARExperienceView: View {
                 .onTapGesture(coordinateSpace: .local) { point in
                     model.handleTap(at: point)
                 }
+                // 扉の位置を合わせるあいだだけ：なぞって動かす・2 本指で回す
+                .gesture(DragGesture(minimumDistance: 6, coordinateSpace: .local)
+                    .onChanged { value in model.dragDoor(to: value.location) },
+                         including: model.adjustingDoor ? .all : .none)
+                .simultaneousGesture(RotateGesture()
+                    .onChanged { value in model.rotateDoor(by: value.rotation.radians) }
+                    .onEnded { _ in model.endRotate() },
+                                     including: model.adjustingDoor ? .all : .none)
             if model.showsReticle {
                 Reticle()
                     .allowsHitTesting(false)
@@ -29,7 +37,7 @@ struct ARExperienceView: View {
             HandCursorView(hand: model.hand)
             VStack(spacing: 12) {
                 ARTopBar(stage: model.stage, onClose: onClose)
-                if let caption = model.artCaption {
+                if let caption = model.toast ?? model.artCaption {
                     Text(caption)
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(Theme.text)
@@ -42,6 +50,7 @@ struct ARExperienceView: View {
                 ExperienceCard(model: model)
             }
             .animation(.easeInOut(duration: 0.2), value: model.artCaption)
+            .animation(.easeInOut(duration: 0.2), value: model.toast)
             .padding(.horizontal, 16)
             .padding(.bottom, 12)
         }
@@ -157,14 +166,40 @@ private struct ExperienceCard: View {
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 24))
         .shadow(color: .black.opacity(0.12), radius: 18, y: 6)
         .animation(.easeInOut(duration: 0.2), value: model.phase)
+        .animation(.easeInOut(duration: 0.2), value: model.adjustingDoor)
         .animation(.easeInOut(duration: 0.2), value: model.art)
     }
 
     @ViewBuilder private var content: some View {
-        if model.phase == .doorOpen, let step = model.art {
+        if model.adjustingDoor {
+            adjustCard
+        } else if model.phase == .doorOpen, let step = model.art {
             ArtCard(model: model, step: step)
         } else {
             phaseContent
+        }
+    }
+
+    /// 扉の位置を指で合わせる
+    private var adjustCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Title("扉の位置を合わせる")
+            Caption("画面をなぞると、指の下の地面へ扉が動きます。2 本の指で回すと向きが変わります。動かしたのは、あなたの画面の中だけです。")
+            HStack(spacing: 10) {
+                Button("元に戻す") { model.resetAdjust() }
+                    .buttonStyle(SecondaryButtonStyle())
+                Button("決める") { model.finishAdjust() }
+                    .buttonStyle(PrimaryButtonStyle())
+            }
+            if model.isGateOwner {
+                Button {
+                    model.startRemap()
+                } label: {
+                    Label("この位置で場所の記憶を撮り直す", systemImage: "arrow.triangle.2.circlepath.camera")
+                }
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Theme.accent)
+            }
         }
     }
 
@@ -196,14 +231,25 @@ private struct ExperienceCard: View {
                         .foregroundStyle(Theme.warm)
                 }
                 Caption(model.placedPrecisely ? "作った人が扉を置いた場所です。扉を押すと開きます。"
-                                              : "おおよその位置に出しています。扉を押すと開きます。")
+                                              : "場所の記憶が見つからなかったので、おおよその位置に出しています。扉を押すと開きます。")
                 Button("扉を開く") { model.openDoor() }
                     .buttonStyle(PrimaryButtonStyle())
+                if !model.placedPrecisely {
+                    Button {
+                        model.beginAdjust()
+                    } label: {
+                        Label("扉の位置を合わせる", systemImage: "hand.draw")
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Theme.accent)
+                }
             }
         case .doorOpen:
             DoorOpenCard(model: model)
         case .createShoot(let index):
             createShoot(index)
+        case .createSimilar(let list):
+            similar(list)
         case .createDetails:
             CreateDetailsForm(model: model)
         case .createPlace:
@@ -218,11 +264,24 @@ private struct ExperienceCard: View {
         case .createMapping:
             VStack(alignment: .leading, spacing: 10) {
                 Title("場所を覚えています")
-                Caption("扉とそのまわりを、ゆっくり左右に見回してください。友達が来たとき、同じ位置に扉を出すために使います。")
+                Caption("扉とそのまわりを、ゆっくり左右に見回してください。友達が来たとき、同じ位置に扉を出すために使います（まわりの景色の特徴が、入場した人の iPhone に届きます。写真そのものは送りません）。")
                 ProgressView(value: model.mappingProgress).tint(Theme.accent)
                 Button("覚えた（保存する）") { model.saveGate() }
                     .buttonStyle(PrimaryButtonStyle())
                     .disabled(!model.mappingReady)
+            }
+        case .remapping:
+            VStack(alignment: .leading, spacing: 10) {
+                Title("場所の記憶を撮り直す")
+                Caption("扉とそのまわりを、ゆっくり左右に見回してください。保存すると、入場した友達の iPhone でも、いまの位置に扉と作品が出ます（まわりの景色の特徴が、入場した人に届きます）。")
+                ProgressView(value: model.mappingProgress).tint(Theme.accent)
+                HStack(spacing: 10) {
+                    Button("やめる") { model.cancelRemap() }
+                        .buttonStyle(SecondaryButtonStyle())
+                    Button("保存する") { model.saveRemap() }
+                        .buttonStyle(PrimaryButtonStyle())
+                        .disabled(!model.mappingReady)
+                }
             }
         case .createSaving(let text):
             HStack(spacing: 12) {
@@ -287,6 +346,39 @@ private struct ExperienceCard: View {
             Button("写し直す") { model.resetToScanning() }
                 .font(.subheadline)
                 .foregroundStyle(Theme.textSecondary)
+        }
+    }
+
+    /// 作る前に：近くに同じ場所らしい GATE がある
+    private func similar(_ list: [MatchCandidate]) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Title("近くに似た GATE があります")
+            Caption("同じ場所の GATE なら、そこに入って記憶を足せます。ちがう場所なら、そのまま新しく作れます。")
+            ForEach(list.prefix(3)) { candidate in
+                Button {
+                    model.choose(candidate)
+                } label: {
+                    HStack(spacing: 10) {
+                        if let cover = candidate.cover_path {
+                            RemotePhoto(path: cover)
+                                .frame(width: 48, height: 48)
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(candidate.title).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
+                            Text("\(candidate.owner_name)・約 \(Int(candidate.distance_m.rounded()))m・\(Self.similarity(candidate.similarity))")
+                                .font(.caption).foregroundStyle(Theme.textSecondary)
+                        }
+                        Spacer()
+                        Text("入る").font(.caption.weight(.semibold)).foregroundStyle(Theme.accent)
+                    }
+                    .padding(10)
+                    .background(Theme.surfaceElevated, in: RoundedRectangle(cornerRadius: 14))
+                }
+                .buttonStyle(.plain)
+            }
+            Button("ちがう場所なので、新しく作る") { model.continueCreating() }
+                .buttonStyle(SecondaryButtonStyle())
         }
     }
 
@@ -400,6 +492,22 @@ private struct DoorOpenCard: View {
             if let warning = model.mapWarning { Caption(warning) }
             Button("中へ") { model.goInside() }
                 .buttonStyle(PrimaryButtonStyle())
+            if !model.placedPrecisely {
+                Button {
+                    model.beginAdjust()
+                } label: {
+                    Label("扉の位置を合わせる", systemImage: "hand.draw")
+                }
+                .buttonStyle(SecondaryButtonStyle())
+            } else if model.isGateOwner {
+                Button {
+                    model.startRemap()
+                } label: {
+                    Label("場所の記憶を撮り直す", systemImage: "arrow.triangle.2.circlepath.camera")
+                }
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Theme.accent)
+            }
             if model.visitID != nil {
                 Button {
                     model.startArt()

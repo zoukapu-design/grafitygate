@@ -11,6 +11,10 @@ final class GateDoor {
     let anchorEntity: AnchorEntity
     let shape = ArchShape()
     private(set) var isOpen = false
+    /// 扉と作品を載せる台。見る人が指で少し動かした分（自分の画面だけ）は、この台の位置・向きで持つ
+    let base = Entity()
+    private(set) var nudgePosition: SIMD3<Float> = .zero
+    private(set) var nudgeYaw: Float = 0
 
     private let root = Entity()
     private let hitBox = ModelEntity()
@@ -44,7 +48,8 @@ final class GateDoor {
         try MainWatch.run("扉を組み立てる") {
             try build()
         }
-        anchorEntity.addChild(root)
+        anchorEntity.addChild(base)
+        base.addChild(root)
         Fade.set(root, 0)
         arView.scene.addAnchor(anchorEntity)
         subscription = arView.scene.subscribe(to: SceneEvents.Update.self) { [weak self] event in
@@ -53,6 +58,16 @@ final class GateDoor {
             }
         }
     }
+
+    /// 指で動かした分（印からの位置・向き）。扉と作品が一緒に動く
+    func setNudge(position: SIMD3<Float>, yaw: Float) {
+        nudgePosition = position
+        nudgeYaw = yaw
+        base.transform = Transform(scale: .one, rotation: simd_quatf(angle: yaw, axis: [0, 1, 0]), translation: position)
+    }
+
+    /// 台（扉の足もとの中心）の、世界の中での位置・向き
+    var baseWorldTransform: simd_float4x4 { base.transformMatrix(relativeTo: nil) }
 
     /// 扉に触れたか（押した所の entity が扉の当たり判定か）
     func isHit(_ entity: Entity?) -> Bool {

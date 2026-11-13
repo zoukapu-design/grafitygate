@@ -41,10 +41,11 @@ final class ArtworkScene {
     private var clock: TimeInterval = 0
     private var revealQueue: [(id: UUID, at: TimeInterval)] = []
 
-    init(anchor: AnchorEntity, arView: ARView) {
+    /// parent は扉の台（GateDoor.base）。見る人が扉を指で動かすと、作品も一緒に動く
+    init(parent: Entity, arView: ARView) {
         self.arView = arView
         container.name = "artworks"
-        anchor.addChild(container)
+        parent.addChild(container)
         subscription = arView.scene.subscribe(to: SceneEvents.Update.self) { [weak self] event in
             MainActor.assumeIsolated {
                 self?.update(dt: event.deltaTime)

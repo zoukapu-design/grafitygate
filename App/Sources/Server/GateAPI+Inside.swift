@@ -328,6 +328,27 @@ extension GateAPI {
         try await client.rpc("gf_delete_snapshot", params: IDOnlyParam(p_id: id)).execute().value
     }
 
+    // MARK: 場所の記憶の見つかりやすさと GATE の数字
+
+    /// 場所の記憶が見つかったか・探した秒数だけを送る（写真・位置は送らない）
+    func reportRelocalize(visit: UUID, found: Bool, seconds: Double) async throws {
+        try await client.rpc("gf_report_relocalize",
+                             params: RelocalizeParams(p_visit: visit, p_found: found, p_seconds: Float(seconds)))
+            .execute()
+    }
+
+    func placeMapHealth(_ gate: UUID) async throws -> PlaceMapHealth? {
+        let rows: [PlaceMapHealth] = try await client.rpc("gf_place_map_health", params: InsideGateParam(p_gate: gate))
+            .execute().value
+        return rows.first
+    }
+
+    func gateStats(_ gate: UUID) async throws -> GateStats? {
+        let rows: [GateStats] = try await client.rpc("gf_gate_stats", params: InsideGateParam(p_gate: gate))
+            .execute().value
+        return rows.first
+    }
+
     // MARK: 自分のデータ
 
     /// 自分のデータを 1 つの JSON にしたもの
@@ -353,6 +374,11 @@ private struct UserParam: Encodable { let p_user: UUID }
 private struct KindParam: Encodable { let p_kind: String }
 private struct OtherParam: Encodable { let p_other: UUID }
 private struct TrailParam: Encodable { let p_trail: UUID }
+private struct RelocalizeParams: Encodable {
+    let p_visit: UUID
+    let p_found: Bool
+    let p_seconds: Float
+}
 private struct VisitParam: Encodable { let p_visit: UUID }
 private struct TrailCreateParams: Encodable {
     let p_title: String

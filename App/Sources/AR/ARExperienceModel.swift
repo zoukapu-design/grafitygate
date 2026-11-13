@@ -22,10 +22,14 @@ final class ARExperienceModel: ObservableObject {
         case doorClosed
         case doorOpen
         case createShoot(Int)
+        /// 作る前に：近くに同じ場所らしい GATE がある
+        case createSimilar([MatchCandidate])
         case createDetails
         case createPlace
         case createMapping
         case createSaving(String)
+        /// 作った人が、場所の記憶を撮り直している（扉のまわりを見回す）
+        case remapping
         case failed(String)
     }
 
@@ -69,6 +73,12 @@ final class ARExperienceModel: ObservableObject {
     @Published var reportItem: ReportItem?
     /// この入場で進んだ TRAIL（「TRAIL「…」の 2/5 に着きました」）
     @Published var trailNote: String?
+    /// 扉の位置を指で合わせているあいだ（おおよその位置に出たとき。動かすのは自分の画面だけ）
+    @Published private(set) var adjustingDoor = false
+    /// この GATE を作った本人か（場所の記憶を撮り直せる）
+    @Published private(set) var isGateOwner = false
+    /// ちょっとした知らせ（数秒で消える）
+    @Published private(set) var toast: String?
     let hand = HandTouch()
 
     let stage = ARStage()
@@ -79,6 +89,10 @@ final class ARExperienceModel: ObservableObject {
     private weak var location: LocationModel?
     private(set) var door: GateDoor?
     private var doorAnchor: ARAnchor?
+    /// いま扉が付いている印（場所の記憶で見つけた印か、おおよその位置に置いた印）
+    private var currentAnchor: ARAnchor?
+    private var rotateStartYaw: Float?
+    private var toastTask: Task<Void, Never>?
     private(set) var enteredGate: UUID?
     /// いまの入場券（作品を置く・動かすのに使う）と、その期限
     var visitID: UUID?
@@ -137,6 +151,7 @@ final class ARExperienceModel: ObservableObject {
         visitID = nil
         visitExpires = nil
         trailNote = nil
+        isGateOwner = false
         phase = .scanning
     }
 
@@ -153,6 +168,9 @@ final class ARExperienceModel: ObservableObject {
         door = nil
         if let anchor = doorAnchor { stage.removeAnchor(anchor) }
         doorAnchor = nil
+        currentAnchor = nil
+        adjustingDoor = false
+        rotateStartYaw = nil
         hasPlacedDoor = false
     }
 
@@ -238,13 +256,24 @@ final class ARExperienceModel: ObservableObject {
     private func showDoor(for gate: UUID) async {
         clearDoor()
         var anchor: ARAnchor?
+        if let api = session?.api {
+            isGateOwner = (try? await api.summary(gate))?.owner == session?.userID
+        }
         if let api = session?.api, let media = session?.media, let info = try? await api.placeMap(gate) {
             phase = .findingPlace
+            let started = Date()
             do {
                 let map = try await media.worldMap(path: info.path)
                 stopFindingRequested = false
                 anchor = await stage.relocalize(with: map, anchorName: info.anchor_name, timeout: 20) { [weak self] in
                     self?.stopFindingRequested ?? true
+                }
+                // 見つかったか・何秒探したかだけを送る（見つからない日が続くと、作った人に撮り直しを知らせる）
+                let seconds = Date().timeIntervalSince(started)
+                let found = anchor != nil
+                Trace.log(String(format: "場所の記憶：%@（%.1f 秒）", found ? "見つかった" : "見つからなかった", seconds))
+                if let visit = visitID {
+                    Task { try? await api.reportRelocalize(visit: visit, found: found, seconds: seconds) }
                 }
             } catch {
                 Trace.log("場所の記憶を受け取れませんでした：\(ErrorText.of(error))")
@@ -262,6 +291,7 @@ final class ARExperienceModel: ObservableObject {
             anchor = placed
         }
         guard let anchor else { return }
+        currentAnchor = anchor
         do {
             let newDoor = try GateDoor(anchor: anchor, in: stage.arView)
             door = newDoor
@@ -324,6 +354,7 @@ final class ARExperienceModel: ObservableObject {
     }
 
     func handleTap(at point: CGPoint) {
+        guard !adjustingDoor else { return }
         switch phase {
         case .doorClosed:
             if door?.isHit(stage.arView.entity(at: point)) == true { openDoor() }
@@ -369,10 +400,38 @@ final class ARExperienceModel: ObservableObject {
             if shots.count >= 2, let a = shots.first?.print, let d = FeaturePrint.distance(a, shot.print) {
                 Trace.log(String(format: "作る：正面と %@ の写真の特徴の距離 %.3f", Self.shootSteps[index], d))
             }
-            phase = index + 1 < Self.shootSteps.count ? .createShoot(index + 1) : .createDetails
+            if index + 1 < Self.shootSteps.count {
+                phase = .createShoot(index + 1)
+            } else {
+                await checkSimilar()
+            }
         } catch {
             notice = ErrorText.of(error)
         }
+    }
+
+    /// 作る前に、近く（100m 以内）に同じ場所らしい GATE がないか確かめる。あれば「入る」か「新しく作る」かを本人が選ぶ
+    private func checkSimilar() async {
+        guard let api = session?.api, let fix = location?.usableFix, let first = shots.first else {
+            phase = .createDetails
+            return
+        }
+        phase = .working("近くに同じ場所の GATE がないか確かめています…")
+        let list = (try? await api.candidates(fix, print: first.print)) ?? []
+        let similar = list.filter { $0.similarity == "strong" || $0.similarity == "weak" }
+        Trace.log("作る前の確かめ：似た GATE \(similar.count) 件（\(similar.map(\.similarity).joined(separator: "、"))）")
+        if similar.isEmpty {
+            phase = .createDetails
+        } else {
+            lastPrint = first.print
+            phase = .createSimilar(similar)
+        }
+    }
+
+    /// 似た GATE があっても、自分の GATE を新しく作る
+    func continueCreating() {
+        Trace.log("似た GATE があったが、新しく作る")
+        phase = .createDetails
     }
 
     func confirmDetails() {
@@ -408,12 +467,17 @@ final class ARExperienceModel: ObservableObject {
     func confirmPlace() {
         guard hasPlacedDoor else { return }
         phase = .createMapping
+        startMappingProgress()
+    }
+
+    /// 見回した量を進み具合にする（場所を覚えるとき・撮り直すとき）
+    private func startMappingProgress() {
         mappingProgress = 0
         mappingReady = false
         mappingTask?.cancel()
         mappingTask = Task { [weak self] in
             let started = Date()
-            while let self, !Task.isCancelled, self.phase == .createMapping {
+            while let self, !Task.isCancelled, self.phase == .createMapping || self.phase == .remapping {
                 let elapsed = Date().timeIntervalSince(started)
                 let target: Double
                 switch self.stage.mapping {
@@ -486,6 +550,110 @@ final class ARExperienceModel: ObservableObject {
             }
         } catch {
             phase = .failed(ErrorText.of(error))
+        }
+    }
+}
+
+// MARK: - 扉の位置を指で合わせる・場所の記憶を撮り直す
+
+extension ARExperienceModel {
+    /// 扉の位置を指で合わせ始める（おおよその位置に出たとき。動かすのは自分の画面だけ）
+    func beginAdjust() {
+        guard door != nil else { return }
+        art = nil
+        adjustingDoor = true
+        Trace.log("扉の位置を指で合わせ始めました")
+    }
+
+    /// 指の下の地面へ扉を動かす（印から 6m まで）
+    func dragDoor(to point: CGPoint) {
+        guard adjustingDoor, let door, let floor = stage.floorTransform(at: point) else { return }
+        let world = SIMD3<Float>(floor.columns.3.x, floor.columns.3.y, floor.columns.3.z)
+        let local = door.anchorEntity.convert(position: world, from: nil)
+        guard simd_length(SIMD2<Float>(local.x, local.z)) < 6 else { return }
+        door.setNudge(position: local, yaw: door.nudgeYaw)
+    }
+
+    /// 2 本指で回す
+    func rotateDoor(by radians: Double) {
+        guard adjustingDoor, let door else { return }
+        if rotateStartYaw == nil { rotateStartYaw = door.nudgeYaw }
+        door.setNudge(position: door.nudgePosition, yaw: (rotateStartYaw ?? 0) - Float(radians))
+    }
+
+    func endRotate() {
+        rotateStartYaw = nil
+    }
+
+    func resetAdjust() {
+        door?.setNudge(position: .zero, yaw: 0)
+        Haptics.tap()
+    }
+
+    func finishAdjust() {
+        adjustingDoor = false
+        rotateStartYaw = nil
+        if let door {
+            Trace.log(String(format: "扉の位置を指で合わせました（印から %.2fm・%.0f°）",
+                             simd_length(door.nudgePosition), door.nudgeYaw * 180 / .pi))
+        }
+        Haptics.success()
+    }
+
+    /// 作った人が、いまの扉の位置で場所の記憶を撮り直す（まわりを見回してから保存）
+    func startRemap() {
+        guard isGateOwner, door != nil, enteredGate != nil else { return }
+        adjustingDoor = false
+        art = nil
+        notice = nil
+        phase = .remapping
+        startMappingProgress()
+        Trace.log("場所の記憶の撮り直しを始めました")
+    }
+
+    func cancelRemap() {
+        mappingTask?.cancel()
+        phase = door?.isOpen == true ? .doorOpen : .doorClosed
+    }
+
+    func saveRemap() {
+        Task { await saveRemapAsync() }
+    }
+
+    private func saveRemapAsync() async {
+        guard let door, let gate = enteredGate, let api = session?.api, let media = session?.media,
+              let me = session?.userID else { return }
+        mappingTask?.cancel()
+        phase = .createSaving("場所の記憶を撮り直しています…")
+        // いまの扉の台の位置に新しい印を置き、扉をその印に付け替える（見た目の位置は変わらない）
+        let newAnchor = stage.addAnchor(named: "gg.gate", transform: door.baseWorldTransform)
+        door.anchorEntity.reanchor(.anchor(identifier: newAnchor.identifier), preservingWorldTransform: true)
+        if let old = currentAnchor, old.identifier != newAnchor.identifier { stage.removeAnchor(old) }
+        currentAnchor = newAnchor
+        doorAnchor = newAnchor
+        do {
+            let map = try await stage.captureWorldMap()
+            let saved = try await media.uploadWorldMap(map, owner: me, gate: gate)
+            try await api.registerPlaceMap(gate: gate, path: saved.path, size: saved.size, anchorName: "gg.gate")
+            placedPrecisely = true
+            mapWarning = nil
+            Haptics.success()
+            showToast("場所の記憶を撮り直しました。友達の iPhone でも、この位置に扉が出ます。")
+            Trace.log("場所の記憶を撮り直しました（\(saved.size / 1024)KB）")
+        } catch {
+            notice = "場所の記憶を保存できませんでした。" + ErrorText.of(error)
+            Trace.log("場所の記憶を撮り直せませんでした：\(ErrorText.of(error))")
+        }
+        phase = door.isOpen ? .doorOpen : .doorClosed
+    }
+
+    func showToast(_ text: String) {
+        toastTask?.cancel()
+        toast = text
+        toastTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 3_200_000_000)
+            guard !Task.isCancelled else { return }
+            self?.toast = nil
         }
     }
 }

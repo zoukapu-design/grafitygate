@@ -49,7 +49,7 @@ extension ARExperienceModel {
 
     func makeArtScene() {
         guard artScene == nil, let door else { return }
-        let scene = ArtworkScene(anchor: door.anchorEntity, arView: stage.arView)
+        let scene = ArtworkScene(parent: door.base, arView: stage.arView)
         scene.onPreviewRangeChange = { [weak self] inRange in self?.previewInRange = inRange }
         scene.onApproach = { _ in Haptics.soft() }
         artScene = scene

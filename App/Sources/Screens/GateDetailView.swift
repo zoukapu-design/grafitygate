@@ -49,6 +49,8 @@ struct GateDetailView: View {
     @State private var refreshToken = 0
     @State private var actionMessage: String?
     @State private var trails: [TrailSummary] = []
+    @State private var stats: GateStats?
+    @State private var health: PlaceMapHealth?
 
     init(gateID: UUID, tab: GateTab = .graffiti) {
         self.gateID = gateID
@@ -171,6 +173,22 @@ struct GateDetailView: View {
                 }
                 .font(.caption)
                 .foregroundStyle(Theme.textSecondary)
+                if let stats {
+                    HStack(spacing: 12) {
+                        Label("\(stats.visitor_count) 人が訪れました", systemImage: "figure.walk")
+                        if let last = stats.last_activity_at {
+                            Label("最後の記録 \(ServerDate.relative(last))", systemImage: "clock")
+                        }
+                        if stats.my_visits > 0 {
+                            Label("あなたは \(stats.my_visits) 回", systemImage: "door.left.hand.open")
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(Theme.textSecondary)
+                }
+                if let health {
+                    placeMemoryNote(health)
+                }
                 if let actionMessage {
                     NoticeText(text: actionMessage, isError: false)
                 }
@@ -180,6 +198,23 @@ struct GateDetailView: View {
         .background(Theme.surface)
         .clipShape(RoundedRectangle(cornerRadius: Theme.radiusCard))
         .overlay(RoundedRectangle(cornerRadius: Theme.radiusCard).stroke(Theme.line))
+    }
+
+    /// 作った本人だけ：場所の記憶が友達の iPhone で見つかっているか
+    private func placeMemoryNote(_ h: PlaceMapHealth) -> some View {
+        let text: String
+        if !h.has_map {
+            text = "場所の記憶がありません。友達の iPhone では扉がおおよその位置に出ます。現地で扉を開け、「扉の位置を合わせる」→「この位置で場所の記憶を撮り直す」で保存できます。"
+        } else if h.recent_attempts == 0 {
+            text = "場所の記憶：まだ友達が探していません。"
+        } else {
+            text = "場所の記憶：最近 \(h.recent_attempts) 回のうち \(h.recent_found) 回、友達の iPhone で見つかりました。"
+                + (h.looksStale ? "見つかりにくくなっています。現地で扉を開けて「場所の記憶を撮り直す」を押してください。" : "")
+        }
+        return Label(text, systemImage: h.looksStale ? "exclamationmark.triangle" : "checkmark.seal")
+            .font(.caption)
+            .foregroundStyle(h.looksStale ? Theme.warm : Theme.textSecondary)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     /// この GATE をふくむ TRAIL
@@ -256,6 +291,8 @@ struct GateDetailView: View {
                 self.saved = saved.contains { $0.gate_id == gateID }
             }
             trails = (try? await api.trails(including: gateID)) ?? []
+            stats = try? await api.gateStats(gateID)
+            health = summary?.owner == session.userID ? (try? await api.placeMapHealth(gateID)) ?? nil : nil
         } catch {
             loadError = ErrorText.of(error)
         }
@@ -297,6 +334,9 @@ struct GraffitiSection: View {
     @State private var photo: UIImage?
     @State private var posting = false
     @State private var postMessage: (text: String, isError: Bool)?
+    @State private var order: GraffitiOrder = .newest
+    @State private var season: Season = .current
+    @State private var friendIDs: Set<UUID> = []
 
     init(context: GateContext, refreshToken: Int, onReport: @escaping (ReportItem) -> Void) {
         self.context = context
@@ -304,17 +344,78 @@ struct GraffitiSection: View {
         self.onReport = onReport
     }
 
+    /// 並べ方：新しい順・古い順・友達だけ・季節
+    enum GraffitiOrder: String, CaseIterable, Identifiable {
+        case newest = "新しい順"
+        case oldest = "古い順"
+        case friends = "友達だけ"
+        case season = "季節で"
+        var id: String { rawValue }
+    }
+
+    enum Season: Int, CaseIterable, Identifiable {
+        case spring, summer, autumn, winter
+        var id: Int { rawValue }
+        var label: String { ["春", "夏", "秋", "冬"][rawValue] }
+        static func of(_ date: Date) -> Season {
+            switch Calendar.current.component(.month, from: date) {
+            case 3...5: return .spring
+            case 6...8: return .summer
+            case 9...11: return .autumn
+            default: return .winter
+            }
+        }
+        static var current: Season { of(Date()) }
+    }
+
+    private func arranged(_ list: [Graffiti]) -> [Graffiti] {
+        switch order {
+        case .newest: return list.sorted { $0.created_at > $1.created_at }
+        case .oldest: return list.sorted { $0.created_at < $1.created_at }
+        case .friends:
+            return list.filter { friendIDs.contains($0.author) || $0.author == session.userID }
+                .sorted { $0.created_at > $1.created_at }
+        case .season:
+            return list.filter { ServerDate.parse($0.created_at).map(Season.of) == season }
+                .sorted { $0.created_at > $1.created_at }
+        }
+    }
+
+    private var orderBar: some View {
+        HStack(spacing: 8) {
+            Menu {
+                Picker("並べ方", selection: $order) {
+                    ForEach(GraffitiOrder.allCases) { o in Text(o.rawValue).tag(o) }
+                }
+            } label: {
+                Label(order.rawValue, systemImage: "arrow.up.arrow.down")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Theme.accent)
+            }
+            if order == .season {
+                Picker("季節", selection: $season) {
+                    ForEach(Season.allCases) { s in Text(s.label).tag(s) }
+                }
+                .pickerStyle(.segmented)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             if context.isInside {
                 composer
             }
-            let shown = context.isInside ? graffiti : graffiti.filter { $0.author == session.userID }
+            if context.isInside && graffiti.count > 2 {
+                orderBar
+            }
+            let shown = context.isInside ? arranged(graffiti) : graffiti.filter { $0.author == session.userID }
             if !context.isInside && !shown.isEmpty {
                 Text("ここに残した自分の記憶").font(.headline).foregroundStyle(Theme.text)
             }
             if context.isInside && shown.isEmpty {
-                Text("まだ記憶はありません。最初の 1 枚を残せます。")
+                Text(graffiti.isEmpty ? "まだ記憶はありません。最初の 1 枚を残せます。" : "この並べ方に合う記憶はありません。")
                     .font(.subheadline).foregroundStyle(Theme.textSecondary)
             }
             if !context.isInside && shown.isEmpty {
@@ -401,6 +502,9 @@ struct GraffitiSection: View {
         do {
             graffiti = try await api.graffiti(in: context.gateID)
             names = try await api.names(of: Array(Set(graffiti.map(\.author))))
+            if let me = session.userID, let r = try? await api.relations(me: me) {
+                friendIDs = r.following.intersection(r.followers)
+            }
             if let me = session.userID {
                 likes = (try? await api.likes(for: graffiti.map(\.id), me: me)) ?? [:]
             }
