@@ -89,6 +89,10 @@ def describe(error):
         if error.code == 401:
             return ("鍵が通りません（401）%s。ASC_KEY_ID・ASC_ISSUER_ID・ASC_KEY_P8 が同じ鍵の組か、"
                     "ASC_KEY_P8 に BEGIN〜END まで全部入っているかを確かめてください。" % detail)
+        if error.code == 403 and "agreement" in detail.lower():
+            return ("鍵は通りましたが、Apple の規約への同意が必要です（403）%s。アカウントの持ち主が "
+                    "https://developer.apple.com/account と https://appstoreconnect.apple.com/business で、"
+                    "新しい規約・契約に同意してください。" % detail)
         if error.code == 403:
             return "鍵の権限が足りません（403）%s。App Store Connect の鍵のアクセスを Admin にしてください。" % detail
         return "App Store Connect に断られました（%d）%s" % (error.code, detail)
