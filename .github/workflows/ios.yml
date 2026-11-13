@@ -109,7 +109,14 @@ jobs:
         run: |
           set -o pipefail
           KEY_PATH="$RUNNER_TEMP/asc_key.p8"
-          printf '%s' "$ASC_KEY_P8" > "$KEY_PATH"
+          # 貼り方の違い（Windows の改行・BEGIN〜END の行なし）をそろえる。中身は表に出さない
+          printf '%s' "$ASC_KEY_P8" | python3 -c '
+          import sys, textwrap
+          k = sys.stdin.read().replace("\r", "").strip()
+          if "BEGIN" not in k:
+              body = "".join(k.split())
+              k = "-----BEGIN PRIVATE KEY-----\n" + "\n".join(textwrap.wrap(body, 64)) + "\n-----END PRIVATE KEY-----"
+          sys.stdout.write(k + "\n")' > "$KEY_PATH"
           AUTH=(-allowProvisioningUpdates
                 -authenticationKeyPath "$KEY_PATH"
                 -authenticationKeyID "$ASC_KEY_ID"
@@ -119,8 +126,10 @@ jobs:
           python3 -m pip install --quiet --user --break-system-packages pyjwt cryptography >/dev/null 2>&1 \
             || python3 -m pip install --quiet --user pyjwt cryptography >/dev/null 2>&1 || true
           export ASC_KEY_PATH="$KEY_PATH"
+          # 鍵が通るか・アプリが登録されているかを先に確かめる（だめなら、理由を注記に出して止める）
+          python3 tools/ci/asc.py check "$BUNDLE_ID" || exit 1
           python3 tools/ci/asc.py cleanup-dev-certs || echo "::warning::前の開発用の証明書を取り消せませんでした"
-          BN=$(python3 tools/ci/asc.py next-build-number "$BUNDLE_ID" 2>/dev/null | tail -1)
+          BN=$(python3 tools/ci/asc.py next-build-number "$BUNDLE_ID" 2>/dev/null | tail -1) || BN=""
           case "$BN" in ''|*[!0-9]*) BN="${{ github.run_number }}" ;; esac
           echo "::notice::ビルド番号 $BN"
 
