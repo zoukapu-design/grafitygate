@@ -160,17 +160,22 @@ private struct FeedRow: View {
                     .frame(maxWidth: .infinity)
             }
             VStack(alignment: .leading, spacing: 8) {
-                HStack {
+                HStack(spacing: 10) {
+                    PersonBadge(name: card.author_name, size: 32)
                     Text(card.author_name).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
                     Spacer()
                     Text(ServerDate.relative(card.created_at)).font(.caption).foregroundStyle(Theme.textSecondary)
                 }
                 if !card.body.isEmpty {
                     Text(card.body).font(.body).foregroundStyle(Theme.text)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 Label(card.gate_title, systemImage: "door.left.hand.open")
-                    .font(.caption)
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(Theme.accent)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Theme.accentLight, in: Capsule())
             }
             .padding(16)
         }

@@ -510,18 +510,31 @@ struct GraffitiSection: View {
                     .lineLimit(2...5)
                     .padding(12)
                     .background(Theme.surfaceElevated, in: RoundedRectangle(cornerRadius: 12))
-                PhotosPicker(selection: $photoItem, matching: .images) {
-                    Label(photo == nil ? "写真を付ける" : "写真を選び直す", systemImage: "photo")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(Theme.accent)
+                // 写真と、見せる人（細かい決まりはメニューの中に。詰め込まない）
+                HStack(spacing: 10) {
+                    PhotosPicker(selection: $photoItem, matching: .images) {
+                        Label(photo == nil ? "写真" : "選び直す", systemImage: "photo")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Theme.accent)
+                            .padding(.horizontal, 12)
+                            .frame(minHeight: 36)
+                            .background(Theme.accentLight, in: Capsule())
+                    }
+                    Menu {
+                        Picker("見せる人", selection: $draftVisibility) {
+                            ForEach(Visibility.allCases) { v in Text(v.label).tag(v) }
+                        }
+                        Toggle("現地だけで見せる（友達の新着に出さない）", isOn: $draftLocalOnly)
+                    } label: {
+                        Label(draftVisibility.label + (draftLocalOnly ? "・現地だけ" : ""), systemImage: "eye")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Theme.text)
+                            .padding(.horizontal, 12)
+                            .frame(minHeight: 36)
+                            .background(Theme.surfaceElevated, in: Capsule())
+                    }
+                    Spacer(minLength: 0)
                 }
-                Picker("見せる人", selection: $draftVisibility) {
-                    ForEach(Visibility.allCases) { v in Text(v.label).tag(v) }
-                }
-                .pickerStyle(.segmented)
-                Toggle("現地だけで見せる（友達の新着に出さない）", isOn: $draftLocalOnly)
-                    .font(.subheadline)
-                    .tint(Theme.accent)
                 Button {
                     Task { await post() }
                 } label: {
