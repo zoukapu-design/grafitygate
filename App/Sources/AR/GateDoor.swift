@@ -45,7 +45,7 @@ final class GateDoor {
             try build()
         }
         anchorEntity.addChild(root)
-        root.components.set(OpacityComponent(opacity: 0))
+        Fade.set(root, 0)
         arView.scene.addAnchor(anchorEntity)
         subscription = arView.scene.subscribe(to: SceneEvents.Update.self) { [weak self] event in
             MainActor.assumeIsolated {
@@ -97,7 +97,7 @@ final class GateDoor {
         light.blending = .transparent(opacity: .init(floatLiteral: 1))
         trim = ModelEntity(mesh: try ArchMesh.frame(path: inset, width: 0.012, depth: shape.depth + 0.006, name: "trim"),
                            materials: [light])
-        trim.components.set(OpacityComponent(opacity: 0.55))
+        Fade.set(trim, 0.55)
         root.addChild(trim)
 
         // ガラスの面（開く前）
@@ -134,7 +134,7 @@ final class GateDoor {
             m.blending = .transparent(opacity: .init(floatLiteral: 1))
             spill = ModelEntity(mesh: .generatePlane(width: 1.6, depth: 1.8), materials: [m])
             spill.position = [0, 0.004, 0.75]
-            spill.components.set(OpacityComponent(opacity: 0))
+            Fade.set(spill, 0)
             root.addChild(spill)
         }
 
@@ -242,6 +242,7 @@ final class GateDoor {
             guard let texture = DoorTextures.photo(image) else { continue }
             var m = UnlitMaterial()
             m.color = .init(tint: .white, texture: .init(texture))
+            photoSlots[i].components.remove(FadeOriginal.self)   // iOS 17 の透明度の控えを、新しい写真で取り直す
             photoSlots[i].model?.materials = [m]
             photoSlots[i].parent?.parent?.isEnabled = true
         }
@@ -256,7 +257,7 @@ final class GateDoor {
         animate(0.9) { [weak self] t in
             guard let self else { return }
             let e = Self.easeOut(t)
-            self.root.components.set(OpacityComponent(opacity: e))
+            Fade.set(self.root, e)
             self.root.position = [0, -0.05 * (1 - e), 0]
         }
         Trace.log("扉が現れました")
@@ -270,14 +271,14 @@ final class GateDoor {
         animate(1.1) { [weak self] t in
             guard let self else { return }
             let e = Self.easeInOut(t)
-            self.glass.components.set(OpacityComponent(opacity: 1 - e))
+            Fade.set(self.glass, 1 - e)
             self.glass.position = [0, 0, -0.12 * e]
-            self.spill.components.set(OpacityComponent(opacity: e))
+            Fade.set(self.spill, e)
         }
         // 光の縁が一度強く光ってから落ち着く
         animate(1.4) { [weak self] t in
             let pulse = sin(Float.pi * min(t * 1.4, 1))
-            self?.trim.components.set(OpacityComponent(opacity: 0.6 + 0.4 * pulse))
+            if let self { Fade.set(self.trim, 0.6 + 0.4 * pulse) }
         }
         Trace.log("扉が開きました")
     }
@@ -307,7 +308,7 @@ final class GateDoor {
             // 閉じているあいだは、光の縁がゆっくり息をする
             if tweens.isEmpty {
                 let breathe = 0.5 + 0.12 * sin(Float(clock) * 1.6)
-                trim.components.set(OpacityComponent(opacity: breathe))
+                Fade.set(trim, breathe)
             }
             return
         }

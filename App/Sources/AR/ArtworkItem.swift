@@ -92,7 +92,7 @@ final class ArtworkItem {
         if !preview {
             root.components.set(CollisionComponent(shapes: [.generateSphere(radius: radius)]))
         }
-        root.components.set(OpacityComponent(opacity: preview ? 0.75 : 1))
+        Fade.set(root, preview ? 0.75 : 1)
     }
 
     // MARK: 置き場所
@@ -267,7 +267,7 @@ final class ArtworkItem {
             haloFacesCamera = true
             haloBaseOpacity = 0.95
             let outer = ModelEntity(mesh: .generatePlane(width: 0.95, height: 0.95), materials: [m])
-            outer.components.set(OpacityComponent(opacity: 0.22))
+            Fade.set(outer, 0.22)
             root.addChild(outer)
             outerHalo = outer
         }
@@ -371,7 +371,7 @@ final class ArtworkItem {
     /// 現れる（足もとから光が満ちるように）
     func appear() {
         reveal = 0
-        root.components.set(OpacityComponent(opacity: 0))
+        Fade.set(root, 0)
     }
 
     // MARK: 波紋・光の粒
@@ -387,7 +387,7 @@ final class ArtworkItem {
         m.blending = .transparent(opacity: .init(floatLiteral: 1))
         let size = radius * 1.6
         let ring = ModelEntity(mesh: .generatePlane(width: size, height: size), materials: [m])
-        ring.components.set(OpacityComponent(opacity: 0.9))
+        Fade.set(ring, 0.9)
         root.addChild(ring)
         ripples.append(Ripple(entity: ring, age: 0))
     }
@@ -434,13 +434,13 @@ final class ArtworkItem {
         if reveal < 1 {
             reveal = min(1, reveal + dt / 0.8)
             let e = 1 - pow(1 - reveal, 3)
-            root.components.set(OpacityComponent(opacity: e))
+            Fade.set(root, e)
             body.position = [0, bob + bounce - 0.06 * (1 - e), 0]
         } else {
             body.position = [0, bob + bounce, 0]
         }
         if isPreview {
-            root.components.set(OpacityComponent(opacity: 0.62 + 0.18 * sin(time * 4)))
+            Fade.set(root, 0.62 + 0.18 * sin(time * 4))
         }
         body.orientation = simd_quatf(angle: swayAngle, axis: [0, 1, 0]) * simd_quatf(angle: swayAngle * 0.3, axis: [0, 0, 1])
 
@@ -450,12 +450,12 @@ final class ArtworkItem {
         // 光の強さ：近づく・手が近い・反応で明るく
         let intensity = min(1, 0.42 + 0.22 * near + 0.25 * hover + 0.7 * glow)
         if let halo {
-            halo.components.set(OpacityComponent(opacity: haloBaseOpacity * intensity))
+            Fade.set(halo, haloBaseOpacity * intensity)
             halo.scale = .one * (1 + 0.22 * glow + 0.06 * near)
             if haloFacesCamera { face(halo, toward: camera) }
         }
         if let outerHalo {
-            outerHalo.components.set(OpacityComponent(opacity: 0.16 + 0.22 * glow + 0.06 * near))
+            Fade.set(outerHalo, 0.16 + 0.22 * glow + 0.06 * near)
             face(outerHalo, toward: camera)
         }
         if let core {
@@ -488,7 +488,7 @@ final class ArtworkItem {
                 return true
             }
             ripple.entity.scale = .one * (1 + t * 2.6)
-            ripple.entity.components.set(OpacityComponent(opacity: 0.9 * pow(1 - t, 1.5)))
+            Fade.set(ripple.entity, 0.9 * pow(1 - t, 1.5))
             face(ripple.entity, toward: camera)
             return false
         }
@@ -506,7 +506,7 @@ final class ArtworkItem {
                 spark.entity.removeFromParent()
                 return true
             }
-            spark.entity.components.set(OpacityComponent(opacity: 1 - t * t))
+            Fade.set(spark.entity, 1 - t * t)
             return false
         }
     }
