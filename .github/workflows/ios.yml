@@ -1,4 +1,4 @@
-# GRAFITYGATE を GitHub のクラウド Mac で組み立てる（公開リポジトリなので無料）。
+# Grafity Gate を GitHub のクラウド Mac で組み立てる（公開リポジトリなので無料）。
 # - push のたび：サーバーのルールのテスト（Linux）と、署名なしの組み立ての確認（Mac）
 # - 手動で実行して「TestFlight に送る」を選んだとき：署名して TestFlight に送る
 #

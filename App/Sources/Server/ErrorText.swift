@@ -16,7 +16,7 @@ enum ErrorText {
             return text
         }
         if message.contains("Could not find the function") || message.contains("does not exist") {
-            return "サーバーの準備がまだです（Supabase に GRAFITYGATE の SQL を入れてください）。"
+            return "サーバーの準備がまだです（Supabase に Grafity Gate の SQL を入れてください）。"
         }
         if (error as? URLError) != nil {
             return "通信できませんでした。電波の良い所でもう一度お試しください。"
@@ -28,6 +28,13 @@ enum ErrorText {
     static func isMissingFunction(_ error: Error) -> Bool {
         let message = (error as? PostgrestError)?.message ?? error.localizedDescription
         return message.contains("Could not find the function") || message.contains("PGRST202")
+    }
+
+    /// サーバーの表に列がまだ無い（新しい SQL を入れる前）
+    static func isMissingColumn(_ error: Error) -> Bool {
+        let message = (error as? PostgrestError)?.message ?? error.localizedDescription
+        let code = (error as? PostgrestError)?.code ?? ""
+        return code == "42703" || code == "PGRST204" || (message.contains("column") && message.contains("does not exist"))
     }
 
     /// 入場がだめだった理由（gf_enter の reason）
@@ -67,7 +74,8 @@ enum ErrorText {
         ("gf_bad_letter", "手紙を書けませんでした。本文（2000 文字まで）と、開く条件（日時か現地）を確かめてください。"),
         ("gf_letter_not_yet", "まだ開く日になっていません。"),
         ("gf_letter_onsite", "この手紙は、現地で扉を開けると読めます。"),
-        ("gf_memory_full", "この思い出には、もう写真を足せません。"),
+        ("gf_memory_full", "この思い出には、もう写真・動画・声を足せません。"),
+        ("gf_bad_media", "動画は 15 秒まで、声は 60 秒までです。もう一度お試しください。"),
         ("gf_bad_report", "通報を送れませんでした。理由を選び直してください。"),
         ("gf_bad_trail", "TRAIL は、ちがう GATE を 2〜20 か所つないで作れます。題も入れてください。"),
         ("gf_trail_not_visited", "TRAIL には、自分が扉を開けたことのある GATE だけを入れられます。"),

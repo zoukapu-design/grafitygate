@@ -1,6 +1,6 @@
 # はじめて動かすときの準備
 
-順番にやると、iPhone（TestFlight）で GRAFITYGATE を試せるようになります。
+順番にやると、iPhone（TestFlight）で Grafity Gate を試せるようになります。
 
 ## 1. Supabase にサーバーのルールを入れる
 
@@ -19,9 +19,9 @@
 ## 2. アプリの ID と、App Store Connect のアプリを作る
 
 1. [Identifiers](https://developer.apple.com/account/resources/identifiers/list) で「＋」→ App IDs → App →
-   Description に `GRAFITYGATE`、Bundle ID（Explicit）に `com.zoukapu.grafitygate` を入れて登録
+   Description に `Grafity Gate`、Bundle ID（Explicit）に `com.zoukapu.grafitygate` を入れて登録
 2. [App Store Connect のアプリ一覧](https://appstoreconnect.apple.com/apps) で「＋」→「新規 App」→
-   プラットフォーム iOS、名前 `GRAFITYGATE`、言語 日本語、バンドル ID は上で作ったもの、SKU は `grafitygate` などで作成
+   プラットフォーム iOS、名前 `Grafity Gate`、言語 日本語、バンドル ID は上で作ったもの、SKU は `grafitygate` などで作成
 
 ## 3. GitHub の Secrets に鍵を入れる
 

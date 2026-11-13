@@ -69,7 +69,7 @@ fi
 
 bash "$here/test_concurrency.sh"
 
-for t in test_maps test_artworks test_inside test_social test_trails test_investigations test_place_health; do
+for t in test_maps test_artworks test_inside test_social test_trails test_investigations test_place_health test_memory_media; do
   set +e
   PGOPTIONS='-c client_min_messages=notice' "$PSQL" -q -X -t -A -v ON_ERROR_STOP=1 -f "$here/$t.sql" 2>&1 \
     | sed -n -e 's/^psql:[^:]*:[0-9]*: NOTICE:  /  /p' -e 's/^psql:[^:]*:[0-9]*: ERROR:  /  ERROR: /p' -e '/^== /p'

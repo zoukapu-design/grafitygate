@@ -5,7 +5,7 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 out="${1:-$root/supabase/setup_all.sql}"
 {
-  echo "-- GRAFITYGATE のサーバーの準備（migrations をすべて番号の順につないだもの）。"
+  echo "-- Grafity Gate のサーバーの準備（migrations をすべて番号の順につないだもの）。"
   echo "-- Supabase の SQL Editor に全部貼って Run。何度実行しても大丈夫。"
   echo "-- このファイルは tools/make_setup_sql.sh で作る（直接書き換えない）。"
   for f in "$root"/supabase/migrations/*.sql; do

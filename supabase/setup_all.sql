@@ -1,11 +1,11 @@
--- GRAFITYGATE のサーバーの準備（migrations をすべて番号の順につないだもの）。
+-- Grafity Gate のサーバーの準備（migrations をすべて番号の順につないだもの）。
 -- Supabase の SQL Editor に全部貼って Run。何度実行しても大丈夫。
 -- このファイルは tools/make_setup_sql.sh で作る（直接書き換えない）。
 
 -- ======================================================================
 -- 0001_gf_core.sql
 -- ======================================================================
--- GRAFITYGATE 段階1：GATE を作る・見つける・入る・グラフィティを残す
+-- Grafity Gate 段階1：GATE を作る・見つける・入る・グラフィティを残す
 --
 -- 使い方：Supabase の SQL Editor に、このファイルの中身をそのまま貼って実行する。
 -- 何度実行しても大丈夫（作り直し・if not exists）。
@@ -660,7 +660,7 @@ grant execute on function public.gf_friend_feed() to authenticated;
 -- ======================================================================
 -- 0002_gf_place_maps.sql
 -- ======================================================================
--- GRAFITYGATE：場所の記憶（ARWorldMap）
+-- Grafity Gate：場所の記憶（ARWorldMap）
 --
 -- GATE を作った人が扉の前で保存した「場所の記憶」を、友達の iPhone に届けて、扉を同じ位置・向きに出すためのもの。
 -- 場所の記憶には周りの景色の特徴が入るので、受け取れるのは「その GATE の有効な入場券を持つ人」と作った本人だけ。
@@ -749,7 +749,7 @@ grant execute on function public.gf_can_read_map(text) to authenticated;
 -- ======================================================================
 -- 0003_gf_artworks.sql
 -- ======================================================================
--- GRAFITYGATE：GATE に置く AR の作品（写真パネル・光る文字・花びら・光）
+-- Grafity Gate：GATE に置く AR の作品（写真パネル・光る文字・花びら・光）
 --
 -- 作品は扉（場所の記憶の印 gg.gate）を基準にした位置・向き・大きさで残す。扉が同じ位置に出れば、作品も同じ位置に出る。
 -- 置く・動かすのは現地で入場中のときだけ。見られるのも入場中の人（と置いた本人）だけ。
@@ -944,7 +944,7 @@ grant execute on function public.gf_can_read_media(text) to authenticated;
 -- ======================================================================
 -- 0004_gf_inside.sql
 -- ======================================================================
--- GRAFITYGATE：GATE の中の機能（掲示板・手紙とタイムカプセル・思い出）と、保存・図鑑・通報・ブロック・
+-- Grafity Gate：GATE の中の機能（掲示板・手紙とタイムカプセル・思い出）と、保存・図鑑・通報・ブロック・
 -- データの書き出し・アカウントの削除。
 --
 -- 現地だけの中身（掲示板・思い出）は、その GATE の有効な入場券を持つ人だけが読める（書いた本人・仲間は別）。
@@ -1791,7 +1791,7 @@ revoke all on function public.gf_atlas_on_visit() from public, anon, authenticat
 -- ======================================================================
 -- 0005_gf_social.sql
 -- ======================================================================
--- GRAFITYGATE：お知らせと DM（メッセージ）
+-- Grafity Gate：お知らせと DM（メッセージ）
 --
 -- お知らせ：自分の GATE に記憶・作品・話題が残された、返信・手紙・思い出の仲間・いいね・フォローなど。
 --   GATE の正確な位置や、現地だけの中身（本文・写真）はお知らせに入れない（だれが・どの GATE か・何が起きたかだけ）。
@@ -2147,7 +2147,7 @@ end $$;
 -- ======================================================================
 -- 0006_gf_trails_snapshots.sql
 -- ======================================================================
--- GRAFITYGATE：TRAIL（GATE をつないだ「思い出を歩く道」）と、今と昔（同じ場所の写真を時の順に並べて比べる）
+-- Grafity Gate：TRAIL（GATE をつないだ「思い出を歩く道」）と、今と昔（同じ場所の写真を時の順に並べて比べる）
 --
 -- TRAIL：自分が扉を開けたことのある GATE を 2〜20 か所つなぐ。歩く人は、順番どおりに現地で扉を開けると進む
 --        （進むのはサーバーが入場の記録を見て決める＝アプリが「着いた」と言うだけでは進まない）。
@@ -2514,7 +2514,7 @@ end $$;
 -- ======================================================================
 -- 0007_gf_investigations.sql
 -- ======================================================================
--- GRAFITYGATE：共同調査（その場所の歴史や謎を、ここに来た人どうしで調べる）
+-- Grafity Gate：共同調査（その場所の歴史や謎を、ここに来た人どうしで調べる）
 --
 -- 掲示板の話題の種類に「調べる」を足し、返信に「事実／観察／仮説／噂」のしるしと出典（URL・本の名前など）を付けられるようにする。
 -- しるしは書いた人が選ぶ（確かさをサーバーが決めるのではない）。画面では、しるしごとに分けて見られる。
@@ -2595,7 +2595,7 @@ end $$;
 -- ======================================================================
 -- 0008_gf_place_health.sql
 -- ======================================================================
--- GRAFITYGATE：場所の記憶の「見つかりやすさ」と、GATE の数字
+-- Grafity Gate：場所の記憶の「見つかりやすさ」と、GATE の数字
 --
 -- 場所の記憶（ARWorldMap）は、光や季節で景色が変わると見つからなくなる。入場した人の iPhone が
 -- 「見つかった／見つからなかった」と探した秒数だけを送り（写真や位置は送らない）、見つからない日が続いたら
@@ -2718,6 +2718,163 @@ declare f text;
 begin
   foreach f in array array['gf_report_relocalize(uuid, boolean, real)', 'gf_place_map_health(uuid)',
                            'gf_gate_stats(uuid)']
+  loop
+    execute format('revoke all on function public.%s from public, anon', f);
+    execute format('grant execute on function public.%s to authenticated', f);
+  end loop;
+end $$;
+
+-- ======================================================================
+-- 0009_gf_memory_media.sql
+-- ======================================================================
+-- Grafity Gate：思い出に短い動画（15 秒まで）と声（60 秒まで）
+--
+-- 思い出の 1 つ 1 つ（gf_memory_items）に種類（photo／video／voice）を足す。動画には表紙の絵（thumb_path）を付ける。
+-- ファイルはアプリが iPhone の中で小さく作り直し、位置などの付加情報を消してから送る。
+--
+-- 使い方：0008 のあとに、Supabase の SQL Editor に貼って実行する（setup_all.sql にも入っている）。何度実行しても大丈夫。
+
+-- 写真の置き場所に、動画と声のファイルも置けるようにする（1 つ 30MB まで）
+update storage.buckets
+   set file_size_limit = 31457280,
+       allowed_mime_types = array['image/jpeg', 'image/heic', 'image/png', 'video/mp4', 'video/quicktime',
+                                  'audio/mp4', 'audio/x-m4a', 'audio/m4a', 'audio/aac']
+ where id = 'gf-media';
+
+alter table public.gf_memory_items add column if not exists media_kind text not null default 'photo';
+alter table public.gf_memory_items add column if not exists thumb_path text;
+alter table public.gf_memory_items add column if not exists duration real;
+alter table public.gf_memory_items drop constraint if exists gf_memory_items_media_check;
+alter table public.gf_memory_items add constraint gf_memory_items_media_check check (
+  (media_kind = 'photo' and thumb_path is null and duration is null)
+  or (media_kind = 'video' and thumb_path is not null and duration between 0.5 and 15.5)
+  or (media_kind = 'voice' and thumb_path is null and duration between 0.5 and 60.5));
+create index if not exists gf_memory_items_thumb on public.gf_memory_items(thumb_path);
+
+-- 思い出に動画・声を足す（写真のときと同じ決まり：作った人・仲間で、現地にいるか作ってから 72 時間以内）
+create or replace function public.gf_add_memory_media(p_memory uuid, p_kind text, p_path text, p_thumb text,
+                                                      p_duration real, p_caption text) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare
+  m gf_memories;
+  iid uuid;
+begin
+  if auth.uid() is null then raise exception 'gf_not_signed_in' using errcode = 'P0001'; end if;
+  select * into m from gf_memories where id = p_memory for update;
+  if not found or not gf_is_memory_member(m.id, auth.uid()) then
+    raise exception 'gf_not_found' using errcode = 'P0001';
+  end if;
+  if gf_active_visit(m.gate_id, auth.uid()) is null
+     and m.created_at < now() - make_interval(hours => gf_setting('memory_join_hours')::int) then
+    raise exception 'gf_visit_invalid' using errcode = 'P0001';
+  end if;
+  if p_path is null or split_part(p_path, '/', 1) <> auth.uid()::text
+     or (p_thumb is not null and split_part(p_thumb, '/', 1) <> auth.uid()::text) then
+    raise exception 'gf_bad_media_path' using errcode = 'P0001';
+  end if;
+  if (select count(*) from gf_memory_items where memory_id = m.id) >= gf_setting('memory_items_max')
+     or (select count(*) from gf_memory_items where memory_id = m.id and author = auth.uid())
+        >= gf_setting('memory_items_per_person') then
+    raise exception 'gf_memory_full' using errcode = 'P0001';
+  end if;
+  begin
+    insert into gf_memory_items (memory_id, author, photo_path, caption, media_kind, thumb_path, duration)
+    values (m.id, auth.uid(), p_path, coalesce(p_caption, ''), coalesce(p_kind, 'photo'), p_thumb, p_duration)
+    returning id into iid;
+  exception when check_violation then
+    raise exception 'gf_bad_media' using errcode = 'P0001';
+  end;
+  return iid;
+end $$;
+
+-- 表紙は、声ではないいちばん古いもの（動画なら表紙の絵）
+create or replace function public.gf_memory_cover(p_memory uuid, viewer uuid) returns text
+language sql stable security definer set search_path = public as $$
+  select coalesce(i.thumb_path, i.photo_path) from gf_memory_items i
+  where i.memory_id = p_memory and i.media_kind <> 'voice' and not gf_blocked(viewer, i.author)
+  order by i.created_at limit 1
+$$;
+
+create or replace function public.gf_memory_list(p_gate uuid)
+returns table (id uuid, owner uuid, owner_name text, title text, note text, visibility text, created_at timestamptz,
+               item_count bigint, cover_path text, member_count bigint, is_member boolean, can_add boolean)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if auth.uid() is null then raise exception 'gf_not_signed_in' using errcode = 'P0001'; end if;
+  return query
+    select m.id, m.owner, p.display_name, m.title, m.note, m.visibility, m.created_at,
+           (select count(*) from gf_memory_items i where i.memory_id = m.id),
+           gf_memory_cover(m.id, auth.uid()),
+           (select count(*) from gf_memory_members x where x.memory_id = m.id) + 1,
+           gf_is_memory_member(m.id, auth.uid()),
+           gf_is_memory_member(m.id, auth.uid())
+             and (gf_active_visit(m.gate_id, auth.uid()) is not null
+                  or m.created_at >= now() - make_interval(hours => gf_setting('memory_join_hours')::int))
+    from gf_memories m join profiles p on p.id = m.owner
+    where m.gate_id = p_gate and gf_can_see_memory(m, auth.uid())
+    order by m.created_at desc
+    limit 100;
+end $$;
+
+create or replace function public.gf_my_memories()
+returns table (id uuid, gate_id uuid, gate_title text, owner uuid, owner_name text, title text,
+               created_at timestamptz, item_count bigint, cover_path text)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if auth.uid() is null then raise exception 'gf_not_signed_in' using errcode = 'P0001'; end if;
+  return query
+    select m.id, m.gate_id, g.title, m.owner, p.display_name, m.title, m.created_at,
+           (select count(*) from gf_memory_items i where i.memory_id = m.id),
+           gf_memory_cover(m.id, auth.uid())
+    from gf_memories m
+    join gf_gates g on g.id = m.gate_id
+    join profiles p on p.id = m.owner
+    where gf_is_memory_member(m.id, auth.uid()) and not gf_blocked(auth.uid(), m.owner)
+    order by m.created_at desc
+    limit 200;
+end $$;
+
+-- 写真（と動画・声）を見てよいか（ここまでの全部。動画の表紙の絵も、思い出が見えれば見てよい）
+create or replace function public.gf_can_read_media(p_path text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select auth.uid() is not null and (
+    split_part(p_path, '/', 1) = auth.uid()::text
+    or exists (select 1 from gf_gates g where g.cover_path = p_path and gf_can_see_gate(g, auth.uid()))
+    or exists (select 1 from gf_graffiti x where x.photo_path = p_path
+               and (gf_can_see_graffiti(x, auth.uid()) or gf_feed_visible(x, auth.uid())))
+    or exists (select 1 from gf_artworks a where a.photo_path = p_path and gf_can_see_artwork(a, auth.uid()))
+    or exists (select 1 from gf_letters l where l.photo_path = p_path and l.recipient = auth.uid()
+               and l.opened_at is not null and not gf_blocked(l.author, l.recipient))
+    or exists (select 1 from gf_memory_items i join gf_memories m on m.id = i.memory_id
+               where (i.photo_path = p_path or i.thumb_path = p_path)
+                 and gf_can_see_memory(m, auth.uid()) and not gf_blocked(auth.uid(), i.author))
+    or exists (select 1 from gf_snapshots s where s.photo_path = p_path and gf_can_see_snapshot(s, auth.uid())))
+$$;
+
+-- 写真・動画・声を消す（足した本人か、思い出を作った人）。消したファイルの名前を返す（動画は表紙の絵も）
+create or replace function public.gf_delete_memory_media(p_item uuid) returns text[]
+language plpgsql security definer set search_path = public as $$
+declare
+  main_path text;
+  thumb text;
+begin
+  if auth.uid() is null then raise exception 'gf_not_signed_in' using errcode = 'P0001'; end if;
+  delete from gf_memory_items i
+  where i.id = p_item
+    and (i.author = auth.uid() or exists (select 1 from gf_memories m where m.id = i.memory_id and m.owner = auth.uid()))
+  returning i.photo_path, i.thumb_path into main_path, thumb;
+  if not found then raise exception 'gf_not_found' using errcode = 'P0001'; end if;
+  return array_remove(array[main_path, thumb], null);
+end $$;
+
+revoke all on function public.gf_memory_cover(uuid, uuid) from public, anon, authenticated;
+revoke all on function public.gf_can_read_media(text) from public, anon;
+grant execute on function public.gf_can_read_media(text) to authenticated;
+do $$
+declare f text;
+begin
+  foreach f in array array['gf_add_memory_media(uuid, text, text, text, real, text)', 'gf_memory_list(uuid)',
+                           'gf_my_memories()', 'gf_delete_memory_media(uuid)']
   loop
     execute format('revoke all on function public.%s from public, anon', f);
     execute format('grant execute on function public.%s to authenticated', f);

@@ -109,13 +109,23 @@ extension GateAPI {
         try await client.rpc("gf_memory_list", params: InsideGateParam(p_gate: gate)).execute().value
     }
 
+    /// 思い出の写真・動画・声（0009 を入れる前のサーバーでは、写真だけの形で読む）
     func memoryItems(_ memory: UUID) async throws -> [MemoryItem] {
-        try await client.from("gf_memory_items")
-            .select("id,memory_id,author,photo_path,caption,created_at")
-            .eq("memory_id", value: memory.uuidString)
-            .order("created_at", ascending: true)
-            .limit(100)
-            .execute().value
+        do {
+            return try await client.from("gf_memory_items")
+                .select("id,memory_id,author,photo_path,caption,created_at,media_kind,thumb_path,duration")
+                .eq("memory_id", value: memory.uuidString)
+                .order("created_at", ascending: true)
+                .limit(100)
+                .execute().value
+        } catch let error where ErrorText.isMissingColumn(error) {
+            return try await client.from("gf_memory_items")
+                .select("id,memory_id,author,photo_path,caption,created_at")
+                .eq("memory_id", value: memory.uuidString)
+                .order("created_at", ascending: true)
+                .limit(100)
+                .execute().value
+        }
     }
 
     func memoryMembers(_ memory: UUID) async throws -> [UUID] {
@@ -147,13 +157,28 @@ extension GateAPI {
             .execute().value
     }
 
+    /// 動画・声を足す（写真は addMemoryItem）
+    func addMemoryMedia(_ memory: UUID, kind: MemoryMediaKind, path: String, thumbPath: String?, duration: Double,
+                        caption: String) async throws -> UUID {
+        try await client.rpc("gf_add_memory_media",
+                             params: MemoryMediaParams(p_memory: memory, p_kind: kind.rawValue, p_path: path,
+                                                       p_thumb: thumbPath, p_duration: Float(duration), p_caption: caption))
+            .execute().value
+    }
+
     func deleteMemory(_ memory: UUID) async throws {
         try await client.rpc("gf_delete_memory", params: MemoryIDParam(p_memory: memory)).execute()
     }
 
-    /// 写真を消す。消した写真の置き場所の名前を返す（ファイルも消すため）
-    func deleteMemoryItem(_ item: UUID) async throws -> String? {
-        try await client.rpc("gf_delete_memory_item", params: ItemIDParam(p_item: item)).execute().value
+    /// 写真・動画・声を消す。消したファイルの置き場所の名前を返す（ファイルも消すため。動画は表紙の絵も）
+    func deleteMemoryItem(_ item: UUID) async throws -> [String] {
+        do {
+            return try await client.rpc("gf_delete_memory_media", params: ItemIDParam(p_item: item)).execute().value
+        } catch let error where ErrorText.isMissingFunction(error) {
+            let path: String? = try await client.rpc("gf_delete_memory_item", params: ItemIDParam(p_item: item))
+                .execute().value
+            return path.map { [$0] } ?? []
+        }
     }
 
     func leaveMemory(_ memory: UUID) async throws {
@@ -505,6 +530,27 @@ private struct MemoryParams: Encodable {
 private struct InviteParams: Encodable {
     let p_memory: UUID
     let p_user: UUID
+}
+
+private struct MemoryMediaParams: Encodable {
+    let p_memory: UUID
+    let p_kind: String
+    let p_path: String
+    let p_thumb: String?
+    let p_duration: Float
+    let p_caption: String
+
+    enum CodingKeys: String, CodingKey { case p_memory, p_kind, p_path, p_thumb, p_duration, p_caption }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(p_memory, forKey: .p_memory)
+        try c.encode(p_kind, forKey: .p_kind)
+        try c.encode(p_path, forKey: .p_path)
+        try c.encode(p_thumb, forKey: .p_thumb)               // nil は null
+        try c.encode(p_duration, forKey: .p_duration)
+        try c.encode(p_caption, forKey: .p_caption)
+    }
 }
 
 private struct MemoryItemParams: Encodable {

@@ -30,7 +30,7 @@ targets:
     info:
       path: Sources/Info.plist
       properties:
-        CFBundleDisplayName: "GRAFITYGATE"
+        CFBundleDisplayName: "Grafity Gate"
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         UILaunchScreen: {}
@@ -41,6 +41,7 @@ targets:
         SupabaseURL: "$(SUPABASE_URL)"
         SupabaseAnonKey: "$(SUPABASE_ANON_KEY)"
         NSCameraUsageDescription: "GATE を作るとき・入るときに、目の前の場所や物を写して確かめるために使います。写真から作る特徴の数字だけを送り、写真そのものは選んだときだけ送ります。"
+        NSMicrophoneUsageDescription: "思い出に声を残すときに、マイクを使います。録った声は、残すと決めたときだけ送ります。"
         NSLocationWhenInUseUsageDescription: "近くの GATE を見つけ、GATE の近くにいることを確かめるために、現在地を使います。"
     settings:
       base:

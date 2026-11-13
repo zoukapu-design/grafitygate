@@ -1,6 +1,6 @@
-# GRAFITYGATE — 開発メモ（Claude 向け）
+# Grafity Gate — 開発メモ（Claude 向け）
 
-- アプリ名は GRAFITYGATE（旧名 GRAFFOOT・仮の名前 GRAFTGATE）。コンセプトは「場所に、記憶の扉を。」。設計書は claude.ai の「GRAFITYGATE 詳細設計書」（Claude Docs）。
+- アプリ名は Grafity Gate（2026-11-13 に決定。大文字だけの GRAFITYGATE・旧名 GRAFFOOT・仮の名前 GRAFTGATE は使わない。App ID・リポジトリ名は grafitygate のまま）。コンセプトは「場所に、記憶の扉を。」。設計書は claude.ai の「Grafity Gate 詳細設計書」（Claude Docs）。
 - **このリポジトリは公開している。** 秘密の値（Supabase の鍵、App Store Connect の鍵）は絶対にコミットしない・ログに出さない。GitHub Secrets から CI が `App/Config/Secrets.xcconfig` を作る。
 - **別のアプリ Lyric Path（非公開のリポジトリ）のコードを入れない・写さない。** 文字の道、会話や歌の記録など Lyric Path 固有の仕組みも作らない。AR は Apple（ARKit・RealityKit・Vision）と Google（ARCore）の公開の部品で作る。Lyric Path で分かった問題（夜に AR の座標が飛ぶ、4GB の機種で固まる等）は参考にしてよい。
 - サーバーは Supabase（Lyric Path と同じプロジェクト）。表は `gf_` で始める。`profiles`・`follows`・`reports` は Lyric Path と共有、ブロックは `lp_blocks` を読む（形を変えるときは両方のアプリで確かめる）。
@@ -14,6 +14,7 @@
 - AR の作品（`0003_gf_artworks.sql`・`ArtworkScene`・`ArtworkItem`）：扉の印の下に置き、位置・向き・大きさは扉の足もとの中心が基準（+Z が扉の手前）。置く・動かすのは入場中だけ、見えるのも入場中の人と置いた本人だけ（サーバーが判定）。触れたときの動きはプログラムではなく、決まった形のルール（きっかけ approach／touch／tap／open と、動き glow／sway／ripple／burst／bounce）で残し、サーバーが中身を確かめる。新しい種類・動きを足すときは、サーバーの `gf_valid_rules`・表の check・`supabase/tests/test_artworks.sql` も一緒に直す。
 - 手で触れる（`HandTouch`）：Vision で人さし指の先を見つけ、人の奥行き（`estimatedDepthData`）で指先の 3D の位置を出して作品に入ったら触れたとする（2 回続けて入ったときだけ）。奥行きが無いときは明るくするだけで、画面を押せばいつでも同じ反応。作品が 2.5m 以内にあるときだけ 1 秒に 10 回（4GB の端末は 8 回）、熱いときは止める。カメラの映像・手の形はサーバーに送らない。触れた・調べた回数は `Trace.log` に出る（現場で確かめて、しきい値を直す）。
 - GATE の中の機能（`0004_gf_inside.sql`）：掲示板・思い出は入場券が要る（書いた本人・思い出の仲間は別）。手紙は表を直接読ませず、`gf_my_letters`（中身なし）と `gf_open_letter`（宛先の本人が、日時と現地の条件がそろったときだけ）で返す。自分あてのタイムカプセルは、書いた本人でも開く日まで開けない。画面は `GateDetailView` の「記憶／思い出／掲示板／手紙」の切り替え（`Screens/Gate/`）。
+- 思い出の動画・声（`0009`）：動画は 15 秒まで（`MediaPrep.prepareVideo` が iPhone の中で 720p の MP4 にし、付加情報を消し、表紙の絵を作る）、声は 60 秒まで（`VoiceRecorder`）。ファイルは `gf-media` の自分のフォルダ、動画の表紙は `thumb_path`。長さ・形の決まりはサーバー（`gf_add_memory_media`・表の check）。消すときは `gf_delete_memory_media` が返す名前のファイルを全部消す。再生は `MediaStore.localFile` で受け取って手もとに取っておく。
 - 通報は `gf_reports`（`reports` は Lyric Path の形のままにするため使わない）。ブロックは `gf_block` が共通の `lp_blocks` に書く。人が書いたものを出す所には、必ず「通報する」を付ける（App Store の決まり 1.2）。アカウントの削除は、アプリが自分のフォルダのファイルを消してから `gf_delete_me`。
 - お知らせ（`0005_gf_social.sql`）は gf_ の表の trigger で `gf_notify` が作る（自分の操作・ブロックの相手・公開範囲で見えないものは知らせない）。お知らせには本文・写真・正確な位置を入れない。フォローは共通の表 `follows` に trigger を付けず、読むときに混ぜる。DM はお互いにフォローしている友達とだけ（`gf_dm_send`）。
 - TRAIL（`0006`）は、入場の記録（`gf_visits` の trigger）でサーバーが進める。アプリが「着いた」と送る仕組みは作らない。今と昔の写真はカメラだけ（`SnapshotCaptureView`）。通報の関数 `gf_report` は 0006 が最新（新しい種類を足すときは 0006 以降で作り直す）。

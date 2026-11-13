@@ -66,6 +66,38 @@ struct MediaStore {
         return image
     }
 
+    // MARK: 動画と声
+
+    /// 動画・声のファイルを送る（iPhone の中で作り直して、位置などの付加情報を消したもの）。置き場所の名前を返す。
+    func uploadFile(_ url: URL, owner: UUID, kind: MemoryMediaKind) async throws -> String {
+        let data = try Data(contentsOf: url)
+        let contentType = kind == .video ? "video/mp4" : "audio/mp4"
+        let path = "\(owner.uuidString.lowercased())/\(UUID().uuidString.lowercased()).\(kind.fileExtension)"
+        try await client.storage.from("gf-media").upload(path, data: data, options: FileOptions(contentType: contentType))
+        Trace.log("\(kind == .video ? "動画" : "声")を送りました（\(data.count / 1024)KB）")
+        // 送ったものは、そのまま再生できるように手もとに残す
+        let local = Self.localURL(for: path)
+        try? FileManager.default.createDirectory(at: local.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? data.write(to: local, options: .atomic)
+        return path
+    }
+
+    /// 再生のために、動画・声を受け取って手もとのファイルにする（受け取ったものは取っておく）
+    func localFile(path: String) async -> URL? {
+        let local = Self.localURL(for: path)
+        if FileManager.default.fileExists(atPath: local.path) { return local }
+        guard let data = try? await client.storage.from("gf-media").download(path: path) else { return nil }
+        try? FileManager.default.createDirectory(at: local.deletingLastPathComponent(), withIntermediateDirectories: true)
+        guard (try? data.write(to: local, options: .atomic)) != nil else { return nil }
+        return local
+    }
+
+    private static func localURL(for path: String) -> URL {
+        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        return caches.appendingPathComponent("gf-media", isDirectory: true)
+            .appendingPathComponent(path.replacingOccurrences(of: "/", with: "_"))
+    }
+
     // MARK: 場所の記憶
 
     /// 場所の記憶を縮めて送る（同じ GATE なら上書き）。置き場所の名前と大きさを返す。

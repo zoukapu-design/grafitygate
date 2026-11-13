@@ -402,9 +402,44 @@ struct MemoryItem: Decodable, Identifiable, Hashable {
     let id: UUID
     let memory_id: UUID
     let author: UUID
+    /// ファイルの置き場所（写真・動画・声）
     let photo_path: String
     let caption: String
     let created_at: String
+    /// photo / video / voice（0009 を入れる前のサーバーでは無い＝写真）
+    var media_kind: String?
+    /// 動画の表紙の絵
+    var thumb_path: String?
+    /// 動画・声の長さ（秒）
+    var duration: Double?
+
+    var kind: MemoryMediaKind { MemoryMediaKind(rawValue: media_kind ?? "photo") ?? .photo }
+    /// 一覧に並べる絵（動画は表紙の絵、声は無し）
+    var picturePath: String? {
+        switch kind {
+        case .photo: return photo_path
+        case .video: return thumb_path
+        case .voice: return nil
+        }
+    }
+}
+
+enum MemoryMediaKind: String {
+    case photo, video, voice
+
+    var fileExtension: String {
+        switch self {
+        case .photo: return "jpg"
+        case .video: return "mp4"
+        case .voice: return "m4a"
+        }
+    }
+}
+
+/// 長さを「0:12」の形に
+func durationText(_ seconds: Double) -> String {
+    let s = max(0, Int(seconds.rounded()))
+    return String(format: "%d:%02d", s / 60, s % 60)
 }
 
 /// 自分が作った・仲間に入っている思い出（gf_my_memories）

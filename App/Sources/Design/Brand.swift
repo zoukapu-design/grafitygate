@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// GRAFITYGATE のしるし：石のアーチの扉と、向こうの光（アプリのアイコンと同じ形）
+/// Grafity Gate のしるし：石のアーチの扉と、向こうの光（アプリのアイコンと同じ形）
 struct GateMark: View {
     var size: CGFloat = 120
     var glowing = true
@@ -59,10 +59,10 @@ struct Wordmark: View {
     var size: CGFloat = 22
 
     var body: some View {
-        Text("GRAFITYGATE")
+        Text("Grafity Gate")
             .font(.system(size: size, weight: .semibold, design: .serif))
-            .tracking(size * 0.18)
+            .tracking(size * 0.04)
             .foregroundStyle(Theme.text)
-            .accessibilityLabel("GRAFITYGATE")
+            .accessibilityLabel("Grafity Gate")
     }
 }

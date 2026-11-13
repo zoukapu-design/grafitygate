@@ -1,4 +1,4 @@
--- GRAFITYGATE 段階1：GATE を作る・見つける・入る・グラフィティを残す
+-- Grafity Gate 段階1：GATE を作る・見つける・入る・グラフィティを残す
 --
 -- 使い方：Supabase の SQL Editor に、このファイルの中身をそのまま貼って実行する。
 -- 何度実行しても大丈夫（作り直し・if not exists）。

@@ -44,7 +44,7 @@ final class LocationModel: NSObject, ObservableObject {
 
     /// 使えないときの理由（画面に出す）
     var fixProblem: String? {
-        if isDenied { return "位置情報が許可されていません。設定アプリの「GRAFITYGATE」→「位置情報」で許可してください。" }
+        if isDenied { return "位置情報が許可されていません。設定アプリの「Grafity Gate」→「位置情報」で許可してください。" }
         guard let l = location else { return "現在地を確かめています…" }
         if l.horizontalAccuracy < 0 || l.horizontalAccuracy > Self.maxAccuracy {
             return String(format: "位置の精度が足りません（いま ±%.0fm）。空の開けた所で少し待ってください。", l.horizontalAccuracy)

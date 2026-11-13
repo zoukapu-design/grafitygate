@@ -93,7 +93,7 @@ struct MeView: View {
                     }
 
                     Section {
-                        Text("GRAFITYGATE \(appVersion)")
+                        Text("Grafity Gate \(appVersion)")
                             .font(.caption).foregroundStyle(Theme.textSecondary)
                     } footer: {
                         Text("「調べものの記録」は、AR で何が起きたかの記録です（位置や写真は入っていません）。うまく動かないとき、開発者に送ってください。")
@@ -586,7 +586,7 @@ struct MyDataView: View {
             } header: {
                 Text("アカウントの削除")
             } footer: {
-                Text("GATE・記憶・作品・写真・場所の記憶・手紙・思い出など、GRAFITYGATE のあなたのデータをすべて消します。元に戻せません。")
+                Text("GATE・記憶・作品・写真・場所の記憶・手紙・思い出など、Grafity Gate のあなたのデータをすべて消します。元に戻せません。")
             }
 
             if let working {
