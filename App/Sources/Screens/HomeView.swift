@@ -19,6 +19,14 @@ struct HomeView: View {
                         NoticeText(text: error)
                             .listRowBackground(Color.clear)
                     }
+                    if !loaded && error == nil && (session.state == .starting || session.state == .signedIn) {
+                        // 読み込み中：カードの形だけ先に出す（白い画面で待たせない）
+                        ForEach(0..<2, id: \.self) { _ in
+                            FeedRowPlaceholder()
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                        }
+                    }
                     if loaded && cards.isEmpty {
                         HomeStartGuide(friendCount: friendCount ?? 0) { tab in nav.tab = tab }
                             .listRowBackground(Color.clear)
@@ -77,6 +85,33 @@ struct HomeView: View {
             friendCount = (try? await api.friends(me: me).count) ?? friendCount
         }
         loaded = true
+    }
+}
+
+/// 読み込み中のカードの形（ゆっくり明るさが変わる）
+private struct FeedRowPlaceholder: View {
+    @State private var dim = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Rectangle().fill(Theme.surfaceElevated).frame(height: 200)
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 10) {
+                    Circle().fill(Theme.surfaceElevated).frame(width: 32, height: 32)
+                    RoundedRectangle(cornerRadius: 4).fill(Theme.surfaceElevated).frame(width: 90, height: 12)
+                }
+                RoundedRectangle(cornerRadius: 4).fill(Theme.surfaceElevated).frame(height: 12)
+                RoundedRectangle(cornerRadius: 4).fill(Theme.surfaceElevated).frame(width: 160, height: 12)
+            }
+            .padding(14)
+        }
+        .background(Theme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radiusCard))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radiusCard).stroke(Theme.line))
+        .opacity(dim ? 0.55 : 1)
+        .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: dim)
+        .onAppear { dim = true }
+        .accessibilityLabel("読み込んでいます")
     }
 }
 

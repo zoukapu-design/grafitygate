@@ -17,27 +17,20 @@ struct NotificationsView: View {
                 Text("まだお知らせはありません。あなたの GATE に記憶が残されたり、手紙が届いたりすると、ここに出ます。")
                     .font(.subheadline).foregroundStyle(Theme.textSecondary)
             }
-            ForEach(items) { item in
-                NavigationLink {
-                    destination(item)
-                } label: {
-                    HStack(alignment: .top, spacing: 12) {
-                        Image(systemName: item.symbol)
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(item.kind == "like" ? Theme.alert : Theme.accent)
-                            .frame(width: 34, height: 34)
-                            .background(Theme.surfaceElevated, in: Circle())
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(item.text).font(.subheadline).foregroundStyle(Theme.text)
-                            Text(ServerDate.relative(item.created_at)).font(.caption).foregroundStyle(Theme.textSecondary)
-                        }
-                        Spacer(minLength: 0)
-                        if item.unread {
-                            Circle().fill(Theme.accent).frame(width: 8, height: 8).padding(.top, 6)
-                                .accessibilityLabel("新しい")
+            // 今日・この 1 週間・それより前に分ける
+            ForEach(NotificationGroup.allCases) { group in
+                let inGroup = items.filter { NotificationGroup.of($0.created_at) == group }
+                if !inGroup.isEmpty {
+                    Section(group.label) {
+                        ForEach(inGroup) { item in
+                            NavigationLink {
+                                destination(item)
+                            } label: {
+                                NotificationRow(item: item)
+                            }
+                            .listRowBackground(item.unread ? Theme.accentLight.opacity(0.45) : Theme.surface)
                         }
                     }
-                    .padding(.vertical, 4)
                 }
             }
         }
@@ -67,6 +60,58 @@ struct NotificationsView: View {
             self.error = ErrorText.of(error)
         }
         loaded = true
+    }
+}
+
+/// お知らせの区切り
+enum NotificationGroup: Int, CaseIterable, Identifiable {
+    case today, week, older
+
+    var id: Int { rawValue }
+
+    var label: String {
+        switch self {
+        case .today: return "今日"
+        case .week: return "この 1 週間"
+        case .older: return "それより前"
+        }
+    }
+
+    static func of(_ text: String) -> NotificationGroup {
+        guard let date = ServerDate.parse(text) else { return .older }
+        if Calendar.current.isDateInToday(date) { return .today }
+        return Date().timeIntervalSince(date) < 7 * 86400 ? .week : .older
+    }
+}
+
+/// お知らせの 1 行：した人の顔に、何が起きたかの小さな印
+private struct NotificationRow: View {
+    let item: NotificationItem
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            ZStack(alignment: .bottomTrailing) {
+                NeonAvatar(name: item.actor_name, size: 40)
+                Image(systemName: item.symbol)
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 20, height: 20)
+                    .background(item.kind == "like" ? Theme.alert : Theme.accent, in: Circle())
+                    .overlay(Circle().stroke(.white, lineWidth: 2))
+                    .offset(x: 4, y: 4)
+            }
+            VStack(alignment: .leading, spacing: 3) {
+                Text(item.text).font(.subheadline).foregroundStyle(Theme.text)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(ServerDate.relative(item.created_at)).font(.caption).foregroundStyle(Theme.textSecondary)
+            }
+            Spacer(minLength: 0)
+            if item.unread {
+                Circle().fill(Theme.accent).frame(width: 8, height: 8).padding(.top, 6)
+                    .accessibilityLabel("新しい")
+            }
+        }
+        .padding(.vertical, 4)
     }
 }
 

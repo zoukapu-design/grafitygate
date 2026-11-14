@@ -157,43 +157,63 @@ struct GateDetailView: View {
 
     private func header(_ s: GateSummary) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            if let cover = s.cover_path {
-                RemotePhoto(path: cover)
-                    .frame(height: 220)
-                    .frame(maxWidth: .infinity)
-            }
-            VStack(alignment: .leading, spacing: 8) {
-                Text(s.title).font(.title2.weight(.semibold)).foregroundStyle(Theme.text)
-                if !s.note.isEmpty {
-                    Text(s.note).font(.body).foregroundStyle(Theme.text)
+            // 表紙（無いときは、アイコンと同じ夜空にしるし）。下に題と作った人を重ねる
+            ZStack(alignment: .bottomLeading) {
+                if let cover = s.cover_path {
+                    RemotePhoto(path: cover)
+                } else {
+                    LinearGradient(colors: [Color(hex: 0x060A24), Color(hex: 0x140F3A), Color(hex: 0x3A1530)],
+                                   startPoint: .top, endPoint: .bottom)
+                    GateMark(size: 84, glowing: false)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .padding(.bottom, 40)
                 }
-                HStack(spacing: 12) {
+                LinearGradient(colors: [.black.opacity(0), .black.opacity(0.62)], startPoint: .center, endPoint: .bottom)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(s.title)
+                        .font(.title2.weight(.bold))
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                        .shadow(color: .black.opacity(0.3), radius: 4, y: 1)
                     if s.owner == session.userID {
-                        Label("あなたの GATE", systemImage: "person")
+                        Label("あなたの GATE", systemImage: "person.fill")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.9))
                     } else {
                         NavigationLink {
                             ProfileView(userID: s.owner)
                         } label: {
-                            Label(s.owner_name, systemImage: "person")
+                            HStack(spacing: 6) {
+                                NeonAvatar(name: s.owner_name, size: 22)
+                                Text(s.owner_name).font(.subheadline.weight(.semibold))
+                                Image(systemName: "chevron.right").font(.caption2.weight(.bold))
+                            }
+                            .foregroundStyle(.white.opacity(0.92))
                         }
                     }
-                    Label("\(s.graffiti_count) 枚の記憶", systemImage: "square.stack")
-                    Label(Visibility.label(of: s.visibility), systemImage: "eye")
                 }
-                .font(.caption)
-                .foregroundStyle(Theme.textSecondary)
-                if let stats {
-                    HStack(spacing: 12) {
-                        Label("\(stats.visitor_count) 人が訪れました", systemImage: "figure.walk")
-                        if let last = stats.last_activity_at {
-                            Label("最後の記録 \(ServerDate.relative(last))", systemImage: "clock")
+                .padding(16)
+            }
+            .frame(height: 230)
+            .frame(maxWidth: .infinity)
+            .clipped()
+
+            VStack(alignment: .leading, spacing: 12) {
+                if !s.note.isEmpty {
+                    Text(s.note).font(.body).foregroundStyle(Theme.text)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                // 数の札（横に流す）
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        chip("\(s.graffiti_count) 枚の記憶", "square.stack")
+                        if let stats {
+                            chip("\(stats.visitor_count) 人が訪れた", "figure.walk")
+                            if stats.my_visits > 0 { chip("あなたは \(stats.my_visits) 回", "door.left.hand.open", warm: true) }
+                            if let last = stats.last_activity_at { chip("最後の記録 \(ServerDate.relative(last))", "clock") }
                         }
-                        if stats.my_visits > 0 {
-                            Label("あなたは \(stats.my_visits) 回", systemImage: "door.left.hand.open")
-                        }
+                        chip(Visibility.label(of: s.visibility), "eye")
                     }
-                    .font(.caption)
-                    .foregroundStyle(Theme.textSecondary)
                 }
                 if let health {
                     placeMemoryNote(health)
@@ -207,6 +227,15 @@ struct GateDetailView: View {
         .background(Theme.surface)
         .clipShape(RoundedRectangle(cornerRadius: Theme.radiusCard))
         .overlay(RoundedRectangle(cornerRadius: Theme.radiusCard).stroke(Theme.line))
+    }
+
+    private func chip(_ text: String, _ symbol: String, warm: Bool = false) -> some View {
+        Label(text, systemImage: symbol)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(warm ? Theme.warm : Theme.textSecondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(warm ? Theme.warm.opacity(0.12) : Theme.surfaceElevated, in: Capsule())
     }
 
     /// 作った本人だけ：場所の記憶が友達の iPhone で見つかっているか
