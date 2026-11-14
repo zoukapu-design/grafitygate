@@ -555,14 +555,7 @@ struct CollectionView: View {
                         GateDetailView(gateID: gate.gate_id)
                     } label: {
                         HStack(spacing: 12) {
-                            ZStack {
-                                Theme.surfaceElevated
-                                if let cover = gate.cover_path {
-                                    RemotePhoto(path: cover)
-                                } else {
-                                    Image(systemName: "door.left.hand.open").foregroundStyle(Theme.textSecondary)
-                                }
-                            }
+                            GateCoverImage(path: gate.cover_path, markSize: 28)
                             .frame(width: 56, height: 56)
                             .clipShape(RoundedRectangle(cornerRadius: 10))
                             VStack(alignment: .leading, spacing: 2) {
