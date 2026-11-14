@@ -407,11 +407,24 @@ struct GraffitiSection: View {
     @State private var order: GraffitiOrder = .newest
     @State private var season: Season = .current
     @State private var friendIDs: Set<UUID> = []
+    @State private var sharing: CardSnapshot?
+    @State private var comparing: CardCompareRequest?
 
     init(context: GateContext, refreshToken: Int, onReport: @escaping (ReportItem) -> Void) {
         self.context = context
         self.refreshToken = refreshToken
         self.onReport = onReport
+    }
+
+    /// この GATE の自分のカード（新しい順）
+    private var myCards: [Graffiti] {
+        graffiti.filter { $0.author == session.userID }.sorted { $0.created_at > $1.created_at }
+    }
+
+    private func snapshot(_ item: Graffiti) -> CardSnapshot {
+        let mine = item.author == session.userID
+        let name = mine ? (session.profile?.display_name ?? "") : (names[item.author] ?? "")
+        return CardSnapshot(item, gateTitle: context.title, authorName: name)
     }
 
     /// 並べ方：新しい順・古い順・友達だけ・季節
@@ -494,16 +507,27 @@ struct GraffitiSection: View {
             }
             if let error { NoticeText(text: error) }
             ForEach(shown) { item in
+                let isMine = item.author == session.userID
                 GraffitiCard(item: item, author: names[item.author] ?? "",
-                             isMine: item.author == session.userID,
+                             isMine: isMine,
                              likeCount: likes[item.id]?.count ?? 0, liked: likes[item.id]?.mine ?? false,
                              onLike: { Task { await toggleLike(item) } },
                              onDelete: { Task { await delete(item) } },
                              onReport: {
                                  onReport(ReportItem(id: item.id, target: .graffiti, userID: item.author,
                                                      userName: names[item.author], label: "記憶のカード"))
-                             })
+                             },
+                             onShare: isMine ? { sharing = snapshot(item) } : nil,
+                             onCompare: (!isMine && !myCards.isEmpty) ? {
+                                 comparing = CardCompareRequest(other: snapshot(item), mine: myCards.map(snapshot))
+                             } : nil)
             }
+        }
+        .sheet(item: $sharing) { card in
+            CardShareSheet(card: card).environmentObject(session)
+        }
+        .sheet(item: $comparing) { request in
+            CardCompareView(request: request).environmentObject(session)
         }
         .task(id: "\(context.isInside)-\(refreshToken)") { await load() }
         .onChange(of: photoItem) { _, item in
@@ -665,13 +689,18 @@ struct GraffitiCard: View {
     let onLike: () -> Void
     let onDelete: () -> Void
     let onReport: () -> Void
+    /// 自分のカードを絵にして送る（自分のカードだけ）
+    let onShare: (() -> Void)?
+    /// この GATE の自分のカードと並べる（友達のカードで、自分のカードがあるときだけ）
+    let onCompare: (() -> Void)?
 
     @State private var confirmDelete = false
     @State private var viewer: PhotoViewerItem?
     @EnvironmentObject private var session: SessionModel
 
     init(item: Graffiti, author: String, isMine: Bool, likeCount: Int, liked: Bool,
-         onLike: @escaping () -> Void, onDelete: @escaping () -> Void, onReport: @escaping () -> Void) {
+         onLike: @escaping () -> Void, onDelete: @escaping () -> Void, onReport: @escaping () -> Void,
+         onShare: (() -> Void)? = nil, onCompare: (() -> Void)? = nil) {
         self.item = item
         self.author = author
         self.isMine = isMine
@@ -680,6 +709,8 @@ struct GraffitiCard: View {
         self.onLike = onLike
         self.onDelete = onDelete
         self.onReport = onReport
+        self.onShare = onShare
+        self.onCompare = onCompare
     }
 
     var body: some View {
@@ -733,10 +764,36 @@ struct GraffitiCard: View {
                         Label("現地だけ", systemImage: "mappin.and.ellipse")
                     }
                     Spacer()
+                    if let onCompare {
+                        Button(action: onCompare) {
+                            Label("並べる", systemImage: "rectangle.split.2x1")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(Theme.accent)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("自分のカードと並べて見る")
+                    }
+                    if let onShare {
+                        Button(action: onShare) {
+                            Image(systemName: "square.and.arrow.up")
+                                .foregroundStyle(Theme.accent)
+                                .frame(width: 32, height: 24)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("カードを共有")
+                    }
                     Menu {
                         if isMine {
+                            if let onShare {
+                                Button(action: onShare) { Label("カードを共有", systemImage: "square.and.arrow.up") }
+                            }
                             Button("消す", role: .destructive) { confirmDelete = true }
                         } else {
+                            if let onCompare {
+                                Button(action: onCompare) {
+                                    Label("自分のカードと並べる", systemImage: "rectangle.split.2x1")
+                                }
+                            }
                             Button(action: onReport) {
                                 Label("通報する", systemImage: "exclamationmark.bubble")
                             }

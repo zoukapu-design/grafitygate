@@ -297,13 +297,15 @@ struct BoardThread: Decodable, Identifiable, Hashable {
     let author: UUID
     let author_name: String
     let topic: String
-    let title: String
-    let body: String
+    var title: String
+    var body: String
     let pinned: Bool
     let reply_count: Int
     let last_activity_at: String
     let created_at: String
     let unread: Bool
+    /// 書いた人が直した時刻（直していなければ無い。0014 の前のサーバーでも無い）
+    var edited_at: String?
 
     var boardTopic: BoardTopic { BoardTopic(rawValue: topic) ?? .other }
 }
@@ -313,11 +315,13 @@ struct BoardReply: Decodable, Identifiable, Hashable {
     let id: UUID
     let author: UUID
     let author_name: String
-    let body: String
+    var body: String
     let created_at: String
     /// 調べる話題のしるし（fact / observation / hypothesis / rumor）
     var label: String?
     var source: String?
+    /// 書いた人が直した時刻
+    var edited_at: String?
 
     var evidence: EvidenceLabel? { label.flatMap(EvidenceLabel.init(rawValue:)) }
 }

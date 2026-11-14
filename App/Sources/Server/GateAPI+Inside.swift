@@ -37,17 +37,32 @@ extension GateAPI {
 
     // MARK: 掲示板
 
+    /// 話題の一覧（直した時刻つき。0014 を入れる前のサーバーでは、直した時刻なしで読む）
     func boardThreads(in gate: UUID) async throws -> [BoardThread] {
-        try await client.rpc("gf_board_list", params: InsideGateParam(p_gate: gate)).execute().value
+        do {
+            return try await client.rpc("gf_board_list2", params: InsideGateParam(p_gate: gate)).execute().value
+        } catch let error where ErrorText.isMissingFunction(error) {
+            return try await client.rpc("gf_board_list", params: InsideGateParam(p_gate: gate)).execute().value
+        }
     }
 
-    /// 返信（共同調査のしるし・出典つき。0007 を入れる前のサーバーでは、しるしなしで読む）
+    /// 返信（共同調査のしるし・出典・直した時刻つき。前のサーバーでは、あるものだけで読む）
     func boardReplies(_ thread: UUID) async throws -> [BoardReply] {
         do {
-            return try await client.rpc("gf_board_replies_of2", params: ThreadParam(p_thread: thread)).execute().value
+            return try await client.rpc("gf_board_replies_of3", params: ThreadParam(p_thread: thread)).execute().value
         } catch let error where ErrorText.isMissingFunction(error) {
-            return try await client.rpc("gf_board_replies_of", params: ThreadParam(p_thread: thread)).execute().value
+            do {
+                return try await client.rpc("gf_board_replies_of2", params: ThreadParam(p_thread: thread)).execute().value
+            } catch let error where ErrorText.isMissingFunction(error) {
+                return try await client.rpc("gf_board_replies_of", params: ThreadParam(p_thread: thread)).execute().value
+            }
         }
+    }
+
+    /// 自分の話題・返信を直す（kind は thread / reply。返信のときは title を使わない）
+    func editBoard(kind: String, id: UUID, title: String?, body: String) async throws {
+        try await client.rpc("gf_board_edit",
+                             params: BoardEditParams(p_kind: kind, p_id: id, p_title: title, p_body: body)).execute()
     }
 
     func postThread(visit: UUID, topic: BoardTopic, title: String, body: String) async throws -> UUID {
@@ -492,6 +507,13 @@ private struct EvidenceReplyParams: Encodable {
 private struct PinParams: Encodable {
     let p_thread: UUID
     let p_pinned: Bool
+}
+
+private struct BoardEditParams: Encodable {
+    let p_kind: String
+    let p_id: UUID
+    let p_title: String?
+    let p_body: String
 }
 
 private struct KindIDParams: Encodable {

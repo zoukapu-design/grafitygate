@@ -44,6 +44,7 @@ targets:
         CFBundleURLTypes:
           - CFBundleURLName: com.zoukapu.grafitygate.friend
             CFBundleURLSchemes: [grafitygate]
+        NSPhotoLibraryAddUsageDescription: "共有するカードの絵を、写真アプリに保存するときに使います。"
         NSMicrophoneUsageDescription: "思い出に声を残すときに、マイクを使います。録った声は、残すと決めたときだけ送ります。"
         NSLocationWhenInUseUsageDescription: "近くの GATE を見つけ、GATE の近くにいることを確かめるために、現在地を使います。"
         NSLocationTemporaryUsageDescriptionDictionary:

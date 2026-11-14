@@ -11,6 +11,9 @@ struct HomeView: View {
     @State private var loaded = false
     @State private var report: ReportItem?
     @State private var lastLoad = Date.distantPast
+    /// 自分がカードを残した GATE（友達の新着に「あなたのカードと並べる」を出す）
+    @State private var myCardGates: Set<UUID> = []
+    @State private var comparing: CardCompareRequest?
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -37,9 +40,17 @@ struct HomeView: View {
                     }
                     ForEach(cards) { card in
                         NavigationLink(value: GateRoute(id: card.gate_id)) {
-                            FeedRow(card: card)
+                            FeedRow(card: card,
+                                    onCompare: myCardGates.contains(card.gate_id) ? { Task { await compare(card) } } : nil)
                         }
                         .contextMenu {
+                            if myCardGates.contains(card.gate_id) {
+                                Button {
+                                    Task { await compare(card) }
+                                } label: {
+                                    Label("あなたのカードと並べる", systemImage: "rectangle.split.2x1")
+                                }
+                            }
                             Button {
                                 report = ReportItem(id: card.id, target: .graffiti, userID: card.author,
                                                     userName: card.author_name, label: "\(card.author_name) さんの記憶")
@@ -53,6 +64,9 @@ struct HomeView: View {
                 }
                 .listStyle(.plain)
                 .refreshable { await load() }
+            }
+            .sheet(item: $comparing) { request in
+                CardCompareView(request: request).environmentObject(session)
             }
             .task(id: session.state) { await load() }
             // 新着は 24 時間だけなので、アプリに戻ったとき・ホームに戻ったときに 1 分より古ければ読み直す
@@ -82,6 +96,23 @@ struct HomeView: View {
         }
     }
 
+    /// 友達の新着のカードと、同じ GATE の自分のカードを並べる
+    private func compare(_ card: FeedCard) async {
+        guard let api = session.api, let me = session.userID else { return }
+        do {
+            let mine = try await api.myGraffiti(in: card.gate_id, me: me)
+            guard !mine.isEmpty else {
+                myCardGates.remove(card.gate_id)
+                return
+            }
+            let myName = session.profile?.display_name ?? ""
+            comparing = CardCompareRequest(other: CardSnapshot(card),
+                                           mine: mine.map { CardSnapshot($0, gateTitle: card.gate_title, authorName: myName) })
+        } catch {
+            self.error = ErrorText.of(error)
+        }
+    }
+
     private func loadIfStale() async {
         guard Date().timeIntervalSince(lastLoad) > 60 else { return }
         await load()
@@ -95,6 +126,9 @@ struct HomeView: View {
             error = nil
         } catch {
             self.error = ErrorText.of(error)
+        }
+        if !cards.isEmpty, let me = session.userID, let gates = try? await api.myGraffitiGates(me: me) {
+            myCardGates = gates
         }
         if cards.isEmpty, let me = session.userID {
             friendCount = (try? await api.friends(me: me).count) ?? friendCount
@@ -201,6 +235,8 @@ private struct GuideRow: View {
 
 private struct FeedRow: View {
     let card: FeedCard
+    /// 同じ GATE に自分のカードがあるときだけ
+    var onCompare: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -220,12 +256,26 @@ private struct FeedRow: View {
                     Text(card.body).font(.body).foregroundStyle(Theme.text)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                Label(card.gate_title, systemImage: "door.left.hand.open")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Theme.accent)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(Theme.accentLight, in: Capsule())
+                HStack(spacing: 8) {
+                    Label(card.gate_title, systemImage: "door.left.hand.open")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.accent)
+                        .lineLimit(1)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Theme.accentLight, in: Capsule())
+                    Spacer(minLength: 0)
+                    if let onCompare {
+                        // ここに自分のカードもある：ふたりの記憶を並べる
+                        Button(action: onCompare) {
+                            Label("あなたのカードと並べる", systemImage: "rectangle.split.2x1")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(Theme.warm)
+                                .lineLimit(1)
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                }
             }
             .padding(16)
         }

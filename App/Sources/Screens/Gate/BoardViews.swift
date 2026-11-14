@@ -57,7 +57,9 @@ struct BoardSection: View {
             }
             ForEach(filtered) { thread in
                 NavigationLink {
-                    ThreadView(context: context, thread: thread)
+                    ThreadView(context: context, thread: thread) {
+                        Task { await load() }
+                    }
                 } label: {
                     ThreadRow(thread: thread)
                 }
@@ -113,6 +115,7 @@ private struct ThreadRow: View {
                 HStack(spacing: 10) {
                     Text(thread.author_name)
                     Text(ServerDate.relative(thread.last_activity_at))
+                    if thread.edited_at != nil { Text("直しました") }
                     Label("\(thread.reply_count)", systemImage: "bubble.left")
                 }
                 .font(.caption2)
@@ -205,9 +208,12 @@ struct NewThreadSheet: View {
 /// 話題と返信
 struct ThreadView: View {
     let context: GateContext
-    let thread: BoardThread
+    /// 一覧へ戻ったときに読み直す（直した・消したとき）
+    var onChanged: (() -> Void)?
 
     @EnvironmentObject private var session: SessionModel
+    @State private var thread: BoardThread
+    @State private var editing: BoardEditTarget?
     @Environment(\.dismiss) private var dismiss
     @State private var replies: [BoardReply] = []
     @State private var draft = ""
@@ -220,9 +226,10 @@ struct ThreadView: View {
     @State private var source = ""
     @State private var filter: EvidenceLabel?
 
-    init(context: GateContext, thread: BoardThread) {
+    init(context: GateContext, thread: BoardThread, onChanged: (() -> Void)? = nil) {
         self.context = context
-        self.thread = thread
+        self.onChanged = onChanged
+        _thread = State(initialValue: thread)
         _pinned = State(initialValue: thread.pinned)
     }
 
@@ -244,7 +251,8 @@ struct ThreadView: View {
                     if !thread.body.isEmpty {
                         Text(thread.body).font(.body).foregroundStyle(Theme.text)
                     }
-                    Text("\(thread.author_name)・\(ServerDate.relative(thread.created_at))")
+                    Text("\(thread.author_name)・\(ServerDate.relative(thread.created_at))"
+                         + (thread.edited_at != nil ? "・直しました" : ""))
                         .font(.caption).foregroundStyle(Theme.textSecondary)
                 }
                 .padding(16)
@@ -260,6 +268,7 @@ struct ThreadView: View {
                 ForEach(shownReplies) { reply in
                     ReplyRow(reply: reply, canDelete: reply.author == session.userID || isGateOwner,
                              isMine: reply.author == session.userID,
+                             onEdit: { editing = .reply(reply) },
                              onDelete: { Task { await deleteReply(reply) } },
                              onReport: {
                                  report = ReportItem(id: reply.id, target: .reply, userID: reply.author,
@@ -316,6 +325,13 @@ struct ThreadView: View {
                             Label(pinned ? "ピン留めをやめる" : "いちばん上にピン留め", systemImage: "pin")
                         }
                     }
+                    if thread.author == session.userID {
+                        Button {
+                            editing = .thread(thread)
+                        } label: {
+                            Label("話題を直す", systemImage: "pencil")
+                        }
+                    }
                     if thread.author == session.userID || isGateOwner {
                         Button(role: .destructive) {
                             confirmDelete = true
@@ -342,6 +358,23 @@ struct ThreadView: View {
             Text("返信も一緒に見えなくなります。")
         }
         .sheet(item: $report) { item in ReportSheet(item: item) }
+        .sheet(item: $editing) { target in
+            BoardEditSheet(target: target) { title, body in
+                switch target {
+                case .thread:
+                    thread.title = title
+                    thread.body = body
+                    thread.edited_at = ISO8601DateFormatter().string(from: Date())
+                case .reply(let reply):
+                    if let i = replies.firstIndex(where: { $0.id == reply.id }) {
+                        replies[i].body = body
+                        replies[i].edited_at = ISO8601DateFormatter().string(from: Date())
+                    }
+                }
+                onChanged?()
+            }
+            .environmentObject(session)
+        }
         .task { await load() }
         .refreshable { await load() }
     }
@@ -436,6 +469,7 @@ struct ThreadView: View {
         guard let api = session.api else { return }
         do {
             try await api.deleteBoard(kind: "thread", id: thread.id)
+            onChanged?()
             dismiss()
         } catch {
             message = ErrorText.of(error)
@@ -457,6 +491,7 @@ private struct ReplyRow: View {
     let reply: BoardReply
     let canDelete: Bool
     let isMine: Bool
+    let onEdit: () -> Void
     let onDelete: () -> Void
     let onReport: () -> Void
 
@@ -466,9 +501,13 @@ private struct ReplyRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     Text(isMine ? "あなた" : reply.author_name).font(.caption.weight(.semibold)).foregroundStyle(Theme.text)
-                    Text(ServerDate.relative(reply.created_at)).font(.caption2).foregroundStyle(Theme.textSecondary)
+                    Text(ServerDate.relative(reply.created_at) + (reply.edited_at != nil ? "・直しました" : ""))
+                        .font(.caption2).foregroundStyle(Theme.textSecondary)
                     Spacer()
                     Menu {
+                        if isMine {
+                            Button(action: onEdit) { Label("直す", systemImage: "pencil") }
+                        }
                         if canDelete {
                             Button("消す", role: .destructive, action: onDelete)
                         }
@@ -499,5 +538,118 @@ private struct ReplyRow: View {
         .padding(12)
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.line))
+    }
+}
+
+
+/// 直すもの（話題か返信）
+enum BoardEditTarget: Identifiable {
+    case thread(BoardThread)
+    case reply(BoardReply)
+
+    var id: UUID {
+        switch self {
+        case .thread(let t): return t.id
+        case .reply(let r): return r.id
+        }
+    }
+}
+
+/// 自分の話題・返信を直す画面
+struct BoardEditSheet: View {
+    let target: BoardEditTarget
+    let onSaved: (_ title: String, _ body: String) -> Void
+
+    @EnvironmentObject private var session: SessionModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var title: String
+    @State private var text: String
+    @State private var saving = false
+    @State private var message: String?
+
+    init(target: BoardEditTarget, onSaved: @escaping (_ title: String, _ body: String) -> Void) {
+        self.target = target
+        self.onSaved = onSaved
+        switch target {
+        case .thread(let t):
+            _title = State(initialValue: t.title)
+            _text = State(initialValue: t.body)
+        case .reply(let r):
+            _title = State(initialValue: "")
+            _text = State(initialValue: r.body)
+        }
+    }
+
+    private var isThread: Bool {
+        if case .thread = target { return true }
+        return false
+    }
+
+    private var trimmedTitle: String { title.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var trimmedText: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    private var canSave: Bool {
+        if saving { return false }
+        if isThread { return (1...60).contains(trimmedTitle.count) && trimmedText.count <= 1000 }
+        return (1...1000).contains(trimmedText.count)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    if isThread {
+                        TextField("題（60 文字まで）", text: $title)
+                    }
+                    TextField(isThread ? "本文（なくても大丈夫）" : "返信", text: $text, axis: .vertical)
+                        .lineLimit(4...12)
+                } footer: {
+                    HStack(alignment: .top) {
+                        Text("直すと「直しました」と出ます。")
+                        Spacer()
+                        Text("\(trimmedText.count)/1000")
+                            .monospacedDigit()
+                            .foregroundStyle(trimmedText.count > 1000 ? Theme.alert : Theme.textSecondary)
+                    }
+                }
+                if let message {
+                    Section { NoticeText(text: message) }
+                }
+            }
+            .navigationTitle(isThread ? "話題を直す" : "返信を直す")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("やめる") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        Task { await save() }
+                    } label: {
+                        if saving { ProgressView() } else { Text("保存").bold() }
+                    }
+                    .disabled(!canSave)
+                }
+            }
+        }
+        .interactiveDismissDisabled(saving)
+    }
+
+    private func save() async {
+        guard let api = session.api else { return }
+        saving = true
+        defer { saving = false }
+        do {
+            switch target {
+            case .thread(let t):
+                try await api.editBoard(kind: "thread", id: t.id, title: trimmedTitle, body: trimmedText)
+            case .reply(let r):
+                try await api.editBoard(kind: "reply", id: r.id, title: nil, body: trimmedText)
+            }
+            Haptics.success()
+            Trace.log("掲示板：\(isThread ? "話題" : "返信")を直した")
+            onSaved(trimmedTitle, trimmedText)
+            dismiss()
+        } catch {
+            message = ErrorText.of(error)
+        }
     }
 }

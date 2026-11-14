@@ -95,6 +95,28 @@ struct GateAPI {
             .execute().value
     }
 
+    /// 自分がカードを残した GATE（ホームの新着で「並べる」を出すかを決める）
+    func myGraffitiGates(me: UUID) async throws -> Set<UUID> {
+        let rows: [GateIDRow] = try await client.from("gf_graffiti")
+            .select("gate_id")
+            .eq("author", value: me.uuidString)
+            .order("created_at", ascending: false)
+            .limit(1000)
+            .execute().value
+        return Set(rows.map(\.gate_id))
+    }
+
+    /// ある GATE の自分のカード（新しい順。自分のものはいつでも読める）
+    func myGraffiti(in gate: UUID, me: UUID) async throws -> [Graffiti] {
+        try await client.from("gf_graffiti")
+            .select("id,gate_id,author,body,photo_path,visibility,local_only,created_at")
+            .eq("gate_id", value: gate.uuidString)
+            .eq("author", value: me.uuidString)
+            .order("created_at", ascending: false)
+            .limit(50)
+            .execute().value
+    }
+
     // MARK: AR の作品
 
     /// GATE の作品（入場中なら公開範囲が合うもの、そうでなければ自分のものだけが返る）
@@ -438,4 +460,9 @@ extension GateAPI {
     func acceptTerms(_ version: Int) async throws {
         try await client.rpc("gf_accept_terms", params: AcceptTermsParams(p_version: version)).execute()
     }
+}
+
+
+private struct GateIDRow: Decodable {
+    let gate_id: UUID
 }
