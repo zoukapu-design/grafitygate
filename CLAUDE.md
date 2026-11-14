@@ -1,7 +1,8 @@
 # Grafity Gate — 開発メモ（Claude 向け）
 
 - アプリ名は Grafity Gate（2026-11-13 に決定。大文字だけの GRAFITYGATE・旧名 GRAFFOOT・仮の名前 GRAFTGATE は使わない。App ID・リポジトリ名は grafitygate のまま）。コンセプトは「場所に、記憶の扉を。」。設計書は claude.ai の「Grafity Gate 詳細設計書」（Claude Docs）。
-- **このリポジトリは公開している。** 秘密の値（Supabase の鍵、App Store Connect の鍵）は絶対にコミットしない・ログに出さない。GitHub Secrets から CI が `App/Config/Secrets.xcconfig` を作る。
+- **このリポジトリは公開している。** 秘密の値（Supabase の鍵、App Store Connect の鍵）は絶対にコミットしない・ログに出さない。GitHub Secrets から CI が `App/Config/Secrets.xcconfig` を作る。サーバーのアドレスは `//` を xcconfig に書かず、ホスト名だけ（`SUPABASE_HOST`→Info.plist の `SupabaseHost`）を入れてアプリが `https://` を付ける（2026-11-15：Mac の bash で `//` の置き換えが崩れ、ホスト名の無いアドレスで Supabase の部品が起動直後にアプリを止めていた）。形は CI（書く前と、送る前の Info.plist）とアプリ（`ServerConfig`）の両方で確かめる。
+- TestFlight で落ちたら、オーナーに TestFlight の「共有」を押してもらい、`gh workflow run crashes.yml` で落ちた理由と流れを注記に出して読む（`asc.py crashes`。メール・ひとことは出さない）。
 - **別のアプリ Lyric Path（非公開のリポジトリ）のコードを入れない・写さない。** 文字の道、会話や歌の記録など Lyric Path 固有の仕組みも作らない。AR は Apple（ARKit・RealityKit・Vision）と Google（ARCore）の公開の部品で作る。Lyric Path で分かった問題（夜に AR の座標が飛ぶ、4GB の機種で固まる等）は参考にしてよい。
 - サーバーは Supabase（Lyric Path と同じプロジェクト）。表は `gf_` で始める。`profiles`・`follows`・`reports` は Lyric Path と共有、ブロックは `lp_blocks` を読む（形を変えるときは両方のアプリで確かめる）。
 - 判定はすべてサーバー（`supabase/migrations/*.sql` の関数と行ごとの権限）で行う。アプリだけで決まりを守らない。決まりを変えたら `supabase/tests/test_core.sql` にテストを足し、`bash supabase/tests/run.sh` が通ることを確かめる（CI でも毎回動く）。SQL は何度実行しても大丈夫な書き方にする（run.sh が 2 回流して確かめる）。migrations を変えたら `bash tools/make_setup_sql.sh` で `supabase/setup_all.sql`（オーナーが 1 回貼るだけで済むもの）も作り直す（食い違うとテストが落ちる）。

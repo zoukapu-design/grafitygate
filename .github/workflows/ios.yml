@@ -7,7 +7,7 @@
 #   ASC_KEY_ID         App Store Connect API キーの Key ID
 #   ASC_ISSUER_ID      App Store Connect API の Issuer ID
 #   ASC_KEY_P8         ダウンロードした .p8 ファイルの中身（BEGIN〜END を全部）
-#   SUPABASE_URL       Supabase のプロジェクト URL
+#   SUPABASE_URL       Supabase のプロジェクト URL（https://xxxx.supabase.co。ホスト名だけをアプリに入れる）
 #   SUPABASE_ANON_KEY  Supabase の anon キー
 # 秘密の値はログに出さない（GitHub が自動で伏せ字にする。こちらでも echo しない）。
 name: iOS
@@ -66,10 +66,35 @@ jobs:
         run: |
           F="$PROJECT_DIR/Config/Secrets.xcconfig"
           : > "$F"
-          # xcconfig では // がコメントになるので /$()/ に置き換える
-          [ -n "$SUPABASE_URL" ] && echo "SUPABASE_URL = ${SUPABASE_URL//\/\//\/\$()\/}" >> "$F"
-          [ -n "$SUPABASE_ANON_KEY" ] && echo "SUPABASE_ANON_KEY = $SUPABASE_ANON_KEY" >> "$F"
-          if [ -s "$F" ]; then echo "::notice title=鍵::Supabase の鍵：あり"; else echo "::warning title=鍵::Supabase の鍵：なし（サーバーなしで組み立てる）"; fi
+          # xcconfig では // がコメントになり、置き換えの書き方は Mac の bash の版で崩れる（2026-11-15：
+          # ホスト名の無いアドレスが入り、起動してすぐ落ちた）。アドレスからホスト名だけを取り出して書き、
+          # アプリが https:// を付ける。形がおかしいときは、ここで理由を出して止める（中身は出さない）。
+          if [ -n "$SUPABASE_URL" ]; then
+            HOST=$(python3 -c '
+          import os, sys, urllib.parse
+          raw = os.environ["SUPABASE_URL"].strip()
+          u = urllib.parse.urlparse(raw if "://" in raw else "https://" + raw)
+          host = (u.hostname or "").strip()
+          ok = u.scheme == "https" and "." in host and all(c.isalnum() or c in "-." for c in host)
+          print(host if ok else "")') || HOST=""
+            if [ -z "$HOST" ]; then
+              echo "::error title=鍵::SUPABASE_URL を読めませんでした。https://xxxx.supabase.co の形（最後に / やほかの文字を付けない）で入れ直してください"
+              exit 1
+            fi
+            echo "SUPABASE_HOST = $HOST" >> "$F"
+          fi
+          if [ -n "$SUPABASE_ANON_KEY" ]; then
+            KEY=$(printf '%s' "$SUPABASE_ANON_KEY" | tr -d '[:space:]')
+            case "$KEY" in *//*) echo "::error title=鍵::SUPABASE_ANON_KEY に // が入っています。鍵だけを入れ直してください"; exit 1 ;; esac
+            echo "SUPABASE_ANON_KEY = $KEY" >> "$F"
+          fi
+          if grep -q SUPABASE_HOST "$F" && grep -q SUPABASE_ANON_KEY "$F"; then
+            echo "::notice title=鍵::Supabase の鍵：あり（アドレスの形も確かめた）"
+          elif [ -s "$F" ]; then
+            echo "::warning title=鍵::Supabase の鍵が片方しかありません（SUPABASE_URL と SUPABASE_ANON_KEY の両方が要る）"
+          else
+            echo "::warning title=鍵::Supabase の鍵：なし（サーバーなしで組み立てる）"
+          fi
           if [ "$HAS_SIGNING" = "true" ]; then echo "::notice title=鍵::TestFlight の鍵：あり"; else echo "::warning title=鍵::TestFlight の鍵：なし（APPLE_TEAM_ID・ASC_KEY_ID・ASC_ISSUER_ID・ASC_KEY_P8）"; fi
 
       - name: Xcode プロジェクトを作る
@@ -146,6 +171,15 @@ jobs:
             tail -30 archive.log | report "archive log tail"
             exit 1
           fi
+
+          # 送る前に、組み立てたアプリにサーバーのホスト名が正しく入っているかを確かめる（中身は出さない）
+          PL=$(find "$RUNNER_TEMP/$SCHEME.xcarchive/Products/Applications" -maxdepth 2 -name Info.plist | head -1)
+          H=$(/usr/libexec/PlistBuddy -c "Print :SupabaseHost" "$PL" 2>/dev/null || true)
+          if ! printf '%s' "$H" | grep -Eq '^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$'; then
+            echo "::error title=鍵::組み立てたアプリにサーバーのアドレスが正しく入っていません。TestFlight には送りません"
+            exit 1
+          fi
+          echo "::notice title=鍵::組み立てたアプリのサーバーのアドレス：形は正しい"
 
           cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
           <?xml version="1.0" encoding="UTF-8"?>

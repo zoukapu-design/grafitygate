@@ -3,14 +3,26 @@ import Supabase
 
 /// サーバーの場所と鍵（GitHub Secrets から組み立て時に入る。無ければサーバーなしで起動する）
 enum ServerConfig {
+    /// サーバーのアドレス。組み立てのときにホスト名（xxxx.supabase.co）だけを入れ、ここで https:// を付ける。
+    /// ホスト名の無いアドレスを Supabase の部品に渡すと、部品がその場でアプリを止める（2026-11-15 に起動してすぐ落ちた）ので、
+    /// 形を確かめてから渡す。おかしければ「サーバーなし」として動かす。
     static var url: URL? {
-        guard let s = Bundle.main.object(forInfoDictionaryKey: "SupabaseURL") as? String, !s.isEmpty,
-              let u = URL(string: s), u.scheme == "https" else { return nil }
+        guard let raw = Bundle.main.object(forInfoDictionaryKey: "SupabaseHost") as? String else { return nil }
+        let host = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !host.isEmpty, !host.contains("$("), host.contains("."),
+              host.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" || $0 == "." }),
+              let u = URL(string: "https://\(host)"), u.scheme == "https",
+              let h = u.host(percentEncoded: false), !h.isEmpty else {
+            if !raw.isEmpty { Trace.log("サーバーのアドレスの形がおかしいので、サーバーなしで動かします") }
+            return nil
+        }
         return u
     }
 
     static var anonKey: String? {
-        guard let s = Bundle.main.object(forInfoDictionaryKey: "SupabaseAnonKey") as? String, !s.isEmpty else { return nil }
+        guard let raw = Bundle.main.object(forInfoDictionaryKey: "SupabaseAnonKey") as? String else { return nil }
+        let s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !s.isEmpty, !s.contains("$("), !s.contains(where: \.isWhitespace) else { return nil }
         return s
     }
 }
