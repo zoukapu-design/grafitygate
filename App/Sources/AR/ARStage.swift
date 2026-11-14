@@ -25,7 +25,7 @@ final class ARStage: NSObject, ObservableObject {
             case .lookAround: return "iPhone をゆっくり動かして、周りを見回してください"
             case .moveSlowly: return "動きが速すぎます。ゆっくり動かしてください"
             case .tooDark: return "暗すぎて周りが見えません。明るい所でお試しください"
-            case .featureless: return "模様の少ない所です。形や文字のある物の方に向けてください"
+            case .featureless: return "周りの形がつかみにくい所です。少し離れて、床や家具も一緒に映してください"
             case .relocalizing: return "扉の場所を探しています。作った人が扉を置いた辺りを見回してください"
             case .interrupted: return "カメラが止まりました。少し待つと戻ります"
             case .cameraDenied: return "カメラが許可されていません。設定アプリの「Grafity Gate」で「カメラ」を入れてください"
@@ -172,26 +172,50 @@ final class ARStage: NSObject, ObservableObject {
 
     // MARK: 写す
 
-    /// いま写してよいか（だめなら理由）
+    /// いま写してよいか（だめなら理由）。
+    /// 写真の特徴（Vision）で見分けるのは絵なので、絵そのものの明るさ・模様・ぶれで決める（`ShotQuality`）。
+    /// AR の点の数・追跡の状態では止めない（止めて写すほど点が減り、模様の多い物でも断っていた）。記録には残す。
     func shotProblem() -> String? {
         guard let frame = arView.session.currentFrame else { return "カメラの準備をしています…" }
-        let light = frame.lightEstimate?.ambientIntensity ?? 1000
-        switch frame.camera.trackingState {
-        case .normal:
-            break
-        case .limited(.insufficientFeatures):
-            return light < 150 ? "暗すぎます。明るい所で写してください。" : "模様の少ない所です。形や文字のはっきりした物を写してください。"
-        case .limited(.excessiveMotion):
-            return "動きが速すぎます。少しのあいだ iPhone を止めてください。"
-        default:
-            return "周りを少し見回してから、もう一度写してください。"
+        let tracking = frame.camera.trackingState
+        let arPoints = frame.rawFeaturePoints?.points.count ?? 0
+        let ambient = frame.lightEstimate?.ambientIntensity
+        let look = ShotQuality.measure(frame.capturedImage)
+
+        var problem: String?
+        if case .limited(.excessiveMotion) = tracking {
+            problem = "動きが速すぎます。少しのあいだ iPhone を止めてください。"
+        } else if cameraSpeed > 0.5 {
+            problem = "少しのあいだ iPhone を止めて写してください。"
+        } else if let look {
+            if look.isDark {
+                problem = "暗すぎます。明るい所で写してください。"
+            } else if !look.hasPattern {
+                problem = "模様の少ない所か、ぼやけています。形や文字のある物に向けて、少し離れて写してください。"
+            }
+        } else if let ambient, ambient < 120 {
+            problem = "暗すぎます。明るい所で写してください。"
         }
-        if light < 120 { return "暗すぎます。明るい所で写してください。" }
-        if (frame.rawFeaturePoints?.points.count ?? 0) < 40 {
-            return "模様の少ない所です。形や文字のはっきりした物を写してください。"
+
+        let lookText = look.map {
+            String(format: "明るさ %.0f・輪郭 %.1f%%・模様のある区画 %d/%d", $0.meanLuma, $0.edgeFraction * 100,
+                   $0.texturedCells, ShotQuality.cellCount)
+        } ?? "絵を測れない"
+        Trace.log("写す前の確かめ：\(lookText)・AR の点 \(arPoints)・追跡 \(Self.trackingText(tracking))"
+                  + String(format: "・動き %.2fm/秒", cameraSpeed) + " → " + (problem ?? "写してよい"))
+        return problem
+    }
+
+    static func trackingText(_ state: ARCamera.TrackingState) -> String {
+        switch state {
+        case .normal: return "ふつう"
+        case .notAvailable: return "使えない"
+        case .limited(.initializing): return "準備中"
+        case .limited(.excessiveMotion): return "動きが速い"
+        case .limited(.insufficientFeatures): return "点が少ない"
+        case .limited(.relocalizing): return "場所の記憶を探している"
+        case .limited: return "かぎられている"
         }
-        if cameraSpeed > 0.5 { return "少しのあいだ iPhone を止めて写してください。" }
-        return nil
     }
 
     /// いまのカメラの絵から、写真の特徴（と、頼まれれば写真）を作る

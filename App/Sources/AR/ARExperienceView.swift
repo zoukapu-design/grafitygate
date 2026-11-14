@@ -38,7 +38,7 @@ struct ARExperienceView: View {
             }
             HandCursorView(hand: model.hand)
             VStack(spacing: 12) {
-                ARTopBar(stage: model.stage, onClose: onClose)
+                ARTopBar(model: model, stage: model.stage, onClose: onClose)
                 if let trailTarget, model.mode == .explore, model.phase == .scanning {
                     TrailCompassPill(target: trailTarget)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -138,6 +138,7 @@ private struct CornerBrackets: Shape {
 
 /// 上の帯：閉じる・AR の案内（問題があるときだけ）
 private struct ARTopBar: View {
+    @ObservedObject var model: ARExperienceModel
     @ObservedObject var stage: ARStage
     @EnvironmentObject private var location: LocationModel
     let onClose: (() -> Void)?
@@ -154,13 +155,13 @@ private struct ARTopBar: View {
                 }
                 .accessibilityLabel("閉じる")
             }
-            if let text = stage.guidance.text ?? location.fixProblem {
+            if let text = stageHint ?? location.fixProblem {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(text)
                         .font(.footnote.weight(.medium))
                         .foregroundStyle(Theme.text)
                     // 設定アプリでしか直せないとき（カメラ・位置情報の許可、正確な位置情報）
-                    if stage.guidance == .cameraDenied || (stage.guidance.text == nil && location.needsSettings),
+                    if stage.guidance == .cameraDenied || (stageHint == nil && location.needsSettings),
                        let url = URL(string: UIApplication.openSettingsURLString) {
                         Button("設定アプリを開く") { UIApplication.shared.open(url) }
                             .font(.footnote.weight(.bold))
@@ -176,6 +177,19 @@ private struct ARTopBar: View {
         }
         .padding(.top, 8)
         .animation(.easeInOut(duration: 0.25), value: stage.guidance)
+    }
+
+    /// 上に出す AR の案内。写真を写しているあいだは、AR の追跡だけの案内（周りの形がつかみにくい・見回して）は出さない。
+    /// 写真は絵そのもので確かめる（`ShotQuality`）ので、ここで「模様が少ない」と出すと、写せるのに食い違う（2026-11-15）。
+    /// AR の追跡は、このあと扉を床に置くとき・場所を覚えるときに要るので、そこでは出す。
+    private var stageHint: String? {
+        switch model.phase {
+        case .scanning, .createShoot:
+            if stage.guidance == .featureless || stage.guidance == .lookAround { return nil }
+        default:
+            break
+        }
+        return stage.guidance.text
     }
 }
 

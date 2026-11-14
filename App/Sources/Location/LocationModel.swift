@@ -21,7 +21,11 @@ final class LocationModel: NSObject, ObservableObject {
         super.init()
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyBest
-        manager.distanceFilter = 2
+        // 止まっていても位置を受け取る。前は「2m 動いたときだけ」にしていたので、家の中でじっと写していると位置が来ず、
+        // 30 秒で「古い位置」になって、入る・作るが「現在地を確かめています…」のまま進めなかった（2026-11-15）。
+        // 位置を使う画面は自分で問い合わせを間引く（地図は 15m か 30 秒ごと）。アプリが裏に回ると iOS が止める。
+        manager.distanceFilter = kCLDistanceFilterNone
+        manager.activityType = .fitness
         authorization = manager.authorizationStatus
         isReducedAccuracy = manager.accuracyAuthorization == .reducedAccuracy
     }
@@ -84,7 +88,17 @@ final class LocationModel: NSObject, ObservableObject {
 extension LocationModel: CLLocationManagerDelegate {
     nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let last = locations.last else { return }
-        Task { @MainActor in self.location = last }
+        Task { @MainActor in
+            let first = self.location == nil
+            let wasUsable = self.usableFix != nil
+            self.location = last
+            let usable = self.usableFix != nil
+            // 調べもの用：はじめて位置が来たとき・使える精度になった／足りなくなったときだけ残す
+            if first || usable != wasUsable {
+                Trace.log(String(format: "位置：精度 ±%.0fm（%@）", last.horizontalAccuracy,
+                                 usable ? "入る・作るに使える" : "まだ使えない"))
+            }
+        }
     }
 
     nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
