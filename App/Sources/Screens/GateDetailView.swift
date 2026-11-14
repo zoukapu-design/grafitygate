@@ -667,6 +667,8 @@ struct GraffitiCard: View {
     let onReport: () -> Void
 
     @State private var confirmDelete = false
+    @State private var viewer: PhotoViewerItem?
+    @EnvironmentObject private var session: SessionModel
 
     init(item: Graffiti, author: String, isMine: Bool, likeCount: Int, liked: Bool,
          onLike: @escaping () -> Void, onDelete: @escaping () -> Void, onReport: @escaping () -> Void) {
@@ -683,20 +685,31 @@ struct GraffitiCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if let path = item.photo_path {
-                RemotePhoto(path: path)
-                    .frame(height: 240)
-                    .frame(maxWidth: .infinity)
+                Button {
+                    viewer = PhotoViewerItem(path: path, caption: item.body)
+                } label: {
+                    RemotePhoto(path: path)
+                        .frame(height: 240)
+                        .frame(maxWidth: .infinity)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("写真を大きく見る")
             }
             VStack(alignment: .leading, spacing: 8) {
-                HStack {
+                HStack(spacing: 8) {
                     if isMine {
+                        PersonBadge(name: "あなた", size: 28)
                         Text("あなた").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
                     } else {
                         NavigationLink {
                             ProfileView(userID: item.author)
                         } label: {
-                            Text(author.isEmpty ? "だれか" : author)
-                                .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
+                            HStack(spacing: 8) {
+                                PersonBadge(name: author.isEmpty ? "?" : author, size: 28)
+                                Text(author.isEmpty ? "だれか" : author)
+                                    .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
+                            }
                         }
                     }
                     Spacer()
@@ -709,6 +722,9 @@ struct GraffitiCard: View {
                     Button(action: onLike) {
                         Label("\(likeCount)", systemImage: liked ? "heart.fill" : "heart")
                             .foregroundStyle(liked ? Theme.alert : Theme.textSecondary)
+                            .symbolEffect(.bounce, value: liked)
+                            .contentTransition(.numericText())
+                            .animation(.snappy, value: likeCount)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(liked ? "いいねをやめる" : "いいね")
@@ -739,6 +755,10 @@ struct GraffitiCard: View {
         .background(Theme.surface)
         .clipShape(RoundedRectangle(cornerRadius: Theme.radiusCard))
         .overlay(RoundedRectangle(cornerRadius: Theme.radiusCard).stroke(Theme.line))
+        .fullScreenCover(item: $viewer) { item in
+            PhotoViewer(path: item.path, caption: item.caption)
+                .environmentObject(session)
+        }
         .confirmationDialog("この記憶を消しますか？", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("消す", role: .destructive, action: onDelete)
         } message: {

@@ -56,6 +56,8 @@ final class ARExperienceModel: ObservableObject {
     @Published private(set) var phase: Phase = .scanning
     @Published var notice: String?
     @Published private(set) var nearby: [NearbyGate] = []
+    /// 近くの GATE を一度でも調べ終えたか（調べる前に「ありません」と出さないため）
+    @Published private(set) var nearbyChecked = false
     @Published private(set) var shots: [Shot] = []
     @Published private(set) var placedPrecisely = false
     @Published private(set) var hasPlacedDoor = false
@@ -190,7 +192,10 @@ final class ARExperienceModel: ObservableObject {
     func refreshNearby() async {
         guard mode == .explore, let api = session?.api, let here = location?.location, here.horizontalAccuracy >= 0
         else { return }
-        nearby = (try? await api.nearby(here)) ?? nearby
+        if let list = try? await api.nearby(here) {
+            nearby = list.sorted { $0.distance_m < $1.distance_m }
+            nearbyChecked = true
+        }
     }
 
     // MARK: 入る

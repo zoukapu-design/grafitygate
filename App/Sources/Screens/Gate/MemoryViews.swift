@@ -714,7 +714,7 @@ struct MemoryPager: View {
                         Spacer()
                         switch item.kind {
                         case .photo:
-                            RemotePhoto(path: item.photo_path, contentMode: .fit, placeholder: .black)
+                            ZoomableRemotePhoto(path: item.photo_path)
                         case .video:
                             MemoryVideoView(path: item.photo_path, active: index == i)
                         case .voice:

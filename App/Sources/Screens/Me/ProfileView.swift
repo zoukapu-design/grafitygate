@@ -14,6 +14,8 @@ struct ProfileView: View {
     @State private var report: ReportItem?
     @State private var busy = false
     @State private var confirmBlock = false
+    @State private var confirmUnfollow = false
+    @State private var loaded = false
 
     init(userID: UUID) {
         self.userID = userID
@@ -44,7 +46,12 @@ struct ProfileView: View {
                     }
                     if !isMe && !blocked {
                         Button {
-                            Task { await toggleFollow() }
+                            // 友達をやめるのは、ひと呼吸おいてから（友達向けの GATE が見えなくなる）
+                            if following && isFriend {
+                                confirmUnfollow = true
+                            } else {
+                                Task { await toggleFollow() }
+                            }
                         } label: {
                             Label(following ? "フォローをやめる" : (followsMe ? "フォローを返す（友達になる）" : "フォローする"),
                                   systemImage: following ? "person.badge.minus" : "person.badge.plus")
@@ -91,8 +98,20 @@ struct ProfileView: View {
                         Text("お互いにフォローすると「友達」になり、友達向けの GATE や、その人が見せると選んだ図鑑が見えるようになります。")
                             .font(.subheadline).foregroundStyle(Theme.textSecondary)
                     }
+                } else if loaded {
+                    VStack(spacing: 10) {
+                        Image(systemName: "person.crop.circle.badge.questionmark")
+                            .font(.system(size: 40)).foregroundStyle(Theme.textSecondary)
+                        Text(message?.text ?? "この人は見つかりませんでした。アカウントが消されたのかもしれません。")
+                            .font(.subheadline).foregroundStyle(Theme.textSecondary)
+                            .multilineTextAlignment(.center)
+                        Button("もう一度読み込む") { Task { await load() } }
+                            .buttonStyle(SecondaryButtonStyle())
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 60)
                 } else {
-                    ProgressView().frame(maxWidth: .infinity)
+                    ProgressView().frame(maxWidth: .infinity).padding(.top, 60)
                 }
             }
             .padding(16)
@@ -122,6 +141,12 @@ struct ProfileView: View {
                     }
                 }
             }
+        }
+        .confirmationDialog("\(profile?.display_name ?? "この人") さんのフォローをやめますか？", isPresented: $confirmUnfollow,
+                            titleVisibility: .visible) {
+            Button("フォローをやめる", role: .destructive) { Task { await toggleFollow() } }
+        } message: {
+            Text("友達ではなくなり、友達向けの GATE や図鑑、メッセージが使えなくなります。")
         }
         .confirmationDialog("\(profile?.display_name ?? "この人") さんをブロックしますか？", isPresented: $confirmBlock,
                             titleVisibility: .visible) {
@@ -153,6 +178,7 @@ struct ProfileView: View {
         } catch {
             message = (ErrorText.of(error), true)
         }
+        loaded = true
     }
 
     private func toggleFollow() async {

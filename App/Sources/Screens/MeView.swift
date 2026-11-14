@@ -236,17 +236,9 @@ struct GateCoverTile: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            ZStack {
-                if let coverPath {
-                    RemotePhoto(path: coverPath)
-                } else {
-                    LinearGradient(colors: [Color(hex: 0x0A1029), Color(hex: 0x2C1445), Color(hex: 0x6B2A3D)],
-                                   startPoint: .top, endPoint: .bottom)
-                    GateMark(size: 40, glowing: false)
-                }
-            }
-            .frame(width: 132, height: 132)
-            .clipShape(RoundedRectangle(cornerRadius: 16))
+            GateCoverImage(path: coverPath, markSize: 40)
+                .frame(width: 132, height: 132)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
             Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text).lineLimit(1)
             Text(caption).font(.caption).foregroundStyle(Theme.textSecondary)
         }

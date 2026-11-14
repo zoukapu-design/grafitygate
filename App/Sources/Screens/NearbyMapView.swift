@@ -227,17 +227,9 @@ private struct NearbyGateCard: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            ZStack {
-                if let cover = gate.cover_path {
-                    RemotePhoto(path: cover)
-                } else {
-                    LinearGradient(colors: [Color(hex: 0x0A1029), Color(hex: 0x2C1445), Color(hex: 0x6B2A3D)],
-                                   startPoint: .top, endPoint: .bottom)
-                    GateMark(size: 26, glowing: false)
-                }
-            }
-            .frame(width: 52, height: 52)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            GateCoverImage(path: gate.cover_path, markSize: 26)
+                .frame(width: 52, height: 52)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             VStack(alignment: .leading, spacing: 3) {
                 Text(gate.title).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
                     .lineLimit(1)

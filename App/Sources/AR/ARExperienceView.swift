@@ -340,18 +340,36 @@ private struct ExperienceCard: View {
     private var scanning: some View {
         VStack(alignment: .leading, spacing: 10) {
             if model.mode == .explore {
-                Title("目の前の場所や物に向けてください")
-                if model.nearby.isEmpty {
-                    Caption("近く（100m 以内）に GATE があれば、ここで開けます。")
+                if model.nearbyChecked && model.nearby.isEmpty {
+                    // 近くに何もない：いちばん大きいボタンは「作る」
+                    Title("この辺りに GATE はまだありません")
+                    Caption("残したい場所や物に向けて、最初の扉を作れます。")
+                    Button("ここに GATE を作る") { model.startCreate() }
+                        .buttonStyle(PrimaryButtonStyle())
+                    Button("ここで開く") { model.openHere() }
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Theme.accent)
+                        .frame(maxWidth: .infinity)
                 } else {
-                    Caption("近くの GATE：" + model.nearby.prefix(3)
-                        .map { "\($0.title)（約 \(Int($0.distance_m.rounded()))m）" }
-                        .joined(separator: "、"))
+                    Title(model.nearby.isEmpty ? "目の前の場所や物に向けてください"
+                          : "近くに GATE が \(model.nearby.count) つあります")
+                    if model.nearby.isEmpty {
+                        Caption("近く（100m 以内）に GATE があれば、ここで開けます。")
+                    } else {
+                        Caption("作った人が写した場所や物にカメラを向けて「ここで開く」。")
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(model.nearby.prefix(6)) { gate in
+                                    NearbyChip(gate: gate)
+                                }
+                            }
+                        }
+                    }
+                    Button("ここで開く") { model.openHere() }
+                        .buttonStyle(PrimaryButtonStyle())
+                    Button("ここに GATE を作る") { model.startCreate() }
+                        .buttonStyle(SecondaryButtonStyle())
                 }
-                Button("ここで開く") { model.openHere() }
-                    .buttonStyle(PrimaryButtonStyle())
-                Button("ここに GATE を作る") { model.startCreate() }
-                    .buttonStyle(SecondaryButtonStyle())
             } else {
                 Title("作った人が写した場所・物に向けてください")
                 Caption("位置（120m 以内）と景色の両方が合うと、扉が現れます。")
@@ -369,7 +387,12 @@ private struct ExperienceCard: View {
                 Button {
                     model.choose(candidate)
                 } label: {
-                    HStack {
+                    HStack(spacing: 10) {
+                        if let cover = candidate.cover_path {
+                            RemotePhoto(path: cover)
+                                .frame(width: 44, height: 44)
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                        }
                         VStack(alignment: .leading, spacing: 2) {
                             Text(candidate.title).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
                             Text("\(candidate.owner_name)・約 \(Int(candidate.distance_m.rounded()))m・\(Self.similarity(candidate.similarity))")
@@ -454,6 +477,27 @@ private struct ExperienceCard: View {
         case "none": return "似ていない"
         default: return "比べられない"
         }
+    }
+}
+
+/// 撮る画面の、近くの GATE の小さな札（表紙・名前・距離）
+private struct NearbyChip: View {
+    let gate: NearbyGate
+
+    var body: some View {
+        HStack(spacing: 8) {
+            GateCoverImage(path: gate.cover_path, markSize: 18)
+                .frame(width: 34, height: 34)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(gate.title).font(.caption.weight(.semibold)).foregroundStyle(Theme.text).lineLimit(1)
+                Text("約 \(Int(gate.distance_m.rounded()))m").font(.caption2).foregroundStyle(Theme.textSecondary)
+            }
+        }
+        .padding(.leading, 5).padding(.trailing, 10).padding(.vertical, 5)
+        .frame(maxWidth: 180, alignment: .leading)
+        .background(Theme.surfaceElevated, in: RoundedRectangle(cornerRadius: 12))
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -774,8 +818,7 @@ private struct ArtCard: View {
         HStack(spacing: 12) {
             ZStack {
                 // 透けるところが分かるように、夜空の色の上に重ねる
-                LinearGradient(colors: [Color(hex: 0x0A1029), Color(hex: 0x2C1445), Color(hex: 0x6B2A3D)],
-                               startPoint: .top, endPoint: .bottom)
+                GateCoverImage.nightSky
                 if let image = model.draft.person?.poster {
                     Image(uiImage: image).resizable().scaledToFit()
                 } else {

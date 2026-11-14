@@ -61,3 +61,23 @@ struct Wordmark: View {
             .accessibilityLabel("Grafity Gate")
     }
 }
+
+/// GATE の表紙：写真があれば写真、無ければ夜空の色に扉のしるし（どの一覧でも同じ見た目にする）
+struct GateCoverImage: View {
+    let path: String?
+    var markSize: CGFloat = 26
+
+    static let nightSky = LinearGradient(colors: [Color(hex: 0x0A1029), Color(hex: 0x2C1445), Color(hex: 0x6B2A3D)],
+                                         startPoint: .top, endPoint: .bottom)
+
+    var body: some View {
+        ZStack {
+            if let path {
+                RemotePhoto(path: path)
+            } else {
+                Self.nightSky
+                GateMark(size: markSize, glowing: false)
+            }
+        }
+    }
+}
