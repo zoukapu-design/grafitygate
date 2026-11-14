@@ -175,7 +175,8 @@ final class ARStage: NSObject, ObservableObject {
     /// いま写してよいか（だめなら理由）。
     /// 写真の特徴（Vision）で見分けるのは絵なので、絵そのものの明るさ・模様・ぶれで決める（`ShotQuality`）。
     /// AR の点の数・追跡の状態では止めない（止めて写すほど点が減り、模様の多い物でも断っていた）。記録には残す。
-    func shotProblem() -> String? {
+    /// - Parameter view: 景色の GATE（空・海・夜景が多くても、稜線・水平線・明かりで見分ける）
+    func shotProblem(view: Bool = false) -> String? {
         guard let frame = arView.session.currentFrame else { return "カメラの準備をしています…" }
         let tracking = frame.camera.trackingState
         let arPoints = frame.rawFeaturePoints?.points.count ?? 0
@@ -188,20 +189,23 @@ final class ARStage: NSObject, ObservableObject {
         } else if cameraSpeed > 0.5 {
             problem = "少しのあいだ iPhone を止めて写してください。"
         } else if let look {
-            if look.isDark {
-                problem = "暗すぎます。明るい所で写してください。"
-            } else if !look.hasPattern {
-                problem = "模様の少ない所か、ぼやけています。形や文字のある物に向けて、少し離れて写してください。"
+            if look.isDark(view: view) {
+                problem = view ? "暗すぎて景色が見えません。明かりや稜線が見える方に向けてください。"
+                               : "暗すぎます。明るい所で写してください。"
+            } else if !look.hasPattern(view: view) {
+                problem = view ? "空だけ・霧だけでは見分けられません。山の稜線・建物・木・水平線を入れて写してください。"
+                               : "模様の少ない所か、ぼやけています。形や文字のある物に向けて、少し離れて写してください。"
             }
         } else if let ambient, ambient < 120 {
             problem = "暗すぎます。明るい所で写してください。"
         }
 
         let lookText = look.map {
-            String(format: "明るさ %.0f・輪郭 %.1f%%・模様のある区画 %d/%d", $0.meanLuma, $0.edgeFraction * 100,
-                   $0.texturedCells, ShotQuality.cellCount)
+            String(format: "明るさ %.0f・輪郭 %.1f%%・模様のある区画 %d/%d・やわらかい輪郭 %.1f%%・%d 区画",
+                   $0.meanLuma, $0.edgeFraction * 100, $0.texturedCells, ShotQuality.cellCount,
+                   $0.softEdgeFraction * 100, $0.softTexturedCells)
         } ?? "絵を測れない"
-        Trace.log("写す前の確かめ：\(lookText)・AR の点 \(arPoints)・追跡 \(Self.trackingText(tracking))"
+        Trace.log("写す前の確かめ（\(view ? "景色" : "物・場所")）：\(lookText)・AR の点 \(arPoints)・追跡 \(Self.trackingText(tracking))"
                   + String(format: "・動き %.2fm/秒", cameraSpeed) + " → " + (problem ?? "写してよい"))
         return problem
     }

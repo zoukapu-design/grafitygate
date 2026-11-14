@@ -46,6 +46,8 @@ struct GateDetailView: View {
     @State private var loadError: String?
     @State private var loaded = false
     @State private var showAR = false
+    /// 作った本人が、別の時間の見え方を足す
+    @State private var showAddLooks = false
     @State private var tab: GateTab = .graffiti
     @State private var saved = false
     @State private var report: ReportItem?
@@ -72,6 +74,9 @@ struct GateDetailView: View {
                         let context = makeContext(summary, now: timeline.date)
                         VStack(alignment: .leading, spacing: 16) {
                             visitBanner(context, summary: summary, now: timeline.date)
+                            if summary.owner == session.userID {
+                                addLooksButton(summary)
+                            }
                             Picker("GATE の中", selection: $tab) {
                                 ForEach(GateTab.allCases) { t in Text(t.label).tag(t) }
                             }
@@ -107,6 +112,11 @@ struct GateDetailView: View {
                     await reload()
                     refreshToken += 1
                 }
+            }
+        }
+        .fullScreenCover(isPresented: $showAddLooks) {
+            ARExperienceView(mode: .addLooks(gateID)) {
+                showAddLooks = false
             }
         }
         .sheet(item: $report) { item in
@@ -206,6 +216,7 @@ struct GateDetailView: View {
                 // 数の札（横に流す）
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
+                        chip(GateKind(raw: s.kind).label, GateKind(raw: s.kind).symbol, warm: GateKind(raw: s.kind) == .view)
                         chip("\(s.graffiti_count) 枚の記憶", "square.stack")
                         if let stats {
                             chip("\(stats.visitor_count) 人が訪れた", "figure.walk")
@@ -324,6 +335,28 @@ struct GateDetailView: View {
                 }
             }
         }
+    }
+
+    /// 作った本人だけ：別の時間の見え方を足す（夕方・夜・別の季節。景色の GATE で特に大事）
+    private func addLooksButton(_ summary: GateSummary) -> some View {
+        let isView = GateKind(raw: summary.kind) == .view
+        return VStack(alignment: .leading, spacing: 4) {
+            Button {
+                showAddLooks = true
+            } label: {
+                Label("別の時間の見え方を足す", systemImage: "sun.horizon")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Theme.warm)
+            }
+            .disabled(session.api == nil)
+            Text(isView
+                 ? "景色は時間・天気・季節で見え方が変わります。夕方や夜にも現地で足しておくと、その時間に来た友達も入れます。"
+                 : "夜や別の季節に現地で足しておくと、その時間に来た友達も入りやすくなります。")
+                .font(.caption)
+                .foregroundStyle(Theme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.top, 4)
     }
 
     @ViewBuilder private func section(_ context: GateContext) -> some View {

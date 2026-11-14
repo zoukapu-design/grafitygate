@@ -12,10 +12,18 @@ final class ARExperienceModel: ObservableObject {
     enum Mode: Equatable {
         case explore
         case enter(UUID)
+        /// 作った本人が、別の時間の見え方（見本の写真の特徴）を足す
+        case addLooks(UUID)
     }
 
     enum Phase: Equatable {
         case scanning
+        /// 作る：はじめに、何を GATE にするか（物・場所・景色）を選ぶ
+        case createKind
+        /// 見え方を足す：写す（作った本人が現地で）
+        case addLooksShoot
+        /// 見え方を足した（足したあとの数・上限）
+        case addLooksDone(Int, Int)
         case working(String)
         case choosing([MatchCandidate])
         case findingPlace
@@ -50,8 +58,15 @@ final class ARExperienceModel: ObservableObject {
         var useCover = true
     }
 
-    /// 作るときに写す 3 方向
-    static let shootSteps = ["正面から", "少し左から", "少し右から"]
+    /// 作るときの種類（はじめに選ぶ）
+    var createKind: GateKind { GateKind(raw: form.kind) }
+    /// 入る・見え方を足す GATE の種類（分かったら入れる。景色なら写真の確かめを景色用にする）
+    @Published private(set) var targetKind: GateKind?
+    /// 見え方を足すときに写した写真の特徴
+    @Published private(set) var lookShots: [Shot] = []
+    /// 見本の数と上限（見え方を足すとき。作った本人だけが分かる）
+    @Published private(set) var refCount: (count: Int, max: Int)?
+    static let maxLookShots = 3
 
     @Published private(set) var phase: Phase = .scanning
     @Published var notice: String?
@@ -130,8 +145,21 @@ final class ARExperienceModel: ObservableObject {
 
     var showsReticle: Bool {
         switch phase {
-        case .scanning, .createShoot: return true
+        case .scanning, .createShoot, .addLooksShoot: return true
         default: return false
+        }
+    }
+
+    /// いまの写真を景色用に確かめるか。作るときは選んだ種類、入る・見え方を足すときはその GATE の種類、
+    /// 「ここで開く」のときは近くに景色の GATE があるか
+    private var checksAsView: Bool {
+        switch phase {
+        case .createShoot: return createKind == .view
+        default: break
+        }
+        switch mode {
+        case .explore: return nearby.contains { $0.kind == GateKind.view.rawValue }
+        case .enter, .addLooks: return targetKind == .view
         }
     }
 
@@ -139,9 +167,28 @@ final class ARExperienceModel: ObservableObject {
 
     func start() {
         stage.run(reset: true)
-        Trace.log("AR の画面を開く（\(mode == .explore ? "撮る" : "GATE に入る")）")
+        switch mode {
+        case .explore: Trace.log("AR の画面を開く（撮る）")
+        case .enter: Trace.log("AR の画面を開く（GATE に入る）")
+        case .addLooks: Trace.log("AR の画面を開く（見え方を足す）")
+        }
         resetToScanning()
         Task { await refreshNearby() }
+        Task { await loadTargetKind() }
+    }
+
+    /// 入る・見え方を足す GATE の種類と、見本の数（作った本人だけ）
+    private func loadTargetKind() async {
+        guard let api = session?.api else { return }
+        switch mode {
+        case .explore:
+            return
+        case .enter(let gate):
+            targetKind = GateKind(raw: try? await api.summary(gate)?.kind)
+        case .addLooks(let gate):
+            targetKind = GateKind(raw: try? await api.summary(gate)?.kind)
+            if let c = try? await api.gateRefCount(gate) { refCount = (c.count, c.max) }
+        }
     }
 
     func stop() {
@@ -164,7 +211,12 @@ final class ARExperienceModel: ObservableObject {
         visitExpires = nil
         trailNote = nil
         isGateOwner = false
-        phase = .scanning
+        lookShots = []
+        if case .addLooks = mode {
+            phase = .addLooksShoot
+        } else {
+            phase = .scanning
+        }
     }
 
     private func clearDoor() {
@@ -214,7 +266,7 @@ final class ARExperienceModel: ObservableObject {
             location?.askFullAccuracyIfNeeded()
             return
         }
-        if let problem = stage.shotProblem() {
+        if let problem = stage.shotProblem(view: checksAsView) {
             notice = problem
             return
         }
@@ -224,7 +276,7 @@ final class ARExperienceModel: ObservableObject {
             let shot = try await stage.grabShot(withPhoto: false)
             lastPrint = shot.print
             switch mode {
-            case .enter(let gate):
+            case .enter(let gate), .addLooks(let gate):
                 await enter(gate, fix: fix, print: shot.print)
             case .explore:
                 let list = try await api.candidates(fix, print: shot.print)
@@ -276,8 +328,10 @@ final class ARExperienceModel: ObservableObject {
     private func showDoor(for gate: UUID) async {
         clearDoor()
         var anchor: ARAnchor?
-        if let api = session?.api {
-            isGateOwner = (try? await api.summary(gate))?.owner == session?.userID
+        if let api = session?.api, let summary = try? await api.summary(gate) {
+            isGateOwner = summary.owner == session?.userID
+            // 景色の GATE は、扉の向こうに本物の景色が見える額縁にする
+            targetKind = GateKind(raw: summary.kind)
         }
         if let api = session?.api, let media = session?.media, let info = try? await api.placeMap(gate) {
             phase = .findingPlace
@@ -313,7 +367,7 @@ final class ARExperienceModel: ObservableObject {
         guard let anchor else { return }
         currentAnchor = anchor
         do {
-            let newDoor = try GateDoor(anchor: anchor, in: stage.arView)
+            let newDoor = try GateDoor(anchor: anchor, in: stage.arView, style: targetKind == .view ? .window : .portal)
             door = newDoor
             hasPlacedDoor = true
             newDoor.appear()
@@ -369,7 +423,7 @@ final class ARExperienceModel: ObservableObject {
         guard let gate = enteredGate else { return }
         switch mode {
         case .explore: presentedGate = GateRoute(id: gate)
-        case .enter: onFinished?()
+        case .enter, .addLooks: onFinished?()
         }
     }
 
@@ -401,6 +455,74 @@ final class ARExperienceModel: ObservableObject {
         form = GateForm()
         notice = nil
         mapWarning = nil
+        phase = .createKind
+    }
+
+    // MARK: 見え方を足す（作った本人が現地で）
+
+    func captureLookShot() {
+        Task { await captureLookShotAsync() }
+    }
+
+    private func captureLookShotAsync() async {
+        guard phase == .addLooksShoot, lookShots.count < Self.maxLookShots else { return }
+        if let problem = stage.shotProblem(view: checksAsView) {
+            notice = problem
+            return
+        }
+        notice = nil
+        do {
+            let shot = try await stage.grabShot(withPhoto: true)
+            let thumbnail = shot.jpeg.flatMap(UIImage.init(data:))?.downscaled(maxSide: 240)
+            // 写真そのものは送らない（特徴だけ）。縮めた絵は、この画面で見せるだけ
+            lookShots.append(Shot(print: shot.print, jpeg: nil, thumbnail: thumbnail))
+            Haptics.tap()
+            Trace.log("見え方を足す：\(lookShots.count) 枚め")
+        } catch {
+            notice = ErrorText.of(error)
+        }
+    }
+
+    func sendLooks() {
+        Task { await sendLooksAsync() }
+    }
+
+    private func sendLooksAsync() async {
+        guard case .addLooks(let gate) = mode, !lookShots.isEmpty, let api = session?.api else { return }
+        guard let fix = location?.usableFix else {
+            notice = location?.fixProblem
+            location?.askFullAccuracyIfNeeded()
+            return
+        }
+        notice = nil
+        phase = .working("見え方を足しています…")
+        do {
+            let count = try await api.addGateRefs(gate: gate, location: fix, prints: lookShots.map(\.print))
+            let max = refCount?.max ?? 12
+            refCount = (count, max)
+            Trace.log(String(format: "見え方を足しました（%d 枚・見本 %d/%d・位置の精度 ±%.0fm）",
+                             lookShots.count, count, max, fix.horizontalAccuracy))
+            lookShots = []
+            Haptics.success()
+            phase = .addLooksDone(count, max)
+        } catch {
+            Trace.log("見え方を足せませんでした：\(ErrorText.of(error))")
+            phase = .addLooksShoot
+            notice = ErrorText.of(error)
+        }
+    }
+
+    func addMoreLooks() {
+        lookShots = []
+        notice = nil
+        phase = .addLooksShoot
+    }
+
+    /// 何を GATE にするかを選んで、写し始める
+    func chooseKind(_ kind: GateKind) {
+        form.kind = kind.rawValue
+        notice = nil
+        Trace.log("作る：種類「\(kind.label)」")
         phase = .createShoot(0)
     }
 
@@ -410,7 +532,7 @@ final class ARExperienceModel: ObservableObject {
 
     private func captureCreateShotAsync() async {
         guard case .createShoot(let index) = phase else { return }
-        if let problem = stage.shotProblem() {
+        if let problem = stage.shotProblem(view: createKind == .view) {
             notice = problem
             return
         }
@@ -421,9 +543,9 @@ final class ARExperienceModel: ObservableObject {
             shots.append(Shot(print: shot.print, jpeg: index == 0 ? shot.jpeg : nil, thumbnail: thumbnail))
             Haptics.tap()
             if shots.count >= 2, let a = shots.first?.print, let d = FeaturePrint.distance(a, shot.print) {
-                Trace.log(String(format: "作る：正面と %@ の写真の特徴の距離 %.3f", Self.shootSteps[index], d))
+                Trace.log(String(format: "作る：正面と %@ の写真の特徴の距離 %.3f", createKind.shootSteps[index], d))
             }
-            if index + 1 < Self.shootSteps.count {
+            if index + 1 < createKind.shootSteps.count {
                 phase = .createShoot(index + 1)
             } else {
                 await checkSimilar()
@@ -474,7 +596,7 @@ final class ARExperienceModel: ObservableObject {
         clearDoor()
         let anchor = stage.addAnchor(named: "gg.gate", transform: stage.facingCamera(at: floor))
         do {
-            let newDoor = try GateDoor(anchor: anchor, in: stage.arView)
+            let newDoor = try GateDoor(anchor: anchor, in: stage.arView, style: createKind == .view ? .window : .portal)
             newDoor.appear()
             door = newDoor
             doorAnchor = anchor

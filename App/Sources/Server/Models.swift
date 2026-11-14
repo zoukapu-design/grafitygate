@@ -18,6 +18,68 @@ struct NearbyGate: Decodable, Identifiable, Hashable {
     let mine: Bool
 }
 
+/// GATE の種類（サーバーの gf_gates.kind と同じ。足すときはサーバーの check も「最後の一覧」で直す）
+enum GateKind: String, CaseIterable, Identifiable {
+    case object, place, view
+
+    var id: String { rawValue }
+
+    init(raw: String?) {
+        self = GateKind(rawValue: raw ?? "") ?? .object
+    }
+
+    var label: String {
+        switch self {
+        case .object: return "物"
+        case .place: return "場所"
+        case .view: return "景色"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .object: return "cube.transparent"
+        case .place: return "door.left.hand.open"
+        case .view: return "mountain.2"
+        }
+    }
+
+    /// 選ぶときの説明
+    var hint: String {
+        switch self {
+        case .object: return "看板・像・木・ベンチなど、そこにある物"
+        case .place: return "お店の入口・路地・部屋など、その場所そのもの"
+        case .view: return "展望台・川辺・橋の上など、遠くまで見える景色"
+        }
+    }
+
+    /// 作るときに写す 3 方向
+    var shootSteps: [String] {
+        switch self {
+        case .view: return ["正面", "少し左を向いて", "少し右を向いて"]
+        default: return ["正面から", "少し左から", "少し右から"]
+        }
+    }
+
+    /// 作るときの写し方の案内
+    func shootCaption(_ index: Int) -> String {
+        switch self {
+        case .view:
+            switch index {
+            case 0:
+                return "立ったまま、残したい景色の正面を写してください。空だけにならないよう、山の稜線・建物・木・水平線を入れてください。"
+            case 1:
+                return "同じ所に立ったまま、少し左を向いて写してください（友達が少しずれた向きで写しても見分けられるように）。"
+            default:
+                return "同じ所に立ったまま、少し右を向いて写してください。"
+            }
+        default:
+            let step = shootSteps[min(index, shootSteps.count - 1)]
+            return "残したい場所や物を、\(step)写してください。友達が来たとき、この景色で GATE を見分けます。人の顔や車のナンバーが写らないように。"
+        }
+    }
+}
+
 /// GATE の概要（gf_gate_summary）
 struct GateSummary: Decodable, Identifiable, Hashable {
     let id: UUID

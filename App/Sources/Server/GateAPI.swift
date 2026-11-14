@@ -51,6 +51,21 @@ struct GateAPI {
         return try await client.rpc("gf_create_gate", params: params).execute().value
     }
 
+    /// 見本の写真の特徴の数と上限（作った本人だけ）
+    func gateRefCount(_ gate: UUID) async throws -> RefCount {
+        try await client.rpc("gf_gate_ref_count", params: GateParam(p_gate: gate)).execute().value
+    }
+
+    /// 別の時間の見え方を足す（作った本人が現地で。足したあとの数を返す）
+    func addGateRefs(gate: UUID, location: CLLocation, prints: [[Float]]) async throws -> Int {
+        let challenge = try await requestChallenge()
+        let params = AddRefsParams(p_gate: gate, p_challenge: challenge,
+                                   p_lat: location.coordinate.latitude, p_lon: location.coordinate.longitude,
+                                   p_accuracy: location.horizontalAccuracy,
+                                   p_refs: prints.map { RefPayload(print: $0, rev: FeaturePrint.revision) })
+        return try await client.rpc("gf_add_gate_refs", params: params).execute().value
+    }
+
     /// 場所の記憶の置き場所（作った本人か、入場中だけ返る）
     func placeMap(_ gate: UUID) async throws -> PlaceMapInfo? {
         let rows: [PlaceMapInfo] = try await client.rpc("gf_place_map", params: GateParam(p_gate: gate)).execute().value
@@ -465,4 +480,19 @@ extension GateAPI {
 
 private struct GateIDRow: Decodable {
     let gate_id: UUID
+}
+
+
+struct RefCount: Decodable {
+    let count: Int
+    let max: Int
+}
+
+private struct AddRefsParams: Encodable {
+    let p_gate: UUID
+    let p_challenge: UUID
+    let p_lat: Double
+    let p_lon: Double
+    let p_accuracy: Double
+    let p_refs: [RefPayload]
 }

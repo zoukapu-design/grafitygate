@@ -184,7 +184,7 @@ private struct ARTopBar: View {
     /// AR の追跡は、このあと扉を床に置くとき・場所を覚えるときに要るので、そこでは出す。
     private var stageHint: String? {
         switch model.phase {
-        case .scanning, .createShoot:
+        case .scanning, .createKind, .createShoot, .addLooksShoot:
             if stage.guidance == .featureless || stage.guidance == .lookAround { return nil }
         default:
             break
@@ -289,6 +289,21 @@ private struct ExperienceCard: View {
             }
         case .doorOpen:
             DoorOpenCard(model: model)
+        case .createKind:
+            kindChoice
+        case .addLooksShoot:
+            addLooksShoot
+        case .addLooksDone(let count, let max):
+            VStack(alignment: .leading, spacing: 10) {
+                Title("見え方を足しました")
+                Caption("いまの見え方でも、友達が入りやすくなりました（見本 \(count)/\(max)）。別の時間・天気・季節にも足しておくと、もっと入りやすくなります。")
+                if count < max {
+                    Button("もう少し足す") { model.addMoreLooks() }
+                        .buttonStyle(SecondaryButtonStyle())
+                }
+                Button("閉じる") { model.onFinished?() }
+                    .buttonStyle(PrimaryButtonStyle())
+            }
         case .createShoot(let index):
             createShoot(index)
         case .createSimilar(let list):
@@ -459,10 +474,86 @@ private struct ExperienceCard: View {
         }
     }
 
+    /// 作る：はじめに、何を GATE にするか
+    private var kindChoice: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Title("何を GATE にしますか？")
+            ForEach(GateKind.allCases) { kind in
+                Button {
+                    model.chooseKind(kind)
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: kind.symbol)
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundStyle(kind == .view ? Theme.warm : Theme.accent)
+                            .frame(width: 44, height: 44)
+                            .background(kind == .view ? Theme.warm.opacity(0.12) : Theme.accentLight,
+                                        in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(kind.label).font(.headline).foregroundStyle(Theme.text)
+                            Text(kind.hint).font(.caption).foregroundStyle(Theme.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(Theme.textSecondary)
+                    }
+                    .padding(10)
+                    .background(Theme.surfaceElevated, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
+            Button("やめる") { model.resetToScanning() }
+                .font(.subheadline)
+                .foregroundStyle(Theme.textSecondary)
+        }
+    }
+
+    /// 見え方を足す（作った本人が現地で）
+    private var addLooksShoot: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Title("見え方を足す（\(model.lookShots.count)/\(ARExperienceModel.maxLookShots)）")
+            Caption(model.targetKind == .view
+                    ? "作ったときと同じ所に立って、いまの景色を写してください。夕方・夜・雨の日・別の季節に足すと、その時間に来た友達も入りやすくなります。"
+                    : "作ったときと同じ物・場所を、いまの明るさで写してください。夜や別の季節に足すと、その時間に来た友達も入りやすくなります。")
+            if let rc = model.refCount {
+                Text("いまの見本 \(rc.count)/\(rc.max)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Theme.textSecondary)
+            }
+            if !model.lookShots.isEmpty {
+                HStack(spacing: 8) {
+                    ForEach(model.lookShots) { shot in
+                        if let image = shot.thumbnail {
+                            Image(uiImage: image)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 56, height: 56)
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                        }
+                    }
+                }
+            }
+            if model.lookShots.isEmpty {
+                Button("写す") { model.captureLookShot() }
+                    .buttonStyle(PrimaryButtonStyle())
+            } else if model.lookShots.count < ARExperienceModel.maxLookShots {
+                Button("もう 1 枚写す（少し向きを変えて）") { model.captureLookShot() }
+                    .buttonStyle(SecondaryButtonStyle())
+            }
+            if !model.lookShots.isEmpty {
+                Button("この見え方を足す（\(model.lookShots.count) 枚）") { model.sendLooks() }
+                    .buttonStyle(PrimaryButtonStyle())
+            }
+            Text("写真そのものは送りません。見分けるための特徴だけを送ります。")
+                .font(.caption2)
+                .foregroundStyle(Theme.textSecondary)
+        }
+    }
+
     private func createShoot(_ index: Int) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Title("GATE を作る（\(index + 1)/\(ARExperienceModel.shootSteps.count)）")
-            Caption("残したい場所や物を、\(ARExperienceModel.shootSteps[index])写してください。友達が来たとき、この景色で GATE を見分けます。人の顔や車のナンバーが写らないように。")
+            Title("\(model.createKind == .view ? "景色の" : "")GATE を作る（\(index + 1)/\(model.createKind.shootSteps.count)）")
+            Caption(model.createKind.shootCaption(index))
             if !model.shots.isEmpty {
                 HStack(spacing: 8) {
                     ForEach(model.shots) { shot in
@@ -533,8 +624,7 @@ private struct CreateDetailsForm: View {
                 .padding(12)
                 .background(Theme.surfaceElevated, in: RoundedRectangle(cornerRadius: 12))
             Picker("種類", selection: $model.form.kind) {
-                Text("場所の中の物").tag("object")
-                Text("場所").tag("place")
+                ForEach(GateKind.allCases) { kind in Text(kind.label).tag(kind.rawValue) }
             }
             .pickerStyle(.segmented)
             Picker("見せる人", selection: $model.form.visibility) {

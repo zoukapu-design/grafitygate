@@ -9,6 +9,15 @@ import UIKit
 /// 向こうの世界は、扉の後ろに置いた「見えない壁」で囲み、扉の開口部からだけ見えるようにしている。
 @MainActor
 final class GateDoor {
+    /// 扉の向こうの見え方
+    enum Style {
+        /// 開くと、向こうに思い出の夜空の世界（見えない壁で囲み、開口部からだけ見せる）
+        case portal
+        /// 景色の GATE：向こうに本物の景色がそのまま見える額縁。思い出の写真と光の粒だけが、景色の手前に浮かぶ
+        case window
+    }
+
+    let style: Style
     let anchorEntity: AnchorEntity
     let shape = ArchShape()
     private(set) var isOpen = false
@@ -51,7 +60,8 @@ final class GateDoor {
     private var clock: TimeInterval = 0
     private var subscription: Cancellable?
 
-    init(anchor: ARAnchor, in arView: ARView) throws {
+    init(anchor: ARAnchor, in arView: ARView, style: Style = .portal) throws {
+        self.style = style
         anchorEntity = AnchorEntity(anchor: anchor)
         try MainWatch.run("扉を組み立てる") {
             try build()
@@ -263,6 +273,14 @@ final class GateDoor {
         let halfWidth: Float = 1.5
         let height: Float = 2.7
         let deep: Float = 2.6
+        if style == .portal {
+            try buildPortalWorld(halfWidth: halfWidth, height: height, deep: deep)
+        }
+        try buildFloatingMemories()
+    }
+
+    /// 向こうの世界（見えない壁で囲んだ夜空と光の床）。景色の額縁では作らない＝本物の景色がそのまま見える
+    private func buildPortalWorld(halfWidth: Float, height: Float, deep: Float) throws {
         let occlusion = OcclusionMaterial()
 
         // 扉の面の見えない壁（開口部の形の穴あき）と、まわりを囲む見えない壁
@@ -302,7 +320,10 @@ final class GateDoor {
             floor.position = [0, 0.006, -deep / 2]
             interior.addChild(floor)
         }
+    }
 
+    /// 浮かぶ思い出の写真と、立ちのぼる光の粒（どちらの見え方でも）
+    private func buildFloatingMemories() throws {
         // 思い出の写真を浮かべる場所（写真が届いたら入れる）
         let slots: [(SIMD3<Float>, Float)] = [([-0.42, 1.25, -1.15], 0.18), ([0.38, 1.05, -1.55], -0.14),
                                               ([0.02, 1.55, -2.05], 0.04)]
