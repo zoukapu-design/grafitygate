@@ -32,10 +32,18 @@ struct OnboardingView: View {
                     VStack(spacing: 28) {
                         Spacer()
                         if let symbol = item.symbol {
-                            Image(systemName: symbol)
-                                .font(.system(size: 64, weight: .light))
-                                .foregroundStyle(Theme.accent)
-                                .frame(height: 140)
+                            // アイコンと同じ夜空の窓に、ネオンの色の絵
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 32, style: .continuous)
+                                    .fill(LinearGradient(colors: [Color(hex: 0x060A24), Color(hex: 0x140F3A), Color(hex: 0x3A1530)],
+                                                         startPoint: .top, endPoint: .bottom))
+                                Image(systemName: symbol)
+                                    .font(.system(size: 58, weight: .regular))
+                                    .foregroundStyle(LinearGradient(colors: Brand.neon.reversed(), startPoint: .top, endPoint: .bottom))
+                                    .shadow(color: Color(hex: 0xFF3D7F).opacity(0.6), radius: 14)
+                            }
+                            .frame(width: 140, height: 140)
+                            .shadow(color: .black.opacity(0.15), radius: 12, y: 6)
                         } else {
                             GateMark(size: 140)
                         }

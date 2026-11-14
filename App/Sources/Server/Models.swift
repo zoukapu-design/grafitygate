@@ -103,6 +103,8 @@ struct MyGate: Decodable, Identifiable, Hashable {
     let visibility: String
     let status: String
     let created_at: String
+    /// 表紙の写真（付けなかったときは無い）
+    var cover_path: String? = nil
 }
 
 /// GATE に置いた AR の作品（表 gf_artworks。見てよいものだけがサーバーから返る）。

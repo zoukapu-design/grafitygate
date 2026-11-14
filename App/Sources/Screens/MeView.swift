@@ -1,111 +1,120 @@
 import SwiftUI
 
-/// わたし：名前と ID、友達、自分の記録（GATE・図鑑・保存・思い出・手紙）、安全とデータ。
+/// わたし：プロフィール（名前・ID・3 つの数）、友達を足す、自分の GATE、自分の記録、安全とデータ。
 struct MeView: View {
     @EnvironmentObject private var session: SessionModel
-    @State private var name = ""
+    @EnvironmentObject private var nav: AppNavigator
     @State private var gates: [MyGate] = []
-    @State private var friendCount = 0
+    @State private var visitedCount: Int?
+    @State private var friendCount: Int?
     @State private var unopenedLetters = 0
     @State private var message: (text: String, isError: Bool)?
+    @State private var editingName = false
+    @State private var loaded = false
 
     var body: some View {
         NavigationStack {
             ScreenScaffold(title: "わたし") {
-                List {
-                    Section {
-                        HStack(spacing: 14) {
-                            PersonBadge(name: name.isEmpty ? "ゲ" : name, size: 54)
-                            VStack(alignment: .leading, spacing: 4) {
-                                TextField("表示する名前", text: $name)
-                                    .font(.headline)
-                                    .onSubmit { Task { await rename() } }
-                                if let profile = session.profile {
-                                    Text("ID：\(profile.handle)")
-                                        .font(.caption).foregroundStyle(Theme.textSecondary)
-                                        .textSelection(.enabled)
-                                }
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 22) {
+                        ProfileHeader(name: session.profile?.display_name ?? "",
+                                      handle: session.profile?.handle,
+                                      gateCount: loaded ? gates.count : nil,
+                                      visitedCount: visitedCount,
+                                      friendCount: friendCount,
+                                      onEditName: { editingName = true })
+                        AddFriendButtons()
+                        myGatesStrip
+                        MeGroup(title: "わたしの記録") {
+                            MeLink(title: "図鑑（訪れた GATE）", systemImage: "books.vertical") { CollectionView(kind: "visited") }
+                            MeLink(title: "保存", systemImage: "bookmark") { CollectionView(kind: "saved") }
+                            MeLink(title: "思い出", systemImage: "photo.stack") { MyMemoriesView() }
+                            MeLink(title: "手紙", systemImage: "envelope",
+                                   detail: unopenedLetters > 0 ? "未開封 \(unopenedLetters)" : nil) { MyLettersView() }
+                            MeLink(title: "友達・フォロー", systemImage: "person.2",
+                                   detail: friendCount.map { "\($0) 人" }) { FriendsView() }
+                        }
+                        MeGroup(title: "安全とデータ") {
+                            MeLink(title: "ブロックした人", systemImage: "hand.raised") { BlockedView() }
+                            MeLink(title: "自分のデータ（書き出し・アカウントの削除）", systemImage: "externaldrive") { MyDataView() }
+                            ShareLink(item: Trace.fileURL) {
+                                MeRow(title: "調べものの記録を送る", systemImage: "doc.text.magnifyingglass", detail: nil)
+                                    .padding(.vertical, 12)
+                                    .padding(.horizontal, 14)
                             }
                         }
-                        if name.trimmingCharacters(in: .whitespaces) != (session.profile?.display_name ?? "") {
-                            Button("名前を保存") { Task { await rename() } }
-                                .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                        if let message {
+                            NoticeText(text: message.text, isError: message.isError)
                         }
-                        AddFriendButtons()
-                            .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 12, trailing: 12))
-                            .listRowBackground(Color.clear)
-                    } footer: {
-                        Text("QR を見せるか ID を送ると、友達がフォローできます。お互いにフォローすると「友達」です。")
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Grafity Gate \(appVersion)")
+                                .font(.caption.weight(.semibold)).foregroundStyle(Theme.textSecondary)
+                            Text("「調べものの記録」は、AR で何が起きたかの記録です（位置や写真は入っていません）。うまく動かないとき、開発者に送ってください。")
+                                .font(.caption).foregroundStyle(Theme.textSecondary)
+                        }
+                        .padding(.horizontal, 4)
                     }
-
-                    Section("友達") {
-                        NavigationLink {
-                            FriendsView()
-                        } label: {
-                            MeRow(title: "友達・フォロー", systemImage: "person.2", detail: friendCount > 0 ? "\(friendCount) 人" : nil)
-                        }
-                    }
-
-                    Section("わたしの記録") {
-                        NavigationLink {
-                            MyGatesView(gates: gates)
-                        } label: {
-                            MeRow(title: "自分の GATE", systemImage: "door.left.hand.open", detail: "\(gates.count)")
-                        }
-                        NavigationLink {
-                            CollectionView(kind: "visited")
-                        } label: {
-                            MeRow(title: "図鑑（訪れた GATE）", systemImage: "books.vertical", detail: nil)
-                        }
-                        NavigationLink {
-                            CollectionView(kind: "saved")
-                        } label: {
-                            MeRow(title: "保存", systemImage: "bookmark", detail: nil)
-                        }
-                        NavigationLink {
-                            MyMemoriesView()
-                        } label: {
-                            MeRow(title: "思い出", systemImage: "photo.stack", detail: nil)
-                        }
-                        NavigationLink {
-                            MyLettersView()
-                        } label: {
-                            MeRow(title: "手紙", systemImage: "envelope",
-                                  detail: unopenedLetters > 0 ? "未開封 \(unopenedLetters)" : nil)
-                        }
-                    }
-
-                    Section("安全とデータ") {
-                        NavigationLink {
-                            BlockedView()
-                        } label: {
-                            MeRow(title: "ブロックした人", systemImage: "hand.raised", detail: nil)
-                        }
-                        NavigationLink {
-                            MyDataView()
-                        } label: {
-                            MeRow(title: "自分のデータ（書き出し・アカウントの削除）", systemImage: "externaldrive", detail: nil)
-                        }
-                        ShareLink(item: Trace.fileURL) {
-                            MeRow(title: "調べものの記録を送る", systemImage: "doc.text.magnifyingglass", detail: nil)
-                        }
-                    }
-
-                    if let message {
-                        NoticeText(text: message.text, isError: message.isError)
-                    }
-
-                    Section {
-                        Text("Grafity Gate \(appVersion)")
-                            .font(.caption).foregroundStyle(Theme.textSecondary)
-                    } footer: {
-                        Text("「調べものの記録」は、AR で何が起きたかの記録です（位置や写真は入っていません）。うまく動かないとき、開発者に送ってください。")
-                    }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 28)
                 }
-                .scrollContentBackground(.hidden)
                 .refreshable { await load() }
             }
             .task(id: session.state) { await load() }
+            .sheet(isPresented: $editingName) {
+                NameEditSheet(current: session.profile?.display_name ?? "") { newName in
+                    try await session.rename(newName)
+                    message = ("名前を保存しました。", false)
+                }
+            }
+        }
+    }
+
+    /// 自分の GATE（表紙を横に並べる）。まだ無いときは作る入口
+    @ViewBuilder private var myGatesStrip: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("自分の GATE").font(.headline).foregroundStyle(Theme.text)
+                Spacer()
+                if !gates.isEmpty {
+                    NavigationLink("すべて") { MyGatesView(gates: gates) }
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Theme.accent)
+                }
+            }
+            if gates.isEmpty && loaded {
+                Button {
+                    nav.tab = .capture
+                } label: {
+                    HStack(spacing: 12) {
+                        GateMark(size: 46, glowing: false)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("最初の GATE を作る").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
+                            Text("思い出の場所や物に、記憶の扉を置きます").font(.caption).foregroundStyle(Theme.textSecondary)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(Theme.textSecondary)
+                    }
+                    .padding(14)
+                    .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18))
+                    .overlay(RoundedRectangle(cornerRadius: 18).stroke(Theme.line))
+                }
+                .buttonStyle(.plain)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        ForEach(gates.prefix(12)) { gate in
+                            NavigationLink {
+                                GateDetailView(gateID: gate.id)
+                            } label: {
+                                GateCoverTile(title: gate.title, coverPath: gate.cover_path,
+                                              caption: ServerDate.relative(gate.created_at))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
         }
     }
 
@@ -116,24 +125,245 @@ struct MeView: View {
     }
 
     private func load() async {
-        name = session.profile?.display_name ?? ""
         guard let api = session.api, let me = session.userID else { return }
         do {
             gates = try await api.myGates(owner: me)
-            friendCount = (try? await api.friends(me: me).count) ?? 0
-            unopenedLetters = (try? await api.letters())?.filter { !$0.sent && !$0.isOpened }.count ?? 0
+            message = nil
         } catch {
             message = (ErrorText.of(error), true)
         }
+        friendCount = try? await api.friends(me: me).count
+        visitedCount = try? await api.collection("visited").count
+        unopenedLetters = (try? await api.letters())?.filter { !$0.sent && !$0.isOpened }.count ?? 0
+        loaded = true
+    }
+}
+
+/// プロフィールの上の段：ネオンの輪の顔、名前（押すと直す）、ID、3 つの数
+struct ProfileHeader: View {
+    let name: String
+    let handle: String?
+    let gateCount: Int?
+    let visitedCount: Int?
+    let friendCount: Int?
+    var onEditName: (() -> Void)?
+
+    var body: some View {
+        VStack(spacing: 16) {
+            HStack(spacing: 16) {
+                NeonAvatar(name: name, size: 76)
+                VStack(alignment: .leading, spacing: 4) {
+                    Button {
+                        onEditName?()
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text(name.isEmpty ? "ゲスト" : name)
+                                .font(.title2.weight(.bold))
+                                .foregroundStyle(Theme.text)
+                                .lineLimit(1)
+                            if onEditName != nil {
+                                Image(systemName: "pencil").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.accent)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(onEditName == nil)
+                    .accessibilityLabel(onEditName == nil ? name : "名前を直す")
+                    if let handle {
+                        Text("ID：\(handle)")
+                            .font(.subheadline)
+                            .foregroundStyle(Theme.textSecondary)
+                            .textSelection(.enabled)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            HStack(spacing: 0) {
+                stat(gateCount, "作った GATE")
+                divider
+                stat(visitedCount, "訪れた")
+                divider
+                stat(friendCount, "友達")
+            }
+            .padding(.vertical, 12)
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18))
+            .overlay(RoundedRectangle(cornerRadius: 18).stroke(Theme.line))
+        }
+        .padding(.top, 4)
     }
 
-    private func rename() async {
-        do {
-            try await session.rename(name)
-            message = ("名前を保存しました。", false)
-        } catch {
-            message = (ErrorText.of(error), true)
+    private var divider: some View {
+        Rectangle().fill(Theme.line).frame(width: 1, height: 30)
+    }
+
+    private func stat(_ value: Int?, _ label: String) -> some View {
+        VStack(spacing: 2) {
+            Text(value.map(String.init) ?? "–")
+                .font(.title3.weight(.bold).monospacedDigit())
+                .foregroundStyle(Theme.text)
+                .contentTransition(.numericText())
+            Text(label).font(.caption).foregroundStyle(Theme.textSecondary)
         }
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// 顔の印：名前の頭文字に、アイコンと同じネオンの輪
+struct NeonAvatar: View {
+    let name: String
+    var size: CGFloat = 60
+
+    var body: some View {
+        Text(String((name.isEmpty ? "ゲ" : name).prefix(1)))
+            .font(.system(size: size * 0.4, weight: .bold, design: .rounded))
+            .foregroundStyle(Theme.accent)
+            .frame(width: size, height: size)
+            .background(Theme.accentLight, in: Circle())
+            .overlay(
+                Circle().strokeBorder(AngularGradient(colors: Brand.neonOnLight + [Brand.neonOnLight[0]], center: .center),
+                                      lineWidth: size * 0.05)
+            )
+            .accessibilityHidden(true)
+    }
+}
+
+/// GATE の表紙の小さなカード（表紙が無いときは、夜空の色にしるし）
+struct GateCoverTile: View {
+    let title: String
+    let coverPath: String?
+    let caption: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ZStack {
+                if let coverPath {
+                    RemotePhoto(path: coverPath)
+                } else {
+                    LinearGradient(colors: [Color(hex: 0x0A1029), Color(hex: 0x2C1445), Color(hex: 0x6B2A3D)],
+                                   startPoint: .top, endPoint: .bottom)
+                    GateMark(size: 40, glowing: false)
+                }
+            }
+            .frame(width: 132, height: 132)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text).lineLimit(1)
+            Text(caption).font(.caption).foregroundStyle(Theme.textSecondary)
+        }
+        .frame(width: 132)
+    }
+}
+
+/// 白いカードにまとめた行の集まり（見出しつき）
+struct MeGroup<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title).font(.headline).foregroundStyle(Theme.text)
+            VStack(spacing: 0) {
+                _VariadicView.Tree(DividedRows()) { content() }
+            }
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18))
+            .overlay(RoundedRectangle(cornerRadius: 18).stroke(Theme.line))
+        }
+    }
+}
+
+/// 行と行のあいだに、うすい線を入れる
+private struct DividedRows: _VariadicView_MultiViewRoot {
+    func body(children: _VariadicView.Children) -> some View {
+        let last = children.last?.id
+        ForEach(children) { child in
+            child
+            if child.id != last {
+                Rectangle().fill(Theme.line).frame(height: 1).padding(.leading, 48)
+            }
+        }
+    }
+}
+
+/// 押すと先の画面へ進む 1 行
+struct MeLink<Destination: View>: View {
+    let title: String
+    let systemImage: String
+    var detail: String? = nil
+    @ViewBuilder let destination: () -> Destination
+
+    var body: some View {
+        NavigationLink {
+            destination()
+        } label: {
+            HStack {
+                MeRow(title: title, systemImage: systemImage, detail: detail)
+                Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(Theme.textSecondary)
+            }
+            .padding(.vertical, 12)
+            .padding(.horizontal, 14)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// 名前を直す
+struct NameEditSheet: View {
+    let current: String
+    let save: (String) async throws -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = ""
+    @State private var error: String?
+    @State private var saving = false
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 12) {
+                TextField("友達に見える名前", text: $name)
+                    .focused($focused)
+                    .font(.title3)
+                    .padding(14)
+                    .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14))
+                    .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.line))
+                    .onChange(of: name) { _, value in
+                        if value.count > 30 { name = String(value.prefix(30)) }
+                    }
+                Text("30 文字まで。友達のホームや GATE の記憶に、この名前で出ます。")
+                    .font(.caption).foregroundStyle(Theme.textSecondary)
+                if let error { NoticeText(text: error) }
+                Spacer()
+            }
+            .padding(20)
+            .background(Theme.background.ignoresSafeArea())
+            .navigationTitle("名前")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("やめる") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("保存") {
+                        Task {
+                            saving = true
+                            defer { saving = false }
+                            do {
+                                try await save(name.trimmingCharacters(in: .whitespacesAndNewlines))
+                                dismiss()
+                            } catch {
+                                self.error = ErrorText.of(error)
+                            }
+                        }
+                    }
+                    .bold()
+                    .disabled(saving || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+            .onAppear {
+                name = current
+                focused = true
+            }
+        }
+        .presentationDetents([.medium])
     }
 }
 

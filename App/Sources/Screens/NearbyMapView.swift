@@ -40,12 +40,7 @@ struct NearbyMapView: View {
                         ForEach(gates) { gate in
                             Annotation(gate.title, coordinate: CLLocationCoordinate2D(latitude: gate.approx_lat,
                                                                                        longitude: gate.approx_lon)) {
-                                Image(systemName: "door.left.hand.open")
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundStyle(.white)
-                                    .padding(8)
-                                    .background(gate.mine ? Theme.warm : Theme.accent, in: Circle())
-                                    .overlay(Circle().stroke(.white, lineWidth: 2))
+                                GatePin(mine: gate.mine)
                             }
                         }
                     }
@@ -191,5 +186,39 @@ struct NearbyMapView: View {
         } catch {
             self.error = ErrorText.of(error)
         }
+    }
+}
+
+/// 地図の GATE の印：アイコンと同じネオンの扉（自分の GATE は夕焼けの色の縁）
+struct GatePin: View {
+    let mine: Bool
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Image("BrandMark")
+                .resizable()
+                .interpolation(.high)
+                .frame(width: 34, height: 34)
+                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .stroke(mine ? Theme.warm : .white, lineWidth: mine ? 3 : 2))
+                .shadow(color: .black.opacity(0.25), radius: 4, y: 2)
+            Triangle()
+                .fill(mine ? Theme.warm : .white)
+                .frame(width: 10, height: 6)
+                .shadow(color: .black.opacity(0.15), radius: 1, y: 1)
+        }
+        .accessibilityLabel(mine ? "自分の GATE" : "GATE")
+    }
+}
+
+private struct Triangle: Shape {
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: rect.minX, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
+        p.closeSubpath()
+        return p
     }
 }

@@ -3,8 +3,9 @@ import Combine
 import RealityKit
 import UIKit
 
-/// GATE の扉。厚みのある石のアーチ、内側の光の縁、ガラスの面、接地の影。
-/// 開くとガラスが消え、扉の向こうの世界（空・思い出の写真・光の粒）が見える。
+/// GATE の扉。夜の色の石のアーチに、アイコンと同じネオン（足もとの夕焼け → てっぺんの夜空）が灯る。
+/// 現れるときはネオンがまたたいて灯り、開くとガラスが消えて、扉の向こうの世界（夕焼けから夜空・思い出の写真・光の粒）と、
+/// 足もとへもれる光が広がる。
 /// 向こうの世界は、扉の後ろに置いた「見えない壁」で囲み、扉の開口部からだけ見えるようにしている。
 @MainActor
 final class GateDoor {
@@ -20,6 +21,13 @@ final class GateDoor {
     private let hitBox = ModelEntity()
     private var glass = ModelEntity()
     private var trim = ModelEntity()
+    /// ネオンの管（高さで色が変わるので、いくつかに分けて色を付ける）と、そのにじむ光
+    private let neon = Entity()
+    private var neonGlow = ModelEntity()
+    private var groundGlow = ModelEntity()
+    private var ring = ModelEntity()
+    /// ネオンの明るさ（0〜1。またたき・息づかい・開いたときの強まり）
+    private var neonLevel: Float = 0
     private let interior = Entity()
     private var spill = ModelEntity()
     private var photoSlots: [ModelEntity] = []
@@ -84,13 +92,13 @@ final class GateDoor {
     private func build() throws {
         let path = shape.openingPath()
 
-        // 枠：あたたかい白の石。わずかにつやを出し、角の陰影で厚みが分かるように
+        // 枠：夜の色の石。つやを出して、ネオンの光と景色が映るように
         var stone = PhysicallyBasedMaterial()
-        stone.baseColor = .init(tint: UIColor(red: 0.93, green: 0.92, blue: 0.89, alpha: 1))
-        stone.roughness = .init(floatLiteral: 0.58)
-        stone.metallic = .init(floatLiteral: 0)
-        stone.clearcoat = .init(floatLiteral: 0.18)
-        stone.clearcoatRoughness = .init(floatLiteral: 0.35)
+        stone.baseColor = .init(tint: UIColor(red: 0.15, green: 0.14, blue: 0.21, alpha: 1))
+        stone.roughness = .init(floatLiteral: 0.34)
+        stone.metallic = .init(floatLiteral: 0.08)
+        stone.clearcoat = .init(floatLiteral: 0.65)
+        stone.clearcoatRoughness = .init(floatLiteral: 0.18)
         let frame = ModelEntity(mesh: try ArchMesh.frame(path: path, width: shape.frameWidth, depth: shape.depth,
                                                          name: "frame"),
                                 materials: [stone])
@@ -98,31 +106,35 @@ final class GateDoor {
 
         // 足もとの踏み石
         var step = PhysicallyBasedMaterial()
-        step.baseColor = .init(tint: UIColor(red: 0.84, green: 0.83, blue: 0.80, alpha: 1))
-        step.roughness = .init(floatLiteral: 0.7)
+        step.baseColor = .init(tint: UIColor(red: 0.22, green: 0.21, blue: 0.28, alpha: 1))
+        step.roughness = .init(floatLiteral: 0.5)
+        step.clearcoat = .init(floatLiteral: 0.3)
         let slab = ModelEntity(mesh: .generateBox(size: [shape.outerWidth + 0.12, 0.035, shape.depth + 0.24],
                                                   cornerRadius: 0.012),
                                materials: [step])
         slab.position = [0, 0.0175, 0]
         root.addChild(slab)
 
-        // 内側の光の縁（開口部のふちに沿う細い線）
+        // 内側のうすい光の縁（開口部のふちに沿う細い線。ネオンの奥）
         let inset = path.map { (p: $0.p + $0.n * 0.012, n: $0.n) }
-        var light = UnlitMaterial(color: UIColor(red: 1.0, green: 0.86, blue: 0.58, alpha: 1))
+        var light = UnlitMaterial(color: UIColor(red: 1.0, green: 0.86, blue: 0.70, alpha: 1))
         light.blending = .transparent(opacity: .init(floatLiteral: 1))
-        trim = ModelEntity(mesh: try ArchMesh.frame(path: inset, width: 0.012, depth: shape.depth + 0.006, name: "trim"),
+        trim = ModelEntity(mesh: try ArchMesh.frame(path: inset, width: 0.008, depth: shape.depth + 0.004, name: "trim"),
                            materials: [light])
-        Fade.set(trim, 0.55)
+        Fade.set(trim, 0.35)
         root.addChild(trim)
 
-        // ガラスの面（開く前）
+        // ネオンの管：開口部のふちの少し内側、正面に沿って。高さで夕焼け → 夜空の色
+        try buildNeon()
+
+        // ガラスの面（開く前）：夜空のむらさき
         var glassMaterial = PhysicallyBasedMaterial()
-        glassMaterial.baseColor = .init(tint: UIColor(red: 0.84, green: 0.95, blue: 0.92, alpha: 1))
-        glassMaterial.roughness = .init(floatLiteral: 0.06)
+        glassMaterial.baseColor = .init(tint: UIColor(red: 0.30, green: 0.24, blue: 0.56, alpha: 1))
+        glassMaterial.roughness = .init(floatLiteral: 0.05)
         glassMaterial.metallic = .init(floatLiteral: 0.0)
-        glassMaterial.emissiveColor = .init(color: UIColor(red: 0.62, green: 0.86, blue: 0.78, alpha: 1))
-        glassMaterial.emissiveIntensity = 0.25
-        glassMaterial.blending = .transparent(opacity: .init(floatLiteral: 0.32))
+        glassMaterial.emissiveColor = .init(color: UIColor(red: 0.42, green: 0.30, blue: 0.86, alpha: 1))
+        glassMaterial.emissiveIntensity = 0.3
+        glassMaterial.blending = .transparent(opacity: .init(floatLiteral: 0.38))
         glass = ModelEntity(mesh: try ArchMesh.opening(path: inset, z: 0.004, name: "glass"), materials: [glassMaterial])
         root.addChild(glass)
 
@@ -142,15 +154,37 @@ final class GateDoor {
             root.addChild(shadow)
         }
 
-        // 開いたときに手前の地面に広がる光
-        if let spillTexture = DoorTextures.radial(key: "spill", rgb: (1.0, 0.85, 0.58), alpha: 0.55) {
+        // ネオンが足もとの地面を照らす、うすい色の光（閉じているあいだも）
+        if let texture = DoorTextures.radial(key: "neon-ground", rgb: (1.0, 0.36, 0.55), alpha: 0.32) {
+            var m = UnlitMaterial()
+            m.color = .init(tint: .white, texture: .init(texture))
+            m.blending = .transparent(opacity: .init(floatLiteral: 1))
+            groundGlow = ModelEntity(mesh: .generatePlane(width: shape.outerWidth + 0.9, depth: 1.0), materials: [m])
+            groundGlow.position = [0, 0.003, 0.32]
+            Fade.set(groundGlow, 0)
+            root.addChild(groundGlow)
+        }
+
+        // 開いたときに手前の地面に広がる光（アイコンの足もとの光と同じ、あたたかい金色）
+        if let spillTexture = DoorTextures.radial(key: "spill", rgb: (1.0, 0.80, 0.50), alpha: 0.62) {
             var m = UnlitMaterial()
             m.color = .init(tint: .white, texture: .init(spillTexture))
             m.blending = .transparent(opacity: .init(floatLiteral: 1))
-            spill = ModelEntity(mesh: .generatePlane(width: 1.6, depth: 1.8), materials: [m])
-            spill.position = [0, 0.004, 0.75]
+            spill = ModelEntity(mesh: .generatePlane(width: 1.8, depth: 2.2), materials: [m])
+            spill.position = [0, 0.004, 0.9]
             Fade.set(spill, 0)
             root.addChild(spill)
+        }
+
+        // 開いたときに扉から広がる光の輪
+        if let ringTexture = DoorTextures.neonRing() {
+            var m = UnlitMaterial()
+            m.color = .init(tint: .white, texture: .init(ringTexture))
+            m.blending = .transparent(opacity: .init(floatLiteral: 1))
+            ring = ModelEntity(mesh: .generatePlane(width: 1.2, height: 1.2), materials: [m])
+            ring.position = [0, shape.innerHeight * 0.55, shape.depth / 2 + 0.05]
+            ring.isEnabled = false
+            root.addChild(ring)
         }
 
         // 陰影をはっきりさせる、やわらかい光（影は作らない＝軽く）
@@ -166,6 +200,63 @@ final class GateDoor {
         ]))
         hitBox.position = [0, shape.outerHeight / 2, 0]
         root.addChild(hitBox)
+    }
+
+    /// ネオンの管を、高さの帯ごとに色を変えて作る（足を細かく分けて、色が少しずつ変わるように）
+    private func buildNeon() throws {
+        let inward: Float = 0.03, tube: Float = 0.024
+        // 開口部のふち（足の部分も細かく分ける）
+        var outline: [(p: SIMD2<Float>, n: SIMD2<Float>)] = []
+        let legSteps = 12
+        for i in 0...legSteps {
+            outline.append((p: SIMD2(-shape.radius, shape.legHeight * Float(i) / Float(legSteps)), n: SIMD2(1, 0)))
+        }
+        for item in shape.openingPath().dropFirst().dropLast() { outline.append(item) }
+        for i in (0...legSteps).reversed() {
+            outline.append((p: SIMD2(shape.radius, shape.legHeight * Float(i) / Float(legSteps)), n: SIMD2(-1, 0)))
+        }
+        let inside = outline.map { (p: $0.p + $0.n * inward, n: $0.n) }
+        let top = shape.innerHeight
+        // 3 点ずつの帯（となりと 1 点重ねて、すき間を作らない）
+        var start = 0
+        while start < inside.count - 1 {
+            let end = min(start + 3, inside.count - 1)
+            let band = Array(inside[start...end])
+            let midY = band.map(\.p.y).reduce(0, +) / Float(band.count)
+            var m = UnlitMaterial(color: DoorTextures.neonColor(at: midY / top))
+            m.blending = .transparent(opacity: .init(floatLiteral: 1))
+            let piece = ModelEntity(mesh: try ArchMesh.frame(path: band, width: tube, depth: tube,
+                                                             zCenter: shape.depth / 2 + tube / 2 + 0.004,
+                                                             name: "neon-\(start)"),
+                                    materials: [m])
+            neon.addChild(piece)
+            start = end
+        }
+        root.addChild(neon)
+        Fade.set(neon, 0)
+
+        // にじむ光（ネオンの前にうすく重ねる）
+        let margin: Float = 0.3
+        if let texture = DoorTextures.neonGlow(shape: shape, margin: margin) {
+            var m = UnlitMaterial()
+            m.color = .init(tint: .white, texture: .init(texture))
+            m.blending = .transparent(opacity: .init(floatLiteral: 1))
+            let w = shape.outerWidth + margin * 2, h = shape.outerHeight + margin * 2
+            neonGlow = ModelEntity(mesh: .generatePlane(width: w, height: h), materials: [m])
+            neonGlow.position = [0, h / 2 - margin, shape.depth / 2 + 0.03]
+            Fade.set(neonGlow, 0)
+            root.addChild(neonGlow)
+        }
+    }
+
+    /// ネオンの明るさをまとめて変える（管・にじむ光・地面の照り返し）
+    private func setNeon(_ level: Float) {
+        // 少しの違いでは変えない（iOS 17 では質感の置き換えになるため、毎コマ変えると重い）
+        if abs(level - neonLevel) < 0.012 && level > 0 && level < 1 { return }
+        neonLevel = level
+        Fade.set(neon, min(1, 0.25 + 0.75 * level))
+        Fade.set(neonGlow, min(1, 0.9 * level))
+        Fade.set(groundGlow, min(1, 0.85 * level))
     }
 
     private func buildInterior(path: [(p: SIMD2<Float>, n: SIMD2<Float>)]) throws {
@@ -234,13 +325,18 @@ final class GateDoor {
                                     phase: Float(i) * 1.7, rises: false))
         }
 
-        // 光の粒（ゆっくり立ちのぼる）
+        // 光の粒（ゆっくり立ちのぼる。金色と、ネオンの色）
         let mote = MeshResource.generateSphere(radius: 0.007)
-        var moteMaterial = UnlitMaterial(color: UIColor(red: 1.0, green: 0.95, blue: 0.82, alpha: 1))
-        moteMaterial.blending = .transparent(opacity: .init(floatLiteral: 0.85))
+        let moteColors = [UIColor(red: 1.0, green: 0.93, blue: 0.78, alpha: 1), DoorTextures.neonColor(at: 0.15),
+                          DoorTextures.neonColor(at: 0.45), DoorTextures.neonColor(at: 0.9)]
+        let moteMaterials: [UnlitMaterial] = moteColors.map {
+            var m = UnlitMaterial(color: $0)
+            m.blending = .transparent(opacity: .init(floatLiteral: 0.85))
+            return m
+        }
         let count = Perf.isLowMemoryDevice ? 14 : 22
         for i in 0..<count {
-            let e = ModelEntity(mesh: mote, materials: [moteMaterial])
+            let e = ModelEntity(mesh: mote, materials: [moteMaterials[i % moteMaterials.count]])
             let base = SIMD3<Float>(Float.random(in: -0.9...0.9), Float.random(in: 0.1...2.2), Float.random(in: -2.2 ... -0.3))
             e.position = base
             e.scale = .one * Float.random(in: 0.6...1.4)
@@ -266,14 +362,26 @@ final class GateDoor {
 
     // MARK: 動き
 
-    /// 足もとから光が満ちるように現れる
+    /// 足もとから現れ、ネオンがまたたいて灯る
     func appear() {
         root.position = [0, -0.05, 0]
+        setNeon(0)
         animate(0.9) { [weak self] t in
             guard let self else { return }
             let e = Self.easeOut(t)
             Fade.set(self.root, e)
             self.root.position = [0, -0.05 * (1 - e), 0]
+        }
+        // 本物のネオン管のように、何度かまたたいてから灯る
+        let flicker: [(Float, Float)] = [(0.0, 0), (0.35, 0), (0.42, 0.9), (0.5, 0.15), (0.6, 1), (0.66, 0.35),
+                                         (0.78, 1), (1.0, 1)]
+        animate(1.3) { [weak self] t in
+            guard let self else { return }
+            var level: Float = 1
+            for i in 0..<(flicker.count - 1) where t >= flicker[i].0 && t <= flicker[i + 1].0 {
+                level = t - flicker[i].0 < 0.02 ? flicker[i].1 : flicker[i + 1].1
+            }
+            self.setNeon(level)
         }
         Trace.log("扉が現れました")
     }
@@ -290,10 +398,30 @@ final class GateDoor {
             self.glass.position = [0, 0, -0.12 * e]
             Fade.set(self.spill, e)
         }
-        // 光の縁が一度強く光ってから落ち着く
+        // 光の縁とネオンが一度強く光ってから落ち着く
         animate(1.4) { [weak self] t in
             let pulse = sin(Float.pi * min(t * 1.4, 1))
-            if let self { Fade.set(self.trim, 0.6 + 0.4 * pulse) }
+            guard let self else { return }
+            Fade.set(self.trim, 0.35 + 0.65 * pulse)
+            self.setNeon(1)
+            self.neonGlow.scale = .one * (1 + 0.12 * pulse)
+        }
+        // 扉から光の輪が広がる
+        ring.isEnabled = true
+        animate(1.0) { [weak self] t in
+            guard let self else { return }
+            let e = Self.easeOut(t)
+            self.ring.scale = .one * (0.4 + 2.6 * e)
+            Fade.set(self.ring, 0.95 * (1 - t))
+            if t >= 1 { self.ring.isEnabled = false }
+        }
+        // 開く音（夕焼けから夜空へ、下から上へ 3 つの音）
+        ChimePlayer.shared.play(.warm)
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 140_000_000)
+            ChimePlayer.shared.play(.sakura)
+            try? await Task.sleep(nanoseconds: 140_000_000)
+            ChimePlayer.shared.play(.sky)
         }
         Trace.log("扉が開きました")
     }
@@ -320,10 +448,9 @@ final class GateDoor {
         }
         // 浮かぶ写真と光の粒（開いているあいだだけ動かす）
         guard isOpen else {
-            // 閉じているあいだは、光の縁がゆっくり息をする
+            // 閉じているあいだは、ネオンがゆっくり息をする
             if tweens.isEmpty {
-                let breathe = 0.5 + 0.12 * sin(Float(clock) * 1.6)
-                Fade.set(trim, breathe)
+                setNeon(0.86 + 0.14 * sin(Float(clock) * 1.6))
             }
             return
         }

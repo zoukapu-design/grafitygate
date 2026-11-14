@@ -185,7 +185,7 @@ struct GateAPI {
 
     func myGates(owner: UUID) async throws -> [MyGate] {
         try await client.from("gf_gates")
-            .select("id,title,visibility,status,created_at")
+            .select("id,title,visibility,status,created_at,cover_path")
             .eq("owner", value: owner.uuidString)
             .order("created_at", ascending: false)
             .execute().value

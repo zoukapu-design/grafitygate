@@ -26,16 +26,21 @@ struct ProfileView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 if let profile {
-                    HStack(spacing: 14) {
-                        PersonBadge(name: profile.display_name, size: 64)
+                    // 「わたし」と同じ形のプロフィール（数は、友達が見せている図鑑の数だけ）
+                    HStack(spacing: 16) {
+                        NeonAvatar(name: profile.display_name, size: 72)
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(profile.display_name).font(.title3.weight(.semibold)).foregroundStyle(Theme.text)
-                            Text("@\(profile.handle)").font(.subheadline).foregroundStyle(Theme.textSecondary)
+                            Text(profile.display_name).font(.title2.weight(.bold)).foregroundStyle(Theme.text).lineLimit(1)
+                            Text("ID：\(profile.handle)").font(.subheadline).foregroundStyle(Theme.textSecondary)
                             if !isMe {
-                                Text(relationText).font(.caption.weight(.semibold))
+                                Label(relationText, systemImage: isFriend ? "person.2.fill" : "person")
+                                    .font(.caption.weight(.semibold))
                                     .foregroundStyle(isFriend ? Theme.accent : Theme.textSecondary)
+                                    .padding(.horizontal, 8).padding(.vertical, 3)
+                                    .background(isFriend ? Theme.accentLight : Theme.surfaceElevated, in: Capsule())
                             }
                         }
+                        Spacer(minLength: 0)
                     }
                     if !isMe && !blocked {
                         Button {
