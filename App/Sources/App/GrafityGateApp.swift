@@ -18,6 +18,7 @@ struct GrafityGateApp: App {
                     OnboardingView {
                         withAnimation(.easeInOut(duration: 0.35)) { onboarded = true }
                         location.start()
+                        session.agreedInOnboarding(version: LegalDocument.version)
                         Task { await session.applyPendingName() }
                     }
                     .transition(.opacity)

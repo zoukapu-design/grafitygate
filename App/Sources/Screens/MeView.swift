@@ -37,6 +37,8 @@ struct MeView: View {
                         MeGroup(title: "安全とデータ") {
                             MeLink(title: "ブロックした人", systemImage: "hand.raised") { BlockedView() }
                             MeLink(title: "自分のデータ（書き出し・アカウントの削除）", systemImage: "externaldrive") { MyDataView() }
+                            MeLink(title: "利用規約", systemImage: "doc.plaintext") { LegalDocumentView(document: .terms) }
+                            MeLink(title: "プライバシーポリシー", systemImage: "hand.raised.square") { LegalDocumentView(document: .privacy) }
                             ShareLink(item: Trace.fileURL) {
                                 MeRow(title: "調べものの記録を送る", systemImage: "doc.text.magnifyingglass", detail: nil)
                                     .padding(.vertical, 12)

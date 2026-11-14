@@ -416,3 +416,26 @@ private struct FollowRow: Codable {
     let follower: UUID
     let followee: UUID
 }
+
+
+// MARK: 利用規約
+
+struct TermsState: Decodable {
+    let accepted: Int?
+    let current: Int
+}
+
+private struct AcceptTermsParams: Encodable {
+    let p_version: Int
+}
+
+extension GateAPI {
+    /// 自分が同意した版と、いまの版
+    func myTerms() async throws -> TermsState {
+        try await client.rpc("gf_my_terms").execute().value
+    }
+
+    func acceptTerms(_ version: Int) async throws {
+        try await client.rpc("gf_accept_terms", params: AcceptTermsParams(p_version: version)).execute()
+    }
+}

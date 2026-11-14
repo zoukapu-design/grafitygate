@@ -27,6 +27,8 @@ grant execute on function t_throws(text, text, text) to authenticated, anon;
 \set carol '00000000-0000-0000-0000-00000000000c'
 \set dave  '00000000-0000-0000-0000-00000000000d'
 insert into auth.users values (:'alice'), (:'bob'), (:'carol'), (:'dave');
+-- 4 人とも利用規約に同意している（同意していないときは test_terms.sql で確かめる）
+insert into gf_terms (user_id, version) select id, 1 from auth.users on conflict (user_id) do nothing;
 insert into profiles (id, display_name, handle) values
   (:'alice', 'アリス', 'alice'), (:'bob', 'ボブ', 'bob'), (:'carol', 'キャロル', 'carol'), (:'dave', 'デイブ', 'dave');
 -- アリスとボブは友達（お互いにフォロー）。キャロルはアリスとボブを片方だけフォロー。デイブは知らない人。

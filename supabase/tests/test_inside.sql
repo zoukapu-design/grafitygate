@@ -192,6 +192,7 @@ select t_ok(jsonb_array_length(gf_export_me() -> 'gates') >= 2, '自分の GATE 
 select t_ok(jsonb_array_length(gf_export_me() -> 'letters_written') >= 2, '自分が書いた手紙も書き出せる');
 :as_admin
 insert into auth.users values (:'eve');
+insert into gf_terms (user_id, version) values (:'eve', 1) on conflict (user_id) do nothing;
 insert into profiles (id, display_name, handle) values (:'eve', 'イブ', 'eve');
 :as_eve
 select gf_set_bookmark(:'g4', true);

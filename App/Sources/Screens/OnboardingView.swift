@@ -8,6 +8,7 @@ struct OnboardingView: View {
     /// はじめに決める名前（サーバーにつながったら、そのまま使う。あとで「わたし」で変えられる）
     @AppStorage(SessionModel.pendingNameKey) private var name = ""
     @FocusState private var nameFocused: Bool
+    @State private var agreed = false
 
     init(onFinish: @escaping () -> Void) {
         self.onFinish = onFinish
@@ -89,12 +90,16 @@ struct OnboardingView: View {
                 if page < pages.count - 1 {
                     Button("次へ") { withAnimation { page += 1 } }
                         .buttonStyle(PrimaryButtonStyle())
-                    Button("とばす") { finish() }
+                    // とばしても、さいごの同意の画面は見てもらう
+                    Button("とばす") { withAnimation { page = pages.count - 1 } }
                         .font(.subheadline)
                         .foregroundStyle(Theme.textSecondary)
                 } else {
+                    TermsCheckbox(agreed: $agreed)
+                        .padding(.bottom, 4)
                     Button("はじめる") { finish() }
                         .buttonStyle(PrimaryButtonStyle())
+                        .disabled(!agreed)
                     Text("このあと、近くの GATE を見つけるために位置情報の許可をたずねます。カメラは、扉を開けるときにたずねます。")
                         .font(.caption)
                         .foregroundStyle(Theme.textSecondary)

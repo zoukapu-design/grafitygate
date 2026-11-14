@@ -31,6 +31,11 @@ struct RootView: View {
         }
         .tint(Theme.accent)
         .environmentObject(inbox)
+        // 規約に同意していない（前の版のアプリから使っている・規約が新しくなった）ときは、同意するまで閉じない画面
+        .fullScreenCover(isPresented: Binding(get: { session.termsToAccept != nil }, set: { _ in })) {
+            TermsAgreementSheet(version: session.termsToAccept ?? LegalDocument.version)
+                .environmentObject(session)
+        }
         .sheet(item: $nav.friendInvite) { invite in
             FriendInviteSheet(handle: invite.handle)
                 .environmentObject(session)

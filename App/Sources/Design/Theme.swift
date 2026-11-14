@@ -96,9 +96,12 @@ struct NoticeText: View {
     var isError = true
 
     var body: some View {
-        Label(text, systemImage: isError ? "exclamationmark.circle" : "checkmark.circle")
-            .font(.subheadline)
-            .foregroundStyle(isError ? Theme.alert : Theme.accent)
-            .frame(maxWidth: .infinity, alignment: .leading)
+        // 止めた処理（ErrorText が空を返す）は、何も出さない
+        if !text.isEmpty {
+            Label(text, systemImage: isError ? "exclamationmark.circle" : "checkmark.circle")
+                .font(.subheadline)
+                .foregroundStyle(isError ? Theme.alert : Theme.accent)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 }

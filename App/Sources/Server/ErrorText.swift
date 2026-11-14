@@ -4,6 +4,18 @@ import Supabase
 /// サーバーの決まりで断られたときの理由を、分かりやすい言葉にする。
 enum ErrorText {
     static func of(_ error: Error) -> String {
+        // 画面を離れた・引っぱって読み直したときに止めたものは、間違いとして出さない
+        if isCancellation(error) { return "" }
+        if let e = error as? URLError {
+            switch e.code {
+            case .notConnectedToInternet, .networkConnectionLost, .dataNotAllowed:
+                return "インターネットにつながっていません。電波の良い所でもう一度お試しください。"
+            case .timedOut:
+                return "通信に時間がかかりすぎました。電波の良い所でもう一度お試しください。"
+            default:
+                break
+            }
+        }
         let message: String
         if let e = error as? PostgrestError {
             message = e.message
@@ -22,6 +34,13 @@ enum ErrorText {
             return "通信できませんでした。電波の良い所でもう一度お試しください。"
         }
         return message
+    }
+
+    /// 止めた処理（画面を閉じた・読み直した）
+    static func isCancellation(_ error: Error) -> Bool {
+        if error is CancellationError { return true }
+        if let e = error as? URLError, e.code == .cancelled { return true }
+        return (error as NSError).domain == NSURLErrorDomain && (error as NSError).code == NSURLErrorCancelled
     }
 
     /// サーバーに関数がまだ無い（新しい SQL を入れる前）
@@ -81,5 +100,7 @@ enum ErrorText {
         ("gf_trail_not_visited", "TRAIL には、自分が扉を開けたことのある GATE だけを入れられます。"),
         ("gf_not_found", "見つかりませんでした。"),
         ("gf_not_signed_in", "サーバーにつながっていません。アプリを開き直してください。"),
+        ("gf_terms_required", "利用規約への同意が必要です。アプリを開き直して、同意の画面から進んでください。"),
+        ("gf_bad_terms", "規約が新しくなりました。アプリを開き直して、もう一度同意してください。"),
     ]
 }

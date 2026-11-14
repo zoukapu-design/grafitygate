@@ -27,6 +27,11 @@ final class SessionModel: ObservableObject {
 
     /// はじめの案内で決めた名前（サーバーにつながってプロフィールが「ゲスト」のままなら、この名前にする）
     static let pendingNameKey = "gg.pendingName"
+    /// はじめの案内で同意した規約の版（サーバーにつながったら、そのまま送る）
+    static let agreedTermsKey = "gg.agreedTerms"
+
+    /// 同意してもらう必要がある規約の版（nil なら同意済み、またはサーバーがまだ対応していない）
+    @Published private(set) var termsToAccept: Int?
 
     @Published private(set) var state: State = .starting
     @Published private(set) var userID: UUID?
@@ -65,6 +70,7 @@ final class SessionModel: ObservableObject {
             profile = try await ensureProfile(client: client, id: user.id)
             state = .signedIn
             await applyPendingName()
+            await syncTerms()
         } catch {
             state = .failed(ErrorText.of(error))
         }
@@ -104,6 +110,46 @@ final class SessionModel: ObservableObject {
         } catch {
             Trace.log("はじめに決めた名前を保存できませんでした：\(ErrorText.of(error))")
         }
+    }
+
+    /// 規約に同意しているか確かめる。はじめの案内で同意した版がいまの版なら、そのまま送る
+    func syncTerms() async {
+        guard let api else { return }
+        do {
+            let terms = try await api.myTerms()
+            if let accepted = terms.accepted, accepted >= terms.current {
+                termsToAccept = nil
+                return
+            }
+            if UserDefaults.standard.integer(forKey: Self.agreedTermsKey) >= terms.current {
+                try await api.acceptTerms(terms.current)
+                termsToAccept = nil
+                Trace.log("はじめの案内で同意した規約（\(terms.current) 版）を送りました")
+            } else {
+                termsToAccept = terms.current
+                Trace.log("規約（\(terms.current) 版）への同意をお願いします")
+            }
+        } catch {
+            // サーバーがまだ 0013 の前なら、同意の画面は出さない
+            if !ErrorText.isMissingFunction(error) {
+                Trace.log("規約の同意を確かめられませんでした：\(ErrorText.of(error))")
+            }
+        }
+    }
+
+    /// はじめの案内で同意した（サーバーにはつながったときに送る）
+    func agreedInOnboarding(version: Int) {
+        UserDefaults.standard.set(version, forKey: Self.agreedTermsKey)
+        if let needed = termsToAccept, version >= needed { termsToAccept = nil }
+        Task { await syncTerms() }
+    }
+
+    func acceptTerms(_ version: Int) async throws {
+        guard let api else { return }
+        try await api.acceptTerms(version)
+        UserDefaults.standard.set(version, forKey: Self.agreedTermsKey)
+        termsToAccept = nil
+        Trace.log("規約（\(version) 版）に同意しました")
     }
 
     func rename(_ name: String) async throws {
