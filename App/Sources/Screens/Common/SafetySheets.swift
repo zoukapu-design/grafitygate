@@ -191,10 +191,6 @@ struct PersonBadge: View {
     var size: CGFloat = 32
 
     var body: some View {
-        Text(String(name.prefix(1)))
-            .font(.system(size: size * 0.45, weight: .semibold))
-            .foregroundStyle(Theme.accent)
-            .frame(width: size, height: size)
-            .background(Theme.accentLight, in: Circle())
+        NeonAvatar(name: name, size: size)
     }
 }

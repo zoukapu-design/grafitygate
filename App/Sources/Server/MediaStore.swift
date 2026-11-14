@@ -1,5 +1,6 @@
 import ARKit
 import Foundation
+import ImageIO
 import Supabase
 import SwiftUI
 import UIKit
@@ -9,7 +10,23 @@ import UIKit
 struct MediaStore {
     let client: SupabaseClient
 
-    private static let photos = NSCache<NSString, UIImage>()
+    /// 受け取った写真（画面の大きさに縮めたもの）。合わせて 80MB ほどまで
+    private static let photos: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>()
+        cache.totalCostLimit = 80 * 1024 * 1024
+        return cache
+    }()
+    private static let fetches = PhotoFetches()
+
+    private static func keep(_ image: UIImage, path: String) {
+        let cost = Int(image.size.width * image.size.height * image.scale * image.scale * 4)
+        photos.setObject(image, forKey: path as NSString, cost: cost)
+    }
+
+    /// すでに手もとにある写真（すぐ出せるとき）
+    static func cachedPhoto(path: String) -> UIImage? {
+        photos.object(forKey: path as NSString)
+    }
 
     // MARK: 写真
 
@@ -26,7 +43,7 @@ struct MediaStore {
         try await client.storage.from("gf-media").upload(path, data: data,
                                                          options: FileOptions(contentType: "image/jpeg"))
         Trace.log("写真を送りました（\(data.count / 1024)KB）")
-        if let image = UIImage(data: data) { Self.photos.setObject(image, forKey: path as NSString) }
+        if let image = PhotoDecode.image(from: data) { Self.keep(image, path: path) }
         return path
     }
 
@@ -60,9 +77,13 @@ struct MediaStore {
     /// 写真を受け取る（見てよくない写真は、サーバーが断る）
     func photo(path: String) async -> UIImage? {
         if let cached = Self.photos.object(forKey: path as NSString) { return cached }
-        guard let data = try? await client.storage.from("gf-media").download(path: path),
-              let image = UIImage(data: data) else { return nil }
-        Self.photos.setObject(image, forKey: path as NSString)
+        // 同じ写真を同時にいくつもの画面が待っていても、受け取るのは 1 回だけ。
+        // 縮めて絵にするのは裏で（大きな JPEG をそのまま出すと、スクロールが引っかかる）
+        let client = client
+        let image = await Self.fetches.image(path: path) {
+            try? await client.storage.from("gf-media").download(path: path)
+        }
+        if let image { Self.keep(image, path: path) }
         return image
     }
 
@@ -137,6 +158,41 @@ struct MediaStore {
 }
 
 /// サーバーの写真を表示する（見てよくないときは、うすい色の四角のまま）
+/// 同じ写真の受け取りを 1 つにまとめる
+private actor PhotoFetches {
+    private var running: [String: Task<UIImage?, Never>] = [:]
+
+    func image(path: String, fetch: @escaping @Sendable () async -> Data?) async -> UIImage? {
+        if let task = running[path] { return await task.value }
+        let task = Task.detached(priority: .userInitiated) { () -> UIImage? in
+            guard let data = await fetch() else { return nil }
+            return PhotoDecode.image(from: data)
+        }
+        running[path] = task
+        let image = await task.value
+        running[path] = nil
+        return image
+    }
+}
+
+/// 写真を画面に出せる大きさに縮めて、先に絵にしておく（向きも直す）
+enum PhotoDecode {
+    static func image(from data: Data, maxPixel: CGFloat = 1800) -> UIImage? {
+        let options = [kCGImageSourceShouldCache: false] as CFDictionary
+        guard let source = CGImageSourceCreateWithData(data as CFData, options) else { return nil }
+        let thumb: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixel,
+        ]
+        guard let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, thumb as CFDictionary) else {
+            return UIImage(data: data)
+        }
+        return UIImage(cgImage: cg)
+    }
+}
+
 struct RemotePhoto: View {
     let path: String
     let contentMode: ContentMode
@@ -144,11 +200,14 @@ struct RemotePhoto: View {
 
     @EnvironmentObject private var session: SessionModel
     @State private var image: UIImage?
+    @State private var failed = false
 
     init(path: String, contentMode: ContentMode = .fill, placeholder: Color = Theme.surfaceElevated) {
         self.path = path
         self.contentMode = contentMode
         self.placeholder = placeholder
+        // 手もとにあれば、はじめから出す（一覧を戻ったときにちらつかない）
+        _image = State(initialValue: MediaStore.cachedPhoto(path: path))
     }
 
     var body: some View {
@@ -158,14 +217,25 @@ struct RemotePhoto: View {
                 Image(uiImage: image)
                     .resizable()
                     .aspectRatio(contentMode: contentMode)
-            } else {
+                    .transition(.opacity)
+            } else if failed {
                 Image(systemName: "photo")
                     .foregroundStyle(Theme.textSecondary.opacity(0.5))
             }
         }
         .clipped()
         .task(id: path) {
-            image = await session.media?.photo(path: path)
+            if let cached = MediaStore.cachedPhoto(path: path) {
+                image = cached
+                return
+            }
+            image = nil
+            failed = false
+            let loaded = await session.media?.photo(path: path)
+            withAnimation(.easeOut(duration: 0.2)) {
+                image = loaded
+                failed = loaded == nil
+            }
         }
     }
 }

@@ -757,20 +757,62 @@ enum ServerDate {
         withFraction.date(from: s) ?? plain.date(from: s)
     }
 
-    /// 「2027年4月1日 9:00」など
-    static func day(_ d: Date) -> String {
+    private static let dayFormat: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "ja_JP")
         f.dateFormat = "yyyy年M月d日 H:mm"
-        return f.string(from: d)
+        return f
+    }()
+    private static let relativeFormat: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        f.locale = Locale(identifier: "ja_JP")
+        f.unitsStyle = .short
+        return f
+    }()
+    private static let clockFormat: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ja_JP")
+        f.dateFormat = "H:mm"
+        return f
+    }()
+    private static let dateOnlyFormat: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ja_JP")
+        f.dateFormat = "M月d日（E）"
+        return f
+    }()
+    private static let dateWithYearFormat: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ja_JP")
+        f.dateFormat = "yyyy年M月d日（E）"
+        return f
+    }()
+
+    /// 「2027年4月1日 9:00」など
+    static func day(_ d: Date) -> String {
+        dayFormat.string(from: d)
     }
 
     /// 「3 分前」「2 時間前」など
     static func relative(_ s: String) -> String {
         guard let d = parse(s) else { return "" }
-        let f = RelativeDateTimeFormatter()
-        f.locale = Locale(identifier: "ja_JP")
-        f.unitsStyle = .short
-        return f.localizedString(for: d, relativeTo: Date())
+        if Date().timeIntervalSince(d) < 60 { return "いま" }
+        return relativeFormat.localizedString(for: d, relativeTo: Date())
+    }
+
+    /// 「9:05」
+    static func clock(_ d: Date) -> String {
+        clockFormat.string(from: d)
+    }
+
+    /// 会話の日の区切り：「今日」「昨日」「11月12日（木）」（去年より前は年も）
+    static func dayHeading(_ d: Date) -> String {
+        let cal = Calendar.current
+        if cal.isDateInToday(d) { return "今日" }
+        if cal.isDateInYesterday(d) { return "昨日" }
+        if cal.component(.year, from: d) == cal.component(.year, from: Date()) {
+            return dateOnlyFormat.string(from: d)
+        }
+        return dateWithYearFormat.string(from: d)
     }
 }

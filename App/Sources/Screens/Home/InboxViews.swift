@@ -214,7 +214,7 @@ struct DMThreadRoute: Hashable, Identifiable {
     let id: UUID
 }
 
-/// 1 人とのメッセージ。開いているあいだ 8 秒ごとに新しいものを確かめる。
+/// 1 人とのメッセージ。開いているあいだ 8 秒ごとに新しいものを確かめる（送れるかどうかは 1 分ごと）。
 struct ChatView: View {
     let other: UUID
     let name: String?
@@ -222,148 +222,292 @@ struct ChatView: View {
     @EnvironmentObject private var session: SessionModel
     @EnvironmentObject private var inbox: InboxModel
     @State private var messages: [DMMessage] = []
+    @State private var pending: [PendingMessage] = []
     @State private var otherName: String?
     @State private var canSend = true
+    @State private var loaded = false
     @State private var draft = ""
-    @State private var sending = false
     @State private var error: String?
     @State private var report: ReportItem?
+    @State private var lastRelationCheck = Date.distantPast
+    @FocusState private var typing: Bool
 
     init(other: UUID, name: String?) {
         self.other = other
         self.name = name
     }
 
+    /// 送っている途中のメッセージ（サーバーに入るまで、うすく出す）
+    struct PendingMessage: Identifiable, Equatable {
+        let id = UUID()
+        let body: String
+        var failed = false
+    }
+
+    private var displayName: String { otherName ?? name ?? "友達" }
+
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: 8) {
-                    if !canSend {
-                        Text("お互いにフォローしているときだけ送れます。")
-                            .font(.caption).foregroundStyle(Theme.textSecondary).padding(.top, 8)
+                LazyVStack(spacing: 0) {
+                    if loaded && messages.isEmpty && pending.isEmpty {
+                        emptyState
                     }
-                    ForEach(messages) { message in
-                        bubble(message)
+                    ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
+                        let date = ServerDate.parse(message.created_at)
+                        if startsNewDay(at: index), let date {
+                            Text(ServerDate.dayHeading(date))
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(Theme.textSecondary)
+                                .padding(.horizontal, 10).padding(.vertical, 4)
+                                .background(Theme.surfaceElevated, in: Capsule())
+                                .padding(.top, index == 0 ? 4 : 18)
+                                .padding(.bottom, 10)
+                        }
+                        bubble(message, index: index)
                             .id(message.id)
                     }
-                    if let error { NoticeText(text: error) }
+                    ForEach(pending) { item in
+                        pendingBubble(item).id(item.id)
+                    }
+                    if !canSend && loaded {
+                        Label("お互いにフォローしているときだけ送れます", systemImage: "lock")
+                            .font(.caption).foregroundStyle(Theme.textSecondary)
+                            .padding(.top, 16)
+                    }
+                    if let error { NoticeText(text: error).padding(.top, 12) }
+                    Color.clear.frame(height: 1).id("bottom")
                 }
-                .padding(16)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
             }
-            .onChange(of: messages.last?.id) { _, last in
-                if let last { withAnimation { proxy.scrollTo(last, anchor: .bottom) } }
+            .scrollDismissesKeyboard(.interactively)
+            .onChange(of: messages.last?.id) { old, _ in
+                // 開いたときはすぐ下へ、そのあと届いたものはなめらかに
+                if old == nil {
+                    proxy.scrollTo("bottom", anchor: .bottom)
+                } else {
+                    withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo("bottom", anchor: .bottom) }
+                }
+            }
+            .onChange(of: pending.count) { _, _ in
+                withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo("bottom", anchor: .bottom) }
+            }
+            .onChange(of: typing) { _, now in
+                if now {
+                    Task {
+                        try? await Task.sleep(nanoseconds: 250_000_000)
+                        withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
+                    }
+                }
             }
         }
         .background(Theme.background.ignoresSafeArea())
-        .navigationTitle(otherName ?? name ?? "メッセージ")
+        .navigationTitle(displayName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 NavigationLink {
                     ProfileView(userID: other)
                 } label: {
-                    Image(systemName: "person.crop.circle")
+                    PersonBadge(name: displayName, size: 30)
                 }
-                .accessibilityLabel("プロフィール")
+                .accessibilityLabel("\(displayName) さんのプロフィール")
             }
         }
-        .safeAreaInset(edge: .bottom) {
-            HStack(spacing: 10) {
-                TextField(canSend ? "メッセージ" : "送れません", text: $draft, axis: .vertical)
-                    .lineLimit(1...5)
-                    .padding(10)
-                    .background(Theme.surfaceElevated, in: RoundedRectangle(cornerRadius: 18))
-                    .disabled(!canSend)
-                Button {
-                    Task { await send() }
-                } label: {
-                    Image(systemName: "arrow.up")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 38, height: 38)
-                        .background(Theme.accent.opacity(canSendNow ? 1 : 0.35), in: Circle())
-                }
-                .disabled(!canSendNow)
-                .accessibilityLabel("送る")
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .background(.bar)
-        }
+        .safeAreaInset(edge: .bottom) { composer }
         .sheet(item: $report) { item in ReportSheet(item: item) }
         .task {
-            await load()
+            await load(checkRelation: true)
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 8_000_000_000)
                 if Task.isCancelled { break }
-                await load()
+                await load(checkRelation: Date().timeIntervalSince(lastRelationCheck) > 60)
             }
         }
     }
 
-    private var canSendNow: Bool {
-        canSend && !sending && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    private var emptyState: some View {
+        VStack(spacing: 10) {
+            PersonBadge(name: displayName, size: 64)
+            Text(displayName).font(.headline).foregroundStyle(Theme.text)
+            Text(canSend ? "最初のひとことを送ってみましょう。" : "お互いにフォローすると、メッセージを送れます。")
+                .font(.subheadline).foregroundStyle(Theme.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 60)
     }
 
-    private func bubble(_ message: DMMessage) -> some View {
+    private var composer: some View {
+        HStack(alignment: .bottom, spacing: 10) {
+            TextField(canSend ? "メッセージ" : "いまは送れません", text: $draft, axis: .vertical)
+                .lineLimit(1...5)
+                .focused($typing)
+                .padding(.horizontal, 14).padding(.vertical, 10)
+                .background(Theme.surface, in: RoundedRectangle(cornerRadius: 20))
+                .overlay(RoundedRectangle(cornerRadius: 20).stroke(Theme.line))
+                .disabled(!canSend)
+            Button {
+                send(draft)
+            } label: {
+                Image(systemName: "arrow.up")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 40, height: 40)
+                    .background(Theme.neonBand.opacity(canSendNow ? 1 : 0.3), in: Circle())
+            }
+            .disabled(!canSendNow)
+            .accessibilityLabel("送る")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(.bar)
+    }
+
+    private var canSendNow: Bool {
+        canSend && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func startsNewDay(at index: Int) -> Bool {
+        guard index > 0 else { return true }
+        guard let a = ServerDate.parse(messages[index - 1].created_at),
+              let b = ServerDate.parse(messages[index].created_at) else { return false }
+        return !Calendar.current.isDate(a, inSameDayAs: b)
+    }
+
+    /// 同じ人が 5 分以内に続けて送ったものは 1 つのかたまりにして、時刻はかたまりの最後だけに出す
+    private func closesRun(at index: Int) -> Bool {
+        guard index + 1 < messages.count else { return true }
+        let a = messages[index], b = messages[index + 1]
+        guard a.sender == b.sender,
+              let ta = ServerDate.parse(a.created_at), let tb = ServerDate.parse(b.created_at),
+              Calendar.current.isDate(ta, inSameDayAs: tb) else { return true }
+        return tb.timeIntervalSince(ta) > 300
+    }
+
+    private func bubble(_ message: DMMessage, index: Int) -> some View {
         let mine = message.sender == session.userID
-        return HStack {
-            if mine { Spacer(minLength: 48) }
-            VStack(alignment: mine ? .trailing : .leading, spacing: 2) {
+        let last = closesRun(at: index)
+        let date = ServerDate.parse(message.created_at)
+        return HStack(alignment: .bottom, spacing: 6) {
+            if mine { Spacer(minLength: 56) }
+            VStack(alignment: mine ? .trailing : .leading, spacing: 3) {
                 Text(message.body)
                     .font(.body)
                     .foregroundStyle(mine ? .white : Theme.text)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 9)
-                    .background(mine ? Theme.accent : Theme.surface, in: RoundedRectangle(cornerRadius: 18))
-                    .overlay(RoundedRectangle(cornerRadius: 18).stroke(mine ? Color.clear : Theme.line))
+                    .background(mine ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(Theme.surface),
+                                in: bubbleShape(mine: mine, tail: last))
+                    .overlay(bubbleShape(mine: mine, tail: last).stroke(mine ? Color.clear : Theme.line))
                     .textSelection(.enabled)
-                Text(ServerDate.relative(message.created_at) + (mine && message.read_at != nil ? "・既読" : ""))
-                    .font(.caption2).foregroundStyle(Theme.textSecondary)
+                if last, let date {
+                    Text(ServerDate.clock(date) + (mine && message.read_at != nil ? "・既読" : ""))
+                        .font(.caption2).foregroundStyle(Theme.textSecondary)
+                        .padding(.horizontal, 4)
+                }
             }
             .contextMenu {
+                Button {
+                    UIPasteboard.general.string = message.body
+                } label: {
+                    Label("コピー", systemImage: "doc.on.doc")
+                }
                 if mine {
-                    Button("送信を取り消す", role: .destructive) { Task { await delete(message) } }
+                    Button(role: .destructive) {
+                        Task { await delete(message) }
+                    } label: {
+                        Label("送信を取り消す", systemImage: "arrow.uturn.backward")
+                    }
                 } else {
                     Button {
                         report = ReportItem(id: message.id, target: .dm, userID: other,
-                                            userName: otherName ?? name, label: "メッセージ")
+                                            userName: displayName, label: "メッセージ")
                     } label: {
                         Label("通報する", systemImage: "exclamationmark.bubble")
                     }
                 }
             }
-            if !mine { Spacer(minLength: 48) }
+            if !mine { Spacer(minLength: 56) }
         }
+        .padding(.bottom, last ? 10 : 3)
     }
 
-    private func load() async {
+    private func pendingBubble(_ item: PendingMessage) -> some View {
+        HStack(alignment: .bottom, spacing: 6) {
+            Spacer(minLength: 56)
+            VStack(alignment: .trailing, spacing: 3) {
+                Text(item.body)
+                    .font(.body)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 9)
+                    .background(Theme.accent.opacity(item.failed ? 0.35 : 0.6), in: bubbleShape(mine: true, tail: true))
+                if item.failed {
+                    HStack(spacing: 12) {
+                        Text("送れませんでした").foregroundStyle(Theme.alert)
+                        Button("もう一度") {
+                            pending.removeAll { $0.id == item.id }
+                            send(item.body)
+                        }
+                        Button("消す") { pending.removeAll { $0.id == item.id } }
+                            .foregroundStyle(Theme.textSecondary)
+                    }
+                    .font(.caption2.weight(.semibold))
+                } else {
+                    Text("送っています…").font(.caption2).foregroundStyle(Theme.textSecondary)
+                }
+            }
+        }
+        .padding(.bottom, 10)
+    }
+
+    /// かたまりの最後だけ、送った人の側の下の角を小さくする
+    private func bubbleShape(mine: Bool, tail: Bool) -> UnevenRoundedRectangle {
+        let big: CGFloat = 18, small: CGFloat = tail ? 5 : 18
+        return UnevenRoundedRectangle(topLeadingRadius: big,
+                                      bottomLeadingRadius: mine ? big : small,
+                                      bottomTrailingRadius: mine ? small : big,
+                                      topTrailingRadius: big,
+                                      style: .continuous)
+    }
+
+    private func load(checkRelation: Bool) async {
         guard let api = session.api else { return }
         do {
             let latest = try await api.dmMessages(with: other)
             if latest != messages { messages = latest }
             if otherName == nil { otherName = try? await api.profiles([other]).first?.display_name }
-            if let me = session.userID, let r = try? await api.relations(me: me) {
+            if checkRelation, let me = session.userID, let r = try? await api.relations(me: me) {
                 canSend = r.following.contains(other) && r.followers.contains(other)
+                lastRelationCheck = Date()
             }
             error = nil
-            await inbox.refresh(session: session)
+            if latest.contains(where: { $0.sender == other && $0.read_at == nil }) || !loaded {
+                await inbox.refresh(session: session)
+            }
         } catch {
-            self.error = ErrorText.of(error)
+            if !loaded { self.error = ErrorText.of(error) }
         }
+        loaded = true
     }
 
-    private func send() async {
-        guard let api = session.api else { return }
-        let text = String(draft.trimmingCharacters(in: .whitespacesAndNewlines).prefix(1000))
-        sending = true
-        defer { sending = false }
-        do {
-            _ = try await api.sendDM(to: other, body: text)
-            draft = ""
-            await load()
-        } catch {
-            self.error = ErrorText.of(error)
+    private func send(_ raw: String) {
+        let text = String(raw.trimmingCharacters(in: .whitespacesAndNewlines).prefix(1000))
+        guard !text.isEmpty, let api = session.api else { return }
+        let item = PendingMessage(body: text)
+        pending.append(item)
+        if raw == draft { draft = "" }
+        Task {
+            do {
+                _ = try await api.sendDM(to: other, body: text)
+                let latest = try? await api.dmMessages(with: other)
+                pending.removeAll { $0.id == item.id }
+                if let latest { messages = latest }
+            } catch {
+                if let i = pending.firstIndex(where: { $0.id == item.id }) { pending[i].failed = true }
+                Trace.log("メッセージ：送れなかった \(ErrorText.of(error))")
+            }
         }
     }
 
@@ -371,7 +515,7 @@ struct ChatView: View {
         guard let api = session.api else { return }
         do {
             try await api.deleteDM(message.id)
-            await load()
+            messages.removeAll { $0.id == message.id }
         } catch {
             self.error = ErrorText.of(error)
         }

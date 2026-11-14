@@ -10,6 +10,8 @@ struct HomeView: View {
     @State private var error: String?
     @State private var loaded = false
     @State private var report: ReportItem?
+    @State private var lastLoad = Date.distantPast
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         NavigationStack {
@@ -53,6 +55,13 @@ struct HomeView: View {
                 .refreshable { await load() }
             }
             .task(id: session.state) { await load() }
+            // 新着は 24 時間だけなので、アプリに戻ったとき・ホームに戻ったときに 1 分より古ければ読み直す
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { Task { await loadIfStale() } }
+            }
+            .onChange(of: nav.tab) { _, tab in
+                if tab == .home { Task { await loadIfStale() } }
+            }
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     NavigationLink {
@@ -73,8 +82,14 @@ struct HomeView: View {
         }
     }
 
+    private func loadIfStale() async {
+        guard Date().timeIntervalSince(lastLoad) > 60 else { return }
+        await load()
+    }
+
     private func load() async {
         guard let api = session.api, session.state == .signedIn else { return }
+        lastLoad = Date()
         do {
             cards = try await api.friendFeed()
             error = nil
