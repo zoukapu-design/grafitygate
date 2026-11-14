@@ -1,0 +1,36 @@
+name: 落ちた記録を読む
+
+# TestFlight で落ちたときに「共有」された記録を App Store Connect から読み、
+# 落ちた理由と落ちた所の流れだけを注記に出す（メールアドレス・ひとことは出さない）。
+on:
+  workflow_dispatch:
+    inputs:
+      count:
+        description: "読む件数（新しい順）"
+        default: "3"
+
+jobs:
+  crashes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      BUNDLE_ID: com.zoukapu.grafitygate
+    steps:
+      - uses: actions/checkout@v4
+      - name: 落ちた記録を読む
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          KEY_PATH="$RUNNER_TEMP/asc_key.p8"
+          printf '%s' "$ASC_KEY_P8" | python3 -c '
+          import sys, textwrap
+          k = sys.stdin.read().replace("\r", "").strip()
+          if "BEGIN" not in k:
+              body = "".join(k.split())
+              k = "-----BEGIN PRIVATE KEY-----\n" + "\n".join(textwrap.wrap(body, 64)) + "\n-----END PRIVATE KEY-----"
+          sys.stdout.write(k + "\n")' > "$KEY_PATH"
+          python3 -m pip install --quiet pyjwt cryptography
+          export ASC_KEY_PATH="$KEY_PATH"
+          python3 tools/ci/asc.py crashes "$BUNDLE_ID" "${{ inputs.count }}"

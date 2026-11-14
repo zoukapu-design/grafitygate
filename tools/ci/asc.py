@@ -9,6 +9,9 @@
   asc.py check BUNDLE_ID
       鍵で App Store Connect につながるか・アプリが登録されているかを確かめ、GitHub の注記（タイトル「App Store Connect」）に出す。
       鍵の中身は出さない。
+  asc.py crashes BUNDLE_ID [件数]
+      TestFlight で落ちたときに「共有」された記録を読み、落ちた理由と、落ちた所の流れ（どの関数か）だけを注記に出す。
+      公開リポジトリの注記はだれでも見られるので、メールアドレス・ひとこと・端末の識別子は出さない。
 
 環境変数：ASC_KEY_PATH（.p8 の場所）、ASC_KEY_ID、ASC_ISSUER_ID
 """
@@ -126,7 +129,120 @@ def check(bundle_id):
     return 0
 
 
+def _app_id(bundle_id):
+    query = urllib.parse.urlencode({"filter[bundleId]": bundle_id, "limit": 20})
+    apps = [a for a in request("GET", "/v1/apps?" + query).get("data", [])
+            if a.get("attributes", {}).get("bundleId") == bundle_id]
+    return apps[0]["id"] if apps else None
+
+
+def _frames_text(frames, images, limit=40):
+    lines = []
+    for i, f in enumerate(frames[:limit]):
+        image = ""
+        idx = f.get("imageIndex")
+        if isinstance(idx, int) and 0 <= idx < len(images):
+            image = images[idx].get("name") or ""
+        sym = f.get("symbol") or ("+0x%x" % f.get("imageOffset", 0))
+        where = ""
+        if f.get("sourceFile"):
+            where = " (%s:%s)" % (f.get("sourceFile"), f.get("sourceLine", "?"))
+        lines.append("%2d %-22s %s%s" % (i, image[:22], sym[:160], where))
+    return lines
+
+
+def condense(log):
+    """落ちた記録（.ips の JSON か、昔の文字の形）から、理由と落ちた所の流れだけを取り出す"""
+    log = log or ""
+    out = []
+    text = log.lstrip()
+    if text.startswith("{"):
+        first, _, rest = text.partition("\n")
+        try:
+            head = json.loads(first)
+            body = json.loads(rest)
+        except Exception:  # noqa: BLE001
+            return log[:3000]
+        out.append("版: %s (%s)  端末: %s  iOS: %s" % (
+            head.get("app_version", "?"), head.get("build_version", "?"),
+            body.get("modelCode", "?"), (body.get("osVersion") or {}).get("train", head.get("os_version", "?"))))
+        exc = body.get("exception") or {}
+        if exc:
+            out.append("落ち方: %s %s %s" % (exc.get("type", ""), exc.get("signal", ""), exc.get("subtype", "")))
+        term = body.get("termination") or {}
+        if term:
+            out.append("終わった理由: %s %s %s" % (term.get("namespace", ""), term.get("code", ""),
+                                             " / ".join(term.get("reasons") or [])[:600]))
+        asi = body.get("asi") or {}
+        for k, v in asi.items():
+            out.append("知らせ(%s): %s" % (k, " / ".join(v if isinstance(v, list) else [str(v)])[:800]))
+        images = body.get("usedImages") or []
+        leb = body.get("lastExceptionBacktrace") or []
+        if leb:
+            out.append("--- 最後の例外の流れ ---")
+            out += _frames_text(leb, images)
+        for t in body.get("threads") or []:
+            if t.get("triggered"):
+                out.append("--- 落ちた所（%s %s）---" % (t.get("queue", ""), t.get("name", "")))
+                out += _frames_text(t.get("frames") or [], images)
+                break
+        return "\n".join(out)
+    # 文字の形：大事な行と、落ちたスレッドの流れ
+    keep = ("Version:", "Hardware Model:", "OS Version:", "Exception Type:", "Exception Codes:", "Exception Note:",
+            "Termination Reason:", "Triggered by Thread:", "Crashed Thread:")
+    lines = log.splitlines()
+    out += [l for l in lines if l.startswith(keep)]
+    grab = False
+    count = 0
+    for l in lines:
+        if ("Crashed:" in l and l.startswith("Thread")) or l.startswith("Last Exception Backtrace") \
+                or l.startswith("Application Specific Information"):
+            grab = True
+            count = 0
+            out.append("--- " + l + " ---")
+            continue
+        if grab:
+            if not l.strip() or count > 40:
+                grab = False
+                continue
+            out.append(l)
+            count += 1
+    return "\n".join(out)
+
+
+def crashes(bundle_id, limit=3):
+    def note(title, text):
+        print("::notice title=%s::%s" % (title, text.replace("%", "%25").replace("\r", "").replace("\n", "%0A")))
+
+    try:
+        app = _app_id(bundle_id)
+        if not app:
+            note("落ちた記録", "App Store Connect にアプリがありません")
+            return 1
+        query = urllib.parse.urlencode({"sort": "-createdDate", "limit": limit})
+        subs = request("GET", "/v1/apps/%s/betaFeedbackCrashSubmissions?%s" % (app, query)).get("data", [])
+    except Exception as error:  # noqa: BLE001
+        note("落ちた記録", describe(error))
+        return 1
+    if not subs:
+        note("落ちた記録", "共有された落ちた記録はまだありません（TestFlight の「共有」を押すと届きます）")
+        return 0
+    for n, sub in enumerate(subs, 1):
+        attrs = sub.get("attributes", {})
+        header = "届いた日時: %s  端末: %s  iOS: %s" % (attrs.get("createdDate", "?"), attrs.get("deviceModel", "?"),
+                                                attrs.get("osVersion", "?"))
+        try:
+            log = request("GET", "/v1/betaFeedbackCrashSubmissions/%s/crashLog" % sub["id"])
+            text = ((log.get("data") or {}).get("attributes") or {}).get("logText") or ""
+            note("落ちた記録 %d" % n, header + "\n" + condense(text)[:6000])
+        except Exception as error:  # noqa: BLE001
+            note("落ちた記録 %d" % n, header + "\n記録を読めませんでした: " + describe(error))
+    return 0
+
+
 if __name__ == "__main__":
+    if len(sys.argv) >= 3 and sys.argv[1] == "crashes":
+        sys.exit(crashes(sys.argv[2], int(sys.argv[3]) if len(sys.argv) > 3 else 3))
     if len(sys.argv) == 3 and sys.argv[1] == "check":
         sys.exit(check(sys.argv[2]))
     if len(sys.argv) == 2 and sys.argv[1] == "cleanup-dev-certs":
