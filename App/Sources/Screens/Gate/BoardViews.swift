@@ -109,7 +109,9 @@ private struct ThreadRow: View {
                             .accessibilityLabel("未読")
                     }
                 }
-                if thread.resolved == true {
+                if let progress = thread.investigationProgress, thread.boardTopic == .investigation {
+                    ProgressBadge(progress: progress)
+                } else if thread.resolved == true {
                     ResolvedBadge()
                 }
                 if !thread.body.isEmpty {
@@ -217,6 +219,9 @@ struct ThreadView: View {
     @EnvironmentObject private var session: SessionModel
     @State private var thread: BoardThread
     @State private var editing: BoardEditTarget?
+    @State private var editingProgress = false
+    /// 調べる話題の返信の並べ方（なるほどが多い順）
+    @State private var byVotes = false
     @Environment(\.dismiss) private var dismiss
     @State private var replies: [BoardReply] = []
     @State private var draft = ""
@@ -239,14 +244,19 @@ struct ThreadView: View {
     /// GATE を作った人か、一緒に管理する人
     private var isGateOwner: Bool { context.canManage || context.ownerID == session.userID }
     private var isInvestigation: Bool { thread.boardTopic == .investigation }
+    /// 調べる話題の進み具合・まとめを書けるか：立てた本人か GATE を管理する人（0023 のサーバーだけ）
+    private var canSetProgress: Bool {
+        isInvestigation && thread.progress != nil && (thread.author == session.userID || isGateOwner)
+    }
+
     /// 「解決しました」にできるか：質問・調べるの話題で、立てた本人か GATE を作った人（0018 のサーバーだけ）
     private var canResolve: Bool {
         thread.resolved != nil && (thread.boardTopic == .question || isInvestigation)
             && (thread.author == session.userID || isGateOwner)
     }
     private var shownReplies: [BoardReply] {
-        guard let filter else { return replies }
-        return replies.filter { $0.evidence == filter }
+        let list = filter.map { f in replies.filter { $0.evidence == f } } ?? replies
+        return byVotes ? list.sorted { ($0.votes ?? 0) > ($1.votes ?? 0) } : list
     }
 
     var body: some View {
@@ -257,7 +267,11 @@ struct ThreadView: View {
                         Label(thread.boardTopic.label, systemImage: thread.boardTopic.symbol)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(thread.boardTopic == .notice ? Theme.warm : Theme.accent)
-                        if thread.resolved == true { ResolvedBadge() }
+                        if let progress = thread.investigationProgress, isInvestigation {
+                            ProgressBadge(progress: progress)
+                        } else if thread.resolved == true {
+                            ResolvedBadge()
+                        }
                     }
                     Text(thread.title).font(.title3.weight(.semibold)).foregroundStyle(Theme.text)
                     if !thread.body.isEmpty {
@@ -271,15 +285,40 @@ struct ThreadView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radiusCard))
                 .overlay(RoundedRectangle(cornerRadius: Theme.radiusCard).stroke(Theme.line))
+                if isInvestigation, let conclusion = thread.conclusion, !conclusion.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label("まとめ", systemImage: "text.badge.checkmark")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(Theme.accent)
+                        Text(conclusion).font(.subheadline).foregroundStyle(Theme.text)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Theme.accentLight, in: RoundedRectangle(cornerRadius: 14))
+                }
 
                 if isInvestigation && !replies.isEmpty {
                     evidenceFilter
                 }
-                Text(replies.isEmpty ? "まだ返信はありません" : "返信 \(shownReplies.count) 件")
-                    .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.textSecondary)
+                HStack {
+                    Text(replies.isEmpty ? "まだ返信はありません" : "返信 \(shownReplies.count) 件")
+                        .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.textSecondary)
+                    Spacer()
+                    if isInvestigation && replies.contains(where: { ($0.votes ?? 0) > 0 }) {
+                        Toggle(isOn: $byVotes) {
+                            Label("なるほど順", systemImage: "lightbulb")
+                        }
+                        .toggleStyle(.button)
+                        .font(.caption.weight(.semibold))
+                        .tint(Theme.warm)
+                    }
+                }
                 ForEach(shownReplies) { reply in
                     ReplyRow(reply: reply, canDelete: reply.author == session.userID || isGateOwner,
                              isMine: reply.author == session.userID,
+                             canVote: isInvestigation && reply.votes != nil && reply.author != session.userID,
+                             onVote: { Task { await vote(reply) } },
                              onEdit: { editing = .reply(reply) },
                              onDelete: { Task { await deleteReply(reply) } },
                              onReport: {
@@ -330,7 +369,14 @@ struct ThreadView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    if canResolve {
+                    if canSetProgress {
+                        Button {
+                            editingProgress = true
+                        } label: {
+                            Label("進み具合・まとめを書く", systemImage: "text.badge.checkmark")
+                        }
+                    }
+                    if canResolve && !isInvestigation {
                         Button {
                             Task { await toggleResolved() }
                         } label: {
@@ -378,6 +424,15 @@ struct ThreadView: View {
             Text("返信も一緒に見えなくなります。")
         }
         .sheet(item: $report) { item in ReportSheet(item: item) }
+        .sheet(isPresented: $editingProgress) {
+            InvestigationProgressSheet(thread: thread) { progress, conclusion in
+                thread.progress = progress.rawValue
+                thread.conclusion = conclusion.isEmpty ? nil : conclusion
+                if progress == .concluded { thread.resolved = true }
+                onChanged?()
+            }
+            .environmentObject(session)
+        }
         .sheet(item: $editing) { target in
             BoardEditSheet(target: target) { title, body in
                 switch target {
@@ -475,6 +530,23 @@ struct ThreadView: View {
         }
     }
 
+    /// 「なるほど」を付ける・外す（先に見た目を変え、だめなら戻す）
+    private func vote(_ reply: BoardReply) async {
+        guard let api = session.api, let i = replies.firstIndex(where: { $0.id == reply.id }) else { return }
+        let on = !(reply.my_vote ?? false)
+        let before = replies[i]
+        replies[i].my_vote = on
+        replies[i].votes = max(0, (reply.votes ?? 0) + (on ? 1 : -1))
+        Haptics.tap()
+        do {
+            let count = try await api.voteReply(reply.id, on: on)
+            if let j = replies.firstIndex(where: { $0.id == reply.id }) { replies[j].votes = count }
+        } catch {
+            if let j = replies.firstIndex(where: { $0.id == reply.id }) { replies[j] = before }
+            message = ErrorText.of(error)
+        }
+    }
+
     private func toggleResolved() async {
         guard let api = session.api else { return }
         let on = !(thread.resolved ?? false)
@@ -524,6 +596,9 @@ private struct ReplyRow: View {
     let reply: BoardReply
     let canDelete: Bool
     let isMine: Bool
+    /// 調べる話題の「なるほど」を押せるか（ほかの人の返信）
+    let canVote: Bool
+    let onVote: () -> Void
     let onEdit: () -> Void
     let onDelete: () -> Void
     let onReport: () -> Void
@@ -565,6 +640,20 @@ private struct ReplyRow: View {
                     Label(source, systemImage: "book.closed")
                         .font(.caption).foregroundStyle(Theme.textSecondary)
                         .textSelection(.enabled)
+                }
+                if let votes = reply.votes, canVote || votes > 0 {
+                    Button(action: onVote) {
+                        Label("なるほど \(votes)", systemImage: reply.my_vote == true ? "lightbulb.fill" : "lightbulb")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(reply.my_vote == true ? Theme.warm : Theme.textSecondary)
+                            .padding(.horizontal, 10).padding(.vertical, 5)
+                            .background(reply.my_vote == true ? Theme.warm.opacity(0.12) : Theme.surfaceElevated,
+                                        in: Capsule())
+                            .contentTransition(.numericText())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!canVote)
+                    .accessibilityLabel(reply.my_vote == true ? "なるほどを外す" : "なるほど")
                 }
             }
         }
@@ -696,5 +785,99 @@ struct ResolvedBadge: View {
             .foregroundStyle(Theme.accent)
             .padding(.horizontal, 8).padding(.vertical, 3)
             .background(Theme.accentLight, in: Capsule())
+    }
+}
+
+
+/// 調べる話題の進み具合の札
+struct ProgressBadge: View {
+    let progress: InvestigationProgress
+
+    var body: some View {
+        Label(progress.label, systemImage: progress.symbol)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(progress == .concluded ? Theme.accent : Theme.warm)
+            .padding(.horizontal, 8).padding(.vertical, 3)
+            .background(progress == .concluded ? Theme.accentLight : Theme.warm.opacity(0.12), in: Capsule())
+    }
+}
+
+/// 調べる話題の進み具合とまとめを書く（話題を立てた人・GATE を管理する人）
+struct InvestigationProgressSheet: View {
+    let thread: BoardThread
+    let onSaved: (InvestigationProgress, String) -> Void
+
+    @EnvironmentObject private var session: SessionModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var progress: InvestigationProgress
+    @State private var conclusion: String
+    @State private var saving = false
+    @State private var message: String?
+
+    init(thread: BoardThread, onSaved: @escaping (InvestigationProgress, String) -> Void) {
+        self.thread = thread
+        self.onSaved = onSaved
+        _progress = State(initialValue: thread.investigationProgress ?? .open)
+        _conclusion = State(initialValue: thread.conclusion ?? "")
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Picker("進み具合", selection: $progress) {
+                        ForEach(InvestigationProgress.allCases) { p in
+                            Label(p.label, systemImage: p.symbol).tag(p)
+                        }
+                    }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
+                } header: {
+                    Text("進み具合")
+                } footer: {
+                    Text("「まとまった」にすると、話題に「解決しました」も付きます。")
+                }
+                Section {
+                    TextField("分かったこと・確かな出典など（なくてもよい）", text: $conclusion, axis: .vertical)
+                        .lineLimit(3...8)
+                        .onChange(of: conclusion) { _, v in if v.count > 600 { conclusion = String(v.prefix(600)) } }
+                } header: {
+                    Text("まとめ")
+                } footer: {
+                    Text("\(conclusion.count) / 600・話題のいちばん上に出ます。")
+                }
+                if let message {
+                    Section { NoticeText(text: message) }
+                }
+            }
+            .navigationTitle("進み具合・まとめ")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("やめる") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    if saving {
+                        ProgressView()
+                    } else {
+                        Button("保存") { Task { await save() } }
+                    }
+                }
+            }
+        }
+    }
+
+    private func save() async {
+        guard let api = session.api else { return }
+        saving = true
+        defer { saving = false }
+        let text = conclusion.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            try await api.setInvestigationProgress(thread.id, progress: progress, conclusion: text)
+            Haptics.success()
+            Trace.log("調べる：進み具合を「\(progress.label)」にした")
+            onSaved(progress, text)
+            dismiss()
+        } catch {
+            message = ErrorText.of(error)
+        }
     }
 }

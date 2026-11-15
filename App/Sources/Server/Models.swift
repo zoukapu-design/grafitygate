@@ -385,6 +385,11 @@ struct BoardThread: Decodable, Identifiable, Hashable {
     var edited_at: String?
     /// 「解決しました」（質問・調べる。0018 の前のサーバーでは無い）
     var resolved: Bool?
+    /// 調べる話題の進み具合（open・narrowing・concluded）とまとめ（0023 の前のサーバーでは無い）
+    var progress: String? = nil
+    var conclusion: String? = nil
+
+    var investigationProgress: InvestigationProgress? { progress.flatMap(InvestigationProgress.init(rawValue:)) }
 
     var boardTopic: BoardTopic { BoardTopic(rawValue: topic) ?? .other }
 }
@@ -401,6 +406,9 @@ struct BoardReply: Decodable, Identifiable, Hashable {
     var source: String?
     /// 書いた人が直した時刻
     var edited_at: String?
+    /// 「なるほど」の数と、自分が付けたか（調べる話題。0023 の前のサーバーでは無い）
+    var votes: Int? = nil
+    var my_vote: Bool? = nil
 
     var evidence: EvidenceLabel? { label.flatMap(EvidenceLabel.init(rawValue:)) }
 }
@@ -990,4 +998,27 @@ struct CardLinkMark: Decodable, Identifiable, Hashable {
     let recipient: UUID
     let body: String
     let created_at: String
+}
+
+/// 調べる話題の進み具合
+enum InvestigationProgress: String, CaseIterable, Identifiable {
+    case open, narrowing, concluded
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .open: return "調べ中"
+        case .narrowing: return "しぼれてきた"
+        case .concluded: return "まとまった"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .open: return "magnifyingglass"
+        case .narrowing: return "scope"
+        case .concluded: return "checkmark.seal.fill"
+        }
+    }
 }

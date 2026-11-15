@@ -40,6 +40,11 @@ extension GateAPI {
     /// 話題の一覧（直した時刻つき。0014 を入れる前のサーバーでは、直した時刻なしで読む）
     func boardThreads(in gate: UUID) async throws -> [BoardThread] {
         do {
+            return try await client.rpc("gf_board_list4", params: InsideGateParam(p_gate: gate)).execute().value
+        } catch let error where ErrorText.isMissingFunction(error) {
+            // 0023 の前：進み具合なし
+        }
+        do {
             return try await client.rpc("gf_board_list3", params: InsideGateParam(p_gate: gate)).execute().value
         } catch let error where ErrorText.isMissingFunction(error) {
             // 0018 の前：「解決しました」なし
@@ -53,6 +58,11 @@ extension GateAPI {
 
     /// 返信（共同調査のしるし・出典・直した時刻つき。前のサーバーでは、あるものだけで読む）
     func boardReplies(_ thread: UUID) async throws -> [BoardReply] {
+        do {
+            return try await client.rpc("gf_board_replies_of4", params: ThreadParam(p_thread: thread)).execute().value
+        } catch let error where ErrorText.isMissingFunction(error) {
+            // 0023 の前：「なるほど」なし
+        }
         do {
             return try await client.rpc("gf_board_replies_of3", params: ThreadParam(p_thread: thread)).execute().value
         } catch let error where ErrorText.isMissingFunction(error) {
@@ -655,4 +665,29 @@ private struct DMSendCardParams: Encodable {
     let p_to: UUID
     let p_card: UUID
     let p_body: String
+}
+
+extension GateAPI {
+    /// 調べる話題の返信に「なるほど」を付ける・外す（返すのはその返信の数）
+    func voteReply(_ reply: UUID, on: Bool) async throws -> Int {
+        try await client.rpc("gf_board_vote", params: VoteParams(p_reply: reply, p_on: on)).execute().value
+    }
+
+    /// 調べる話題の進み具合とまとめ（話題を立てた人・GATE を管理する人）
+    func setInvestigationProgress(_ thread: UUID, progress: InvestigationProgress, conclusion: String) async throws {
+        try await client.rpc("gf_board_set_progress",
+                             params: ProgressParams(p_thread: thread, p_progress: progress.rawValue,
+                                                    p_conclusion: conclusion)).execute()
+    }
+}
+
+private struct VoteParams: Encodable {
+    let p_reply: UUID
+    let p_on: Bool
+}
+
+private struct ProgressParams: Encodable {
+    let p_thread: UUID
+    let p_progress: String
+    let p_conclusion: String
 }
