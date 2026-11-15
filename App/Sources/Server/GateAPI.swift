@@ -122,12 +122,22 @@ struct GateAPI {
 
     /// GATE の中のグラフィティ（入場中なら友達のものも、そうでなければ自分のものだけが返る）
     func graffiti(in gate: UUID) async throws -> [Graffiti] {
-        try await client.from("gf_graffiti")
-            .select("id,gate_id,author,body,photo_path,visibility,local_only,created_at")
-            .eq("gate_id", value: gate.uuidString)
-            .order("created_at", ascending: false)
-            .limit(200)
-            .execute().value
+        do {
+            return try await client.from("gf_graffiti")
+                .select("id,gate_id,author,body,photo_path,visibility,local_only,created_at,in_atlas")
+                .eq("gate_id", value: gate.uuidString)
+                .order("created_at", ascending: false)
+                .limit(200)
+                .execute().value
+        } catch let error where ErrorText.isMissingColumn(error) {
+            // 0017 の前のサーバー（図鑑に載せるかの欄が無い）
+            return try await client.from("gf_graffiti")
+                .select("id,gate_id,author,body,photo_path,visibility,local_only,created_at")
+                .eq("gate_id", value: gate.uuidString)
+                .order("created_at", ascending: false)
+                .limit(200)
+                .execute().value
+        }
     }
 
     /// 自分がカードを残した GATE（ホームの新着で「並べる」を出すかを決める）
@@ -525,4 +535,58 @@ private struct DoorInfo: Decodable {
 private struct DoorScaleParams: Encodable {
     let p_gate: UUID
     let p_scale: Float
+}
+
+
+// MARK: 友達の GATE・図鑑・「来たよ」
+
+private struct UserParam: Encodable {
+    let p_user: UUID
+}
+
+private struct AtlasToggleParams: Encodable {
+    let p_id: UUID
+    let p_on: Bool
+}
+
+private struct CardLinkParams: Encodable {
+    let p_from: UUID
+    let p_to: UUID
+    let p_body: String
+}
+
+extension GateAPI {
+    /// その人が作った GATE（見てよいものだけ・おおよその位置）
+    func userGates(_ user: UUID) async throws -> [UserGate] {
+        try await client.rpc("gf_user_gates", params: UserParam(p_user: user)).execute().value
+    }
+
+    /// その人のグラフィティ図鑑（本人が載せたカードの写真・場所・日付）
+    func userCardAtlas(_ user: UUID) async throws -> [AtlasCard] {
+        try await client.rpc("gf_user_card_atlas", params: UserParam(p_user: user)).execute().value
+    }
+
+    /// 自分のカードを図鑑に載せる・外す
+    func setGraffitiAtlas(_ id: UUID, on: Bool) async throws {
+        try await client.rpc("gf_set_graffiti_atlas", params: AtlasToggleParams(p_id: id, p_on: on)).execute()
+    }
+
+    /// 友達のカードに、自分のカードを添えて「来たよ」を送る
+    func sendCardLink(from: UUID, to: UUID, body: String) async throws -> UUID {
+        try await client.rpc("gf_send_card_link", params: CardLinkParams(p_from: from, p_to: to, p_body: body)).execute().value
+    }
+
+    /// 届いた・送った「来たよ」
+    func myCardLinks() async throws -> [CardLink] {
+        try await client.rpc("gf_my_card_links").execute().value
+    }
+
+    /// この GATE で、自分が関わる「来たよ」
+    func cardLinks(in gate: UUID) async throws -> [CardLinkMark] {
+        try await client.rpc("gf_card_links_in", params: GateParam(p_gate: gate)).execute().value
+    }
+
+    func markCardLinksSeen() async throws {
+        try await client.rpc("gf_mark_card_links_seen").execute()
+    }
 }

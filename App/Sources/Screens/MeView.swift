@@ -123,6 +123,8 @@ struct MeView: View {
                 LookBackTile(title: "手紙", caption: unopenedLetters > 0 ? "未開封 \(unopenedLetters)" : "届いた・送った手紙",
                              systemImage: "envelope.fill", tint: Color(hex: 0xE0457B),
                              badge: unopenedLetters > 0) { MyLettersView() }
+                LookBackTile(title: "来たよ", caption: "カードに添えて届いた・送った",
+                             systemImage: "hand.wave.fill", tint: Theme.warm) { CardLinksView() }
                 LookBackTile(title: "TRAIL", caption: "GATE をつないだ思い出の道",
                              systemImage: "point.topleft.down.to.point.bottomright.curvepath.fill", tint: Theme.warm) { TrailListView() }
                 LookBackTile(title: "保存", caption: savedCount.map { "保存した GATE \($0)" } ?? "保存した GATE",

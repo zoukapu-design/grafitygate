@@ -42,7 +42,9 @@ struct NotificationsView: View {
     }
 
     @ViewBuilder private func destination(_ item: NotificationItem) -> some View {
-        if let gate = item.gate_id {
+        if item.kind == "card_link" {
+            CardLinksView(highlight: item.ref_id)
+        } else if let gate = item.gate_id {
             GateDetailView(gateID: gate, tab: item.gateTab)
         } else {
             ProfileView(userID: item.actor)

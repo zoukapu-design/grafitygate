@@ -14,6 +14,18 @@ struct CardSnapshot: Identifiable, Hashable {
 
     var date: Date? { ServerDate.parse(createdAt) }
 
+    init(id: UUID, gateID: UUID, gateTitle: String, author: UUID, authorName: String, body: String,
+         photoPath: String?, createdAt: String) {
+        self.id = id
+        self.gateID = gateID
+        self.gateTitle = gateTitle
+        self.author = author
+        self.authorName = authorName
+        self.body = body
+        self.photoPath = photoPath
+        self.createdAt = createdAt
+    }
+
     init(_ g: Graffiti, gateTitle: String, authorName: String) {
         id = g.id
         gateID = g.gate_id
@@ -248,22 +260,37 @@ struct CardShareArt: View {
     }
 }
 
-// MARK: - 同じ GATE で、自分のカードと友達のカードを並べる
+// MARK: - 同じ GATE で、自分のカードとみんなのカードを見比べる
 
-/// 比べる組み合わせ（友達のカード 1 枚と、同じ GATE の自分のカード）
+/// 見比べる組み合わせ：同じ GATE の自分のカードと、ほかの人のカード（友達を先に）。はじめに見せるほかの人のカード
 struct CardCompareRequest: Identifiable {
-    let other: CardSnapshot
+    let others: [CardSnapshot]
     let mine: [CardSnapshot]
-    var id: UUID { other.id }
+    var startID: UUID?
+
+    init(others: [CardSnapshot], mine: [CardSnapshot], start: UUID? = nil) {
+        self.others = others
+        self.mine = mine
+        startID = start ?? others.first?.id
+    }
+
+    /// 1 枚だけと見比べる（ホームの新着・届いた「来たよ」から）
+    init(other: CardSnapshot, mine: [CardSnapshot]) {
+        self.init(others: [other], mine: mine, start: other.id)
+    }
+
+    var id: UUID { startID ?? UUID() }
 }
 
-/// 同じ場所の、ふたりの記憶。「並べる」と、どちらも写真があるときは「重ねる」（指でなぞって入れ替える）。
+/// 同じ場所の、みんなの記憶。上に自分のカード（何枚もあれば選べる）、下にほかの人のカードを横にスワイプして見比べる。
+/// どちらも写真があるときは「重ねる」で、2 枚の写真を指でなぞって入れ替えられる。
 struct CardCompareView: View {
     let request: CardCompareRequest
 
     @EnvironmentObject private var session: SessionModel
     @Environment(\.dismiss) private var dismiss
     @State private var mineID: UUID
+    @State private var otherID: UUID?
     @State private var mode: Mode = .side
     @State private var wipe: CGFloat = 0.5
     @State private var viewer: PhotoViewerItem?
@@ -276,17 +303,20 @@ struct CardCompareView: View {
 
     init(request: CardCompareRequest) {
         self.request = request
-        // はじめは、友達のカードにいちばん近い日の自分のカード
-        let target = request.other.date ?? Date()
+        let start = request.others.first { $0.id == request.startID } ?? request.others.first
+        // はじめは、ほかの人のカードにいちばん近い日の自分のカード
+        let target = start?.date ?? Date()
         let nearest = request.mine.min {
             abs(($0.date ?? .distantPast).timeIntervalSince(target)) < abs(($1.date ?? .distantPast).timeIntervalSince(target))
         }
         _mineID = State(initialValue: nearest?.id ?? request.mine.first?.id ?? UUID())
+        _otherID = State(initialValue: start?.id)
     }
 
-    private var other: CardSnapshot { request.other }
     private var mine: CardSnapshot? { request.mine.first { $0.id == mineID } ?? request.mine.first }
-    private var canOverlay: Bool { other.photoPath != nil && mine?.photoPath != nil }
+    private var other: CardSnapshot? { request.others.first { $0.id == otherID } ?? request.others.first }
+    private var otherIndex: Int { request.others.firstIndex { $0.id == other?.id } ?? 0 }
+    private var canOverlay: Bool { other?.photoPath != nil && mine?.photoPath != nil }
 
     var body: some View {
         NavigationStack {
@@ -294,31 +324,24 @@ struct CardCompareView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     header
                     if request.mine.count > 1 { minePicker }
-                    if canOverlay {
-                        Picker("見せ方", selection: $mode) {
-                            ForEach(Mode.allCases) { m in Text(m.rawValue).tag(m) }
-                        }
-                        .pickerStyle(.segmented)
+                    Picker("見せ方", selection: $mode) {
+                        ForEach(Mode.allCases) { m in Text(m.rawValue).tag(m) }
                     }
-                    if let mine {
-                        if mode == .overlay && canOverlay, let a = mine.photoPath, let b = other.photoPath {
-                            overlay(minePath: a, otherPath: b)
-                            HStack(alignment: .top, spacing: 12) {
-                                caption(mine, isMine: true)
-                                caption(other, isMine: false)
-                            }
-                        } else {
-                            HStack(alignment: .top, spacing: 10) {
-                                column(mine, isMine: true)
-                                column(other, isMine: false)
-                            }
-                        }
+                    .pickerStyle(.segmented)
+                    .disabled(!canOverlay)
+                    if mode == .overlay && canOverlay, let mine, let other, let a = mine.photoPath, let b = other.photoPath {
+                        overlay(minePath: a, otherPath: b, otherName: name(of: other))
+                            .id("\(a)|\(b)")
+                        othersStrip
+                    } else {
+                        if let mine { myCard(mine) }
+                        othersPager
                     }
                 }
                 .padding(16)
             }
             .background(Theme.background.ignoresSafeArea())
-            .navigationTitle("ふたりの記憶")
+            .navigationTitle("みんなの記憶")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("閉じる") { dismiss() } }
@@ -327,93 +350,160 @@ struct CardCompareView: View {
                 PhotoViewer(path: item.path, caption: item.caption)
                     .environmentObject(session)
             }
+            .onChange(of: canOverlay) { _, can in if !can { mode = .side } }
         }
         .onAppear {
-            Trace.log("カードを並べる：自分 \(request.mine.count) 枚・写真 \(canOverlay ? "どちらもあり" : "片方か無し")")
+            Trace.log("カードを見比べる：自分 \(request.mine.count) 枚・ほかの人 \(request.others.count) 枚")
         }
+    }
+
+    private func name(of card: CardSnapshot) -> String {
+        card.authorName.isEmpty ? "だれか" : card.authorName
     }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Label(other.gateTitle, systemImage: "door.left.hand.open")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Theme.accent)
-                .padding(.horizontal, 10).padding(.vertical, 5)
-                .background(Theme.accentLight, in: Capsule())
-            Text("同じ場所の、ふたりの記憶")
+            if let gateTitle = (mine ?? other)?.gateTitle {
+                Label(gateTitle, systemImage: "door.left.hand.open")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Theme.accent)
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .background(Theme.accentLight, in: Capsule())
+            }
+            Text(request.others.count > 1 ? "同じ場所の、みんなの記憶" : "同じ場所の、ふたりの記憶")
                 .font(.title3.weight(.bold))
                 .foregroundStyle(Theme.text)
-            if let a = mine?.date, let b = other.date {
-                Text(gapText(mine: a, other: b))
+            if let a = mine?.date, let other, let b = other.date {
+                Text(gapText(mine: a, other: b, name: name(of: other)))
                     .font(.subheadline)
                     .foregroundStyle(Theme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
+                    .animation(.easeInOut, value: other.id)
             }
         }
     }
 
-    private func gapText(mine a: Date, other b: Date) -> String {
-        let name = other.authorName.isEmpty ? "友達" : "\(other.authorName) さん"
+    private func gapText(mine a: Date, other b: Date, name: String) -> String {
+        let who = "\(name) さん"
         let gap = CardDates.gap(a, b)
-        if gap == "同じ日" { return "あなたと \(name) は、同じ日にここで記憶を残しました。" }
+        if gap == "同じ日" { return "あなたと \(who) は、同じ日にここで記憶を残しました。" }
         return a < b
-            ? "あなたが残してから \(gap) あとに、\(name) がここに来ました。"
-            : "\(name) が残してから \(gap) あとに、あなたがここに来ました。"
+            ? "あなたが残してから \(gap) あとに、\(who) がここに来ました。"
+            : "\(who) が残してから \(gap) あとに、あなたがここに来ました。"
     }
 
     /// 自分のカードが何枚もあるときに選ぶ
     private var minePicker: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("あなたのカード").font(.caption.weight(.semibold)).foregroundStyle(Theme.textSecondary)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(request.mine) { card in
-                        Button {
-                            withAnimation(.snappy) { mineID = card.id }
-                        } label: {
-                            HStack(spacing: 6) {
-                                if let path = card.photoPath {
-                                    RemotePhoto(path: path)
-                                        .frame(width: 24, height: 24)
-                                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                                }
-                                Text(card.dayText).font(.caption.weight(.semibold))
-                            }
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(request.mine) { card in
+                    Button {
+                        withAnimation(.snappy) { mineID = card.id }
+                    } label: {
+                        Text(card.dayText).font(.caption.weight(.semibold))
                             .foregroundStyle(card.id == mineID ? .white : Theme.text)
                             .padding(.horizontal, 10).padding(.vertical, 6)
                             .background(card.id == mineID ? Theme.warm : Theme.surfaceElevated, in: Capsule())
-                        }
-                        .buttonStyle(.plain)
                     }
+                    .buttonStyle(.plain)
                 }
             }
         }
     }
 
-    /// 並べる：左が自分、右が友達
-    private func column(_ card: CardSnapshot, isMine: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            who(card, isMine: isMine)
+    /// 上：自分のカード（横長）
+    private func myCard(_ card: CardSnapshot) -> some View {
+        HStack(alignment: .top, spacing: 12) {
             if let path = card.photoPath {
                 Button {
                     viewer = PhotoViewerItem(path: path, caption: card.body)
                 } label: {
                     RemotePhoto(path: path)
-                        .aspectRatio(3 / 4, contentMode: .fit)
-                        .frame(maxWidth: .infinity)
+                        .frame(width: 120, height: 120)
                         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .stroke(isMine ? Theme.warm : Theme.accent, lineWidth: 2))
+                        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Theme.warm, lineWidth: 2))
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("写真を大きく見る")
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text("あなた").font(.caption.weight(.bold)).foregroundStyle(Theme.warm)
+                Text(card.dayText).font(.caption2).foregroundStyle(Theme.textSecondary)
+                if !card.body.isEmpty {
+                    Text(card.body).font(.subheadline).foregroundStyle(Theme.text)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(10)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.line))
+    }
+
+    /// 下：ほかの人のカード（横にスワイプ）
+    private var othersPager: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(request.others.count > 1 ? "みんなのカード" : "\(other.map(name(of:)) ?? "") さんのカード")
+                    .font(.headline).foregroundStyle(Theme.text)
+                Spacer()
+                if request.others.count > 1 {
+                    Text("\(otherIndex + 1)/\(request.others.count)・横にスワイプ")
+                        .font(.caption.weight(.semibold)).foregroundStyle(Theme.textSecondary)
+                }
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 0) {
+                    ForEach(request.others) { card in
+                        otherCard(card)
+                            .padding(.horizontal, 2)
+                            .containerRelativeFrame(.horizontal)
+                            .id(card.id)
+                    }
+                }
+                .scrollTargetLayout()
+            }
+            .scrollTargetBehavior(.paging)
+            .scrollPosition(id: $otherID)
+            if request.others.count > 1 {
+                HStack(spacing: 6) {
+                    ForEach(request.others.prefix(12)) { card in
+                        Circle()
+                            .fill(card.id == other?.id ? Theme.accent : Theme.line)
+                            .frame(width: 7, height: 7)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    private func otherCard(_ card: CardSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                PersonBadge(name: name(of: card), size: 26)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(name(of: card)).font(.caption.weight(.bold)).foregroundStyle(Theme.accent).lineLimit(1)
+                    Text(card.dayText).font(.caption2).foregroundStyle(Theme.textSecondary)
+                }
+            }
+            if let path = card.photoPath {
+                Button {
+                    viewer = PhotoViewerItem(path: path, caption: card.body)
+                } label: {
+                    RemotePhoto(path: path)
+                        .aspectRatio(4 / 3, contentMode: .fit)
+                        .frame(maxWidth: .infinity)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Theme.accent, lineWidth: 2))
+                }
+                .buttonStyle(.plain)
             }
             if !card.body.isEmpty {
-                Text(card.body)
-                    .font(.subheadline)
-                    .foregroundStyle(Theme.text)
+                Text(card.body).font(.subheadline).foregroundStyle(Theme.text)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            Spacer(minLength: 0)
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -421,29 +511,32 @@ struct CardCompareView: View {
         .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.line))
     }
 
-    private func who(_ card: CardSnapshot, isMine: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(isMine ? "あなた" : (card.authorName.isEmpty ? "友達" : card.authorName))
-                .font(.caption.weight(.bold))
-                .foregroundStyle(isMine ? Theme.warm : Theme.accent)
-                .lineLimit(1)
-            Text(card.dayText).font(.caption2).foregroundStyle(Theme.textSecondary)
-        }
-    }
-
-    private func caption(_ card: CardSnapshot, isMine: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            who(card, isMine: isMine)
-            if !card.body.isEmpty {
-                Text(card.body).font(.footnote).foregroundStyle(Theme.text)
-                    .fixedSize(horizontal: false, vertical: true)
+    /// 重ねるときに、だれのカードと重ねるかを選ぶ小さな写真の並び
+    private var othersStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(request.others.filter { $0.photoPath != nil }) { card in
+                    Button {
+                        withAnimation(.snappy) { otherID = card.id }
+                    } label: {
+                        VStack(spacing: 3) {
+                            RemotePhoto(path: card.photoPath ?? "")
+                                .frame(width: 54, height: 54)
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                                .overlay(RoundedRectangle(cornerRadius: 10)
+                                    .stroke(card.id == other?.id ? Theme.accent : .clear, lineWidth: 2.5))
+                            Text(name(of: card)).font(.caption2).foregroundStyle(Theme.textSecondary).lineLimit(1)
+                                .frame(width: 58)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
             }
         }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
-    /// 重ねる：下に友達の写真、上に自分の写真。白い線を左右になぞって入れ替える
-    private func overlay(minePath: String, otherPath: String) -> some View {
+    /// 重ねる：下にほかの人の写真、上に自分の写真。白い線を左右になぞって入れ替える
+    private func overlay(minePath: String, otherPath: String, otherName: String) -> some View {
         GeometryReader { geo in
             let w = geo.size.width
             ZStack(alignment: .leading) {
@@ -454,7 +547,6 @@ struct CardCompareView: View {
                     .mask(alignment: .leading) {
                         Rectangle().frame(width: max(0, min(w, w * wipe)))
                     }
-                // なぞる線
                 Rectangle()
                     .fill(.white)
                     .frame(width: 3)
@@ -472,7 +564,7 @@ struct CardCompareView: View {
                     HStack {
                         tag("あなた", color: Theme.warm)
                         Spacer()
-                        tag(other.authorName.isEmpty ? "友達" : other.authorName, color: Theme.accent)
+                        tag(otherName, color: Theme.accent)
                     }
                     Spacer()
                 }
@@ -489,7 +581,7 @@ struct CardCompareView: View {
         .aspectRatio(3 / 4, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("あなたの写真と友達の写真を重ねて比べる")
+        .accessibilityLabel("あなたの写真と \(otherName) さんの写真を重ねて比べる")
         .accessibilityValue("あなたの写真が \(Int(wipe * 100)) パーセント")
         .accessibilityAdjustableAction { direction in
             switch direction {
@@ -507,5 +599,239 @@ struct CardCompareView: View {
             .lineLimit(1)
             .padding(.horizontal, 8).padding(.vertical, 4)
             .background(color, in: Capsule())
+    }
+}
+
+// MARK: - 「来たよ」カード
+
+/// 友達のカードに、自分がこの GATE で残したカードを添えて「来たよ」を送る
+struct CardLinkComposer: View {
+    let friendCard: CardSnapshot
+    let myCards: [CardSnapshot]
+    let onSent: () -> Void
+
+    @EnvironmentObject private var session: SessionModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var chosen: UUID?
+    @State private var text = ""
+    @State private var sending = false
+    @State private var error: String?
+
+    private var friendName: String { friendCard.authorName.isEmpty ? "友達" : friendCard.authorName }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("\(friendName) さんのカードに、あなたのカードを添えて送ります。届いた人は、どこにいても 2 枚を並べて見られます。")
+                        .font(.subheadline).foregroundStyle(Theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(alignment: .top, spacing: 10) {
+                        mini(friendCard, label: friendName, color: Theme.accent)
+                        Image(systemName: "arrow.left").font(.headline).foregroundStyle(Theme.textSecondary).padding(.top, 50)
+                        if let card = myCards.first(where: { $0.id == chosen }) ?? myCards.first {
+                            mini(card, label: "あなた", color: Theme.warm)
+                        }
+                    }
+                    if myCards.count > 1 {
+                        Text("添えるカード").font(.caption.weight(.semibold)).foregroundStyle(Theme.textSecondary)
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(myCards) { card in
+                                    Button {
+                                        chosen = card.id
+                                    } label: {
+                                        Text(card.dayText).font(.caption.weight(.semibold))
+                                            .foregroundStyle((chosen ?? myCards.first?.id) == card.id ? .white : Theme.text)
+                                            .padding(.horizontal, 10).padding(.vertical, 6)
+                                            .background((chosen ?? myCards.first?.id) == card.id ? Theme.warm : Theme.surfaceElevated,
+                                                        in: Capsule())
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                    }
+                    TextField("ひとこと（例：俺も今日来たよ！）", text: $text, axis: .vertical)
+                        .lineLimit(2...4)
+                        .padding(12)
+                        .background(Theme.surfaceElevated, in: RoundedRectangle(cornerRadius: 12))
+                    if let error { NoticeText(text: error) }
+                    Button {
+                        Task { await send() }
+                    } label: {
+                        if sending { ProgressView().tint(.white) } else { Label("来たよを送る", systemImage: "hand.wave") }
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
+                    .disabled(sending || text.count > 200)
+                }
+                .padding(16)
+            }
+            .background(Theme.background.ignoresSafeArea())
+            .navigationTitle("来たよを送る")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("やめる") { dismiss() } }
+            }
+            .onAppear {
+                if text.isEmpty { text = "俺も今日来たよ！" }
+            }
+        }
+    }
+
+    private func mini(_ card: CardSnapshot, label: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label).font(.caption.weight(.bold)).foregroundStyle(color).lineLimit(1)
+            if let path = card.photoPath {
+                RemotePhoto(path: path)
+                    .aspectRatio(1, contentMode: .fit)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(color, lineWidth: 2))
+            } else {
+                Text(card.body).font(.footnote).foregroundStyle(Theme.text).lineLimit(5)
+                    .padding(8)
+                    .frame(maxWidth: .infinity, minHeight: 90, alignment: .topLeading)
+                    .background(Theme.surfaceElevated, in: RoundedRectangle(cornerRadius: 12))
+            }
+            Text(card.dayText).font(.caption2).foregroundStyle(Theme.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func send() async {
+        guard let api = session.api, let mine = myCards.first(where: { $0.id == chosen }) ?? myCards.first else { return }
+        sending = true
+        defer { sending = false }
+        do {
+            _ = try await api.sendCardLink(from: mine.id, to: friendCard.id,
+                                           body: text.trimmingCharacters(in: .whitespacesAndNewlines))
+            Haptics.success()
+            Trace.log("来たよを送った")
+            onSent()
+            dismiss()
+        } catch {
+            self.error = ErrorText.of(error)
+        }
+    }
+}
+
+/// 届いた・送った「来たよ」
+struct CardLinksView: View {
+    var highlight: UUID? = nil
+
+    @EnvironmentObject private var session: SessionModel
+    @State private var links: [CardLink] = []
+    @State private var loaded = false
+    @State private var error: String?
+    @State private var comparing: CardCompareRequest?
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                if let error { NoticeText(text: error) }
+                if loaded && links.isEmpty && error == nil {
+                    EmptyNote(title: "まだありません",
+                              message: "GATE の中で友達のカードに「来たよ」を送ると、ここに並びます。",
+                              systemImage: "hand.wave")
+                        .padding(.top, 40)
+                }
+                ForEach(links) { link in
+                    Button {
+                        comparing = request(for: link)
+                    } label: {
+                        row(link)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(16)
+        }
+        .background(Theme.background.ignoresSafeArea())
+        .navigationTitle("来たよ")
+        .navigationBarTitleDisplayMode(.inline)
+        .sheet(item: $comparing) { request in
+            CardCompareView(request: request).environmentObject(session)
+        }
+        .task { await load() }
+        .refreshable { await load() }
+    }
+
+    private func row(_ link: CardLink) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                PersonBadge(name: link.other_name, size: 30)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(link.incoming ? "\(link.other_name) さんから" : "\(link.other_name) さんへ")
+                        .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
+                    Text("\(link.gate_title)・\(ServerDate.relative(link.created_at))")
+                        .font(.caption).foregroundStyle(Theme.textSecondary).lineLimit(1)
+                }
+                Spacer()
+                if link.incoming && (!link.seen || link.id == highlight) {
+                    Circle().fill(Theme.accent).frame(width: 8, height: 8)
+                }
+            }
+            if !link.body.isEmpty {
+                Text("「\(link.body)」").font(.body.weight(.semibold)).foregroundStyle(Theme.text)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack(spacing: 8) {
+                thumb(link.from_photo, body: link.from_body, label: link.incoming ? link.other_name : "あなた",
+                      color: link.incoming ? Theme.accent : Theme.warm)
+                thumb(link.to_photo, body: link.to_body, label: link.incoming ? "あなた" : link.other_name,
+                      color: link.incoming ? Theme.warm : Theme.accent)
+            }
+            Label("押すと 2 枚を並べて見られます", systemImage: "rectangle.split.2x1")
+                .font(.caption.weight(.semibold)).foregroundStyle(Theme.accent)
+        }
+        .padding(12)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
+            .stroke(link.id == highlight ? Theme.accent : Theme.line, lineWidth: link.id == highlight ? 2 : 1))
+    }
+
+    private func thumb(_ photo: String?, body: String, label: String, color: Color) -> some View {
+        ZStack(alignment: .bottomLeading) {
+            if let photo {
+                RemotePhoto(path: photo)
+            } else {
+                Theme.surfaceElevated
+                Text(body).font(.caption).foregroundStyle(Theme.text).lineLimit(4).padding(8)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
+            Text(label).font(.caption2.weight(.bold)).foregroundStyle(.white)
+                .padding(.horizontal, 6).padding(.vertical, 2)
+                .background(color, in: Capsule())
+                .padding(6)
+        }
+        .frame(maxWidth: .infinity)
+        .aspectRatio(1, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    /// 自分のカードを上、相手のカードを下にして並べる
+    private func request(for link: CardLink) -> CardCompareRequest {
+        let fromCard = CardSnapshot(id: link.from_card, gateID: link.gate_id, gateTitle: link.gate_title,
+                                    author: link.incoming ? link.other : (session.userID ?? link.other),
+                                    authorName: link.incoming ? link.other_name : "",
+                                    body: link.from_body, photoPath: link.from_photo, createdAt: link.from_created_at)
+        let toCard = CardSnapshot(id: link.to_card, gateID: link.gate_id, gateTitle: link.gate_title,
+                                  author: link.incoming ? (session.userID ?? link.other) : link.other,
+                                  authorName: link.incoming ? "" : link.other_name,
+                                  body: link.to_body, photoPath: link.to_photo, createdAt: link.to_created_at)
+        return link.incoming ? CardCompareRequest(other: fromCard, mine: [toCard])
+                             : CardCompareRequest(other: toCard, mine: [fromCard])
+    }
+
+    private func load() async {
+        guard let api = session.api else { return }
+        do {
+            links = try await api.myCardLinks()
+            error = nil
+            try? await api.markCardLinksSeen()
+        } catch {
+            self.error = ErrorText.isMissingFunction(error) ? "サーバーの準備がまだです（SQL を貼り直すと使えます）。" : ErrorText.of(error)
+        }
+        loaded = true
     }
 }

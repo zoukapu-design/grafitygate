@@ -452,11 +452,59 @@ struct GraffitiSection: View {
     @State private var friendIDs: Set<UUID> = []
     @State private var sharing: CardSnapshot?
     @State private var comparing: CardCompareRequest?
+    @State private var linking: CardSnapshot?
+    /// この GATE で、自分が関わる「来たよ」
+    @State private var links: [CardLinkMark] = []
+    @State private var draftInAtlas = true
 
     init(context: GateContext, refreshToken: Int, onReport: @escaping (ReportItem) -> Void) {
         self.context = context
         self.refreshToken = refreshToken
         self.onReport = onReport
+    }
+
+    /// ほかの人のカード（友達を先に、新しい順）
+    private var otherCards: [Graffiti] {
+        graffiti.filter { $0.author != session.userID }.sorted {
+            let fa = friendIDs.contains($0.author), fb = friendIDs.contains($1.author)
+            return fa != fb ? fa : $0.created_at > $1.created_at
+        }
+    }
+
+    private func compare(start: UUID?) {
+        comparing = CardCompareRequest(others: otherCards.map(snapshot), mine: myCards.map(snapshot), start: start)
+    }
+
+    /// 「来たよ」を送れるか：GATE の中で、友達のカードに、自分のカードがあって、まだ送っていない
+    private func canLink(to item: Graffiti) -> Bool {
+        guard context.isInside, item.author != session.userID, friendIDs.contains(item.author), !myCards.isEmpty else { return false }
+        return !links.contains { $0.to_card == item.id && $0.sender == session.userID }
+    }
+
+    private func linkNote(for item: Graffiti) -> String? {
+        if item.author == session.userID {
+            let from = links.filter { $0.to_card == item.id && $0.recipient == session.userID }
+            guard let first = from.first else { return nil }
+            let who = names[first.sender] ?? "友達"
+            return from.count > 1 ? "\(who) さんたちが「来たよ」" : "\(who) さんが「来たよ」"
+        }
+        return links.contains { $0.to_card == item.id && $0.sender == session.userID } ? "「来たよ」を送りました" : nil
+    }
+
+    private func loadLinks() async {
+        links = (try? await session.api?.cardLinks(in: context.gateID)) ?? []
+    }
+
+    private func toggleAtlas(_ item: Graffiti) async {
+        guard let api = session.api else { return }
+        let next = !(item.in_atlas ?? false)
+        do {
+            try await api.setGraffitiAtlas(item.id, on: next)
+            if let i = graffiti.firstIndex(where: { $0.id == item.id }) { graffiti[i].in_atlas = next }
+            postMessage = (next ? "友達の図鑑に載せました（写真・場所・日付。ひとことは現地だけ）。" : "図鑑から外しました。", false)
+        } catch {
+            postMessage = (ErrorText.isMissingFunction(error) ? "サーバーの準備がまだです（SQL を貼り直すと使えます）。" : ErrorText.of(error), true)
+        }
     }
 
     /// この GATE の自分のカード（新しい順）
@@ -525,6 +573,16 @@ struct GraffitiSection: View {
                 .pickerStyle(.segmented)
             }
             Spacer(minLength: 0)
+            // 自分のカードを置いたまま、みんなのカードを横にめくって見比べる
+            if !myCards.isEmpty && !otherCards.isEmpty && order != .season {
+                Button {
+                    compare(start: nil)
+                } label: {
+                    Label("見比べる", systemImage: "rectangle.split.2x1")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Theme.warm)
+                }
+            }
         }
     }
 
@@ -561,10 +619,18 @@ struct GraffitiSection: View {
                                                      userName: names[item.author], label: "記憶のカード"))
                              },
                              onShare: isMine ? { sharing = snapshot(item) } : nil,
-                             onCompare: (!isMine && !myCards.isEmpty) ? {
-                                 comparing = CardCompareRequest(other: snapshot(item), mine: myCards.map(snapshot))
-                             } : nil)
+                             onCompare: (!isMine && !myCards.isEmpty) ? { compare(start: item.id) } : nil,
+                             onCardLink: canLink(to: item) ? { linking = snapshot(item) } : nil,
+                             linkNote: linkNote(for: item),
+                             inAtlas: isMine && item.photo_path != nil && !item.local_only ? item.in_atlas : nil,
+                             onToggleAtlas: { Task { await toggleAtlas(item) } })
             }
+        }
+        .sheet(item: $linking) { card in
+            CardLinkComposer(friendCard: card, myCards: myCards.map(snapshot)) {
+                Task { await loadLinks() }
+            }
+            .environmentObject(session)
         }
         .sheet(item: $sharing) { card in
             CardShareSheet(card: card).environmentObject(session)
@@ -621,6 +687,8 @@ struct GraffitiSection: View {
                             ForEach(Visibility.allCases) { v in Text(v.label).tag(v) }
                         }
                         Toggle("現地だけで見せる（友達の新着に出さない）", isOn: $draftLocalOnly)
+                        Toggle("友達の図鑑に写真を載せる", isOn: $draftInAtlas)
+                            .disabled(draftLocalOnly)
                     } label: {
                         Label(draftVisibility.label + (draftLocalOnly ? "・現地だけ" : ""), systemImage: "eye")
                             .font(.subheadline.weight(.semibold))
@@ -658,6 +726,7 @@ struct GraffitiSection: View {
             if let me = session.userID {
                 likes = (try? await api.likes(for: graffiti.map(\.id), me: me)) ?? [:]
             }
+            await loadLinks()
             error = nil
         } catch {
             self.error = ErrorText.of(error)
@@ -682,8 +751,12 @@ struct GraffitiSection: View {
             if let photo, let media = session.media, let me = session.userID {
                 photoPath = try await media.uploadPhoto(photo, owner: me)
             }
-            _ = try await api.postGraffiti(visit: visit, body: draft.trimmingCharacters(in: .whitespacesAndNewlines),
-                                           photoPath: photoPath, visibility: draftVisibility, localOnly: draftLocalOnly)
+            let newID = try await api.postGraffiti(visit: visit, body: draft.trimmingCharacters(in: .whitespacesAndNewlines),
+                                                   photoPath: photoPath, visibility: draftVisibility, localOnly: draftLocalOnly)
+            // 写真つきで「現地だけ」でなければ、選んだとおり友達の図鑑に載せる（前のサーバーでは何もしない）
+            if photoPath != nil, !draftLocalOnly, draftInAtlas, draftVisibility != .private {
+                try? await api.setGraffitiAtlas(newID, on: true)
+            }
             draft = ""
             photo = nil
             photoItem = nil
@@ -736,6 +809,13 @@ struct GraffitiCard: View {
     let onShare: (() -> Void)?
     /// この GATE の自分のカードと並べる（友達のカードで、自分のカードがあるときだけ）
     let onCompare: (() -> Void)?
+    /// 友達のカードに「来たよ」を送る（GATE の中・友達・自分のカードがあるとき）
+    let onCardLink: (() -> Void)?
+    /// 「来たよ」の札（送った・届いた）
+    let linkNote: String?
+    /// 友達の図鑑に載せているか（自分の写真つきカードだけ。nil なら出さない）
+    let inAtlas: Bool?
+    let onToggleAtlas: () -> Void
 
     @State private var confirmDelete = false
     @State private var viewer: PhotoViewerItem?
@@ -743,7 +823,8 @@ struct GraffitiCard: View {
 
     init(item: Graffiti, author: String, isMine: Bool, likeCount: Int, liked: Bool,
          onLike: @escaping () -> Void, onDelete: @escaping () -> Void, onReport: @escaping () -> Void,
-         onShare: (() -> Void)? = nil, onCompare: (() -> Void)? = nil) {
+         onShare: (() -> Void)? = nil, onCompare: (() -> Void)? = nil, onCardLink: (() -> Void)? = nil,
+         linkNote: String? = nil, inAtlas: Bool? = nil, onToggleAtlas: @escaping () -> Void = {}) {
         self.item = item
         self.author = author
         self.isMine = isMine
@@ -754,6 +835,10 @@ struct GraffitiCard: View {
         self.onReport = onReport
         self.onShare = onShare
         self.onCompare = onCompare
+        self.onCardLink = onCardLink
+        self.linkNote = linkNote
+        self.inAtlas = inAtlas
+        self.onToggleAtlas = onToggleAtlas
     }
 
     var body: some View {
@@ -792,6 +877,18 @@ struct GraffitiCard: View {
                 if !item.body.isEmpty {
                     Text(item.body).font(.body).foregroundStyle(Theme.text)
                 }
+                if let linkNote {
+                    Label(linkNote, systemImage: "hand.wave.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.warm)
+                        .padding(.horizontal, 10).padding(.vertical, 4)
+                        .background(Theme.warm.opacity(0.12), in: Capsule())
+                }
+                if inAtlas == true {
+                    Label("友達の図鑑に載せています", systemImage: "books.vertical.fill")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(Theme.accent)
+                }
                 HStack(spacing: 12) {
                     Button(action: onLike) {
                         Label("\(likeCount)", systemImage: liked ? "heart.fill" : "heart")
@@ -807,14 +904,23 @@ struct GraffitiCard: View {
                         Label("現地だけ", systemImage: "mappin.and.ellipse")
                     }
                     Spacer()
+                    if let onCardLink {
+                        Button(action: onCardLink) {
+                            Label("来たよ", systemImage: "hand.wave")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(Theme.warm)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("自分のカードを添えて来たよを送る")
+                    }
                     if let onCompare {
                         Button(action: onCompare) {
-                            Label("並べる", systemImage: "rectangle.split.2x1")
+                            Label("見比べる", systemImage: "rectangle.split.2x1")
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(Theme.accent)
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel("自分のカードと並べて見る")
+                        .accessibilityLabel("自分のカードと見比べる")
                     }
                     if let onShare {
                         Button(action: onShare) {
@@ -830,11 +936,22 @@ struct GraffitiCard: View {
                             if let onShare {
                                 Button(action: onShare) { Label("カードを共有", systemImage: "square.and.arrow.up") }
                             }
+                            if let inAtlas {
+                                Button(action: onToggleAtlas) {
+                                    Label(inAtlas ? "友達の図鑑から外す" : "友達の図鑑に載せる",
+                                          systemImage: inAtlas ? "books.vertical" : "books.vertical.fill")
+                                }
+                            }
                             Button("消す", role: .destructive) { confirmDelete = true }
                         } else {
+                            if let onCardLink {
+                                Button(action: onCardLink) {
+                                    Label("自分のカードを添えて来たよを送る", systemImage: "hand.wave")
+                                }
+                            }
                             if let onCompare {
                                 Button(action: onCompare) {
-                                    Label("自分のカードと並べる", systemImage: "rectangle.split.2x1")
+                                    Label("自分のカードと見比べる", systemImage: "rectangle.split.2x1")
                                 }
                             }
                             Button(action: onReport) {

@@ -1,0 +1,205 @@
+import MapKit
+import SwiftUI
+
+/// プロフィールの下の「作った GATE・グラフィティ・訪れた」。
+/// 作った GATE はサーバーが見せてよいものだけ（位置はおおよそ）。グラフィティは本人が図鑑に載せたカードの写真・場所・日付
+/// （ひとことの文は現地だけ）。訪れたは本人が見せると選んだ図鑑。中身はどれも現地で扉を開けた人だけ。
+struct FriendWorks: View {
+    let userID: UUID
+    let name: String
+    let isFriend: Bool
+    let isMe: Bool
+
+    @EnvironmentObject private var session: SessionModel
+    @State private var tab: Tab = .gates
+    @State private var gates: [UserGate] = []
+    @State private var cards: [AtlasCard] = []
+    @State private var visited: [FriendAtlasGate] = []
+    @State private var loaded = false
+    @State private var unsupported = false
+
+    enum Tab: String, CaseIterable, Identifiable {
+        case gates = "作った GATE"
+        case cards = "グラフィティ"
+        case visited = "訪れた"
+        var id: String { rawValue }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Picker("見るもの", selection: $tab) {
+                ForEach(Tab.allCases) { t in Text(t.rawValue).tag(t) }
+            }
+            .pickerStyle(.segmented)
+
+            switch tab {
+            case .gates: gatesView
+            case .cards: cardsView
+            case .visited: visitedView
+            }
+        }
+        .task(id: userID) { await load() }
+    }
+
+    // MARK: 作った GATE（地図と一覧）
+
+    @ViewBuilder private var gatesView: some View {
+        if !loaded {
+            ProgressView().frame(maxWidth: .infinity).padding(.vertical, 30)
+        } else if gates.isEmpty {
+            note(unsupported ? "サーバーの準備がまだです（SQL を貼り直すと見られます）。"
+                             : (isMe ? "まだ GATE を作っていません。" : "\(name) さんが見せている GATE はまだありません。"))
+        } else {
+            Map(initialPosition: .automatic) {
+                ForEach(gates) { gate in
+                    Annotation(gate.title, coordinate: gate.coordinate, anchor: .bottom) {
+                        NavigationLink {
+                            GateDetailView(gateID: gate.id)
+                        } label: {
+                            GatePin(mine: isMe, coverPath: gate.cover_path, ownerName: name, showsName: false)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .annotationTitles(.hidden)
+                }
+            }
+            .id(gates.map(\.id))
+            .frame(height: 230)
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(Theme.line))
+            .overlay(alignment: .topLeading) {
+                Text("位置はおおよそ（約 100m）")
+                    .font(.caption2.weight(.semibold))
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .padding(8)
+            }
+            ForEach(gates) { gate in
+                NavigationLink {
+                    GateDetailView(gateID: gate.id)
+                } label: {
+                    HStack(spacing: 12) {
+                        GateCoverImage(path: gate.cover_path, markSize: 26)
+                            .frame(width: 64, height: 64)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack(spacing: 6) {
+                                Text(gate.title).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text).lineLimit(1)
+                                Image(systemName: GateKind(raw: gate.kind).symbol)
+                                    .font(.caption2.weight(.bold)).foregroundStyle(Theme.accent)
+                            }
+                            Label(GateDates.shortText(gate.created_at), systemImage: "calendar")
+                                .font(.caption).foregroundStyle(Theme.textSecondary)
+                            PlaceNameText(lat: gate.approx_lat, lon: gate.approx_lon)
+                        }
+                        Spacer(minLength: 0)
+                        Text("\(gate.graffiti_count) 枚")
+                            .font(.caption.weight(.semibold)).foregroundStyle(Theme.textSecondary)
+                    }
+                    .padding(10)
+                    .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.line))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    // MARK: グラフィティ図鑑（写真・場所・日付）
+
+    @ViewBuilder private var cardsView: some View {
+        if !isFriend && !isMe {
+            note("お互いにフォローすると、\(name) さんが図鑑に載せたグラフィティの写真が見られます。")
+        } else if !loaded {
+            ProgressView().frame(maxWidth: .infinity).padding(.vertical, 30)
+        } else if cards.isEmpty {
+            note(isMe ? "写真つきのカードを残すと、ここに並びます。友達に見せるかは、カードごとに「図鑑に載せる」で選べます。"
+                      : "\(name) さんが図鑑に載せたカードはまだありません。")
+        } else {
+            Text(isMe ? "友達には、「図鑑に載せる」を選んだカードだけが見えます。ひとことの文は現地だけです。"
+                      : "ひとことの文は、現地で扉を開けると読めます。")
+                .font(.caption).foregroundStyle(Theme.textSecondary)
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                ForEach(cards) { card in
+                    NavigationLink {
+                        GateDetailView(gateID: card.gate_id)
+                    } label: {
+                        AtlasCardTile(card: card)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    // MARK: 訪れた（本人が見せると選んだ図鑑）
+
+    @ViewBuilder private var visitedView: some View {
+        if !isFriend && !isMe {
+            note("お互いにフォローすると、\(name) さんが見せると選んだ「訪れた GATE」が見られます。")
+        } else if !loaded {
+            ProgressView().frame(maxWidth: .infinity).padding(.vertical, 30)
+        } else if visited.isEmpty {
+            note(isMe ? "「わたし」→「図鑑」で、友達に見せる GATE を選べます。" : "見せている GATE はまだありません。")
+        } else {
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
+                ForEach(visited) { gate in
+                    NavigationLink {
+                        GateDetailView(gateID: gate.gate_id)
+                    } label: {
+                        MemoryTile(title: gate.title, subtitle: "\(gate.visits) 回・\(GateDates.shortText(gate.first_at))",
+                                   cover: gate.cover_path)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private func note(_ text: String) -> some View {
+        Text(text)
+            .font(.subheadline)
+            .foregroundStyle(Theme.textSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.vertical, 8)
+    }
+
+    private func load() async {
+        guard let api = session.api else { return }
+        do {
+            gates = try await api.userGates(userID)
+        } catch {
+            unsupported = ErrorText.isMissingFunction(error)
+            gates = []
+        }
+        if isFriend || isMe {
+            cards = (try? await api.userCardAtlas(userID)) ?? []
+            visited = isMe ? [] : ((try? await api.friendAtlas(userID)) ?? [])
+        }
+        loaded = true
+    }
+}
+
+/// グラフィティ図鑑の 1 枚：写真に GATE の名前と日付・場所を重ねる
+struct AtlasCardTile: View {
+    let card: AtlasCard
+
+    var body: some View {
+        ZStack(alignment: .bottomLeading) {
+            RemotePhoto(path: card.photo_path)
+                .aspectRatio(3 / 4, contentMode: .fit)
+                .frame(maxWidth: .infinity)
+            LinearGradient(colors: [.clear, .black.opacity(0.7)], startPoint: .center, endPoint: .bottom)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(card.gate_title).font(.caption.weight(.bold)).foregroundStyle(.white).lineLimit(1)
+                Text(GateDates.shortText(card.created_at)).font(.caption2).foregroundStyle(.white.opacity(0.85))
+                PlaceNameText(lat: card.approx_lat, lon: card.approx_lon, font: .caption2)
+                    .foregroundStyle(.white.opacity(0.85))
+                    .environment(\.colorScheme, .dark)
+            }
+            .padding(8)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Theme.line))
+    }
+}

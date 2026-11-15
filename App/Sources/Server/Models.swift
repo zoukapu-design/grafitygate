@@ -157,6 +157,8 @@ struct Graffiti: Decodable, Identifiable, Hashable {
     let visibility: String
     let local_only: Bool
     let created_at: String
+    /// 友達の図鑑に載せているか（書いた本人が選ぶ。0017 の前のサーバーでは無い）
+    var in_atlas: Bool? = nil
 }
 
 /// 自分の GATE（表 gf_gates。自分のものだけ読める）
@@ -720,6 +722,7 @@ struct NotificationItem: Decodable, Identifiable, Hashable {
         case "memory_invite": return "\(who)が\(gate)の思い出の仲間に入れてくれました"
         case "memory_photo": return "\(who)が思い出に写真を足しました（\(gate)）"
         case "like": return "\(who)があなたの記憶にいいねしました（\(gate)）"
+        case "card_link": return "\(who)があなたのカードに「来たよ」を送りました（\(gate)）"
         case "follow": return "\(who)があなたをフォローしました"
         default: return "\(who)からのお知らせ"
         }
@@ -733,6 +736,7 @@ struct NotificationItem: Decodable, Identifiable, Hashable {
         case "letter", "letter_opened": return "envelope"
         case "memory_invite", "memory_photo": return "photo.stack"
         case "like": return "heart"
+        case "card_link": return "hand.wave"
         case "follow": return "person.badge.plus"
         case "place_map_stale": return "arrow.triangle.2.circlepath.camera"
         default: return "bell"
@@ -892,4 +896,66 @@ enum ServerDate {
         }
         return dateWithYearFormat.string(from: d)
     }
+}
+
+
+/// その人が作った GATE（gf_user_gates。見てよいものだけ・位置はおおよそ）
+struct UserGate: Decodable, Identifiable, Hashable {
+    let id: UUID
+    let title: String
+    let kind: String
+    let cover_path: String?
+    let approx_lat: Double
+    let approx_lon: Double
+    let created_at: String
+    let graffiti_count: Int
+
+    var coordinate: CLLocationCoordinate2D { CLLocationCoordinate2D(latitude: approx_lat, longitude: approx_lon) }
+}
+
+/// グラフィティ図鑑の 1 枚（gf_user_card_atlas。写真・GATE・おおよその位置・日付。ひとことの文は現地だけ）
+struct AtlasCard: Decodable, Identifiable, Hashable {
+    let id: UUID
+    let gate_id: UUID
+    let gate_title: String
+    let gate_kind: String
+    let photo_path: String
+    let approx_lat: Double
+    let approx_lon: Double
+    let created_at: String
+}
+
+/// 「来たよ」カード（gf_my_card_links）：友達のカードに、自分がその GATE で残したカードを添えて送ったもの
+struct CardLink: Decodable, Identifiable, Hashable {
+    let id: UUID
+    /// 届いたもの（false は自分が送ったもの）
+    let incoming: Bool
+    let other: UUID
+    let other_name: String
+    let gate_id: UUID
+    let gate_title: String
+    let body: String
+    let created_at: String
+    let seen: Bool
+    /// 添えたカード（送った人のカード）
+    let from_card: UUID
+    let from_body: String
+    let from_photo: String?
+    let from_created_at: String
+    /// 添えられたカード（受け取った人のカード）
+    let to_card: UUID
+    let to_body: String
+    let to_photo: String?
+    let to_created_at: String
+}
+
+/// GATE の中で、自分が関わる「来たよ」（gf_card_links_in）
+struct CardLinkMark: Decodable, Identifiable, Hashable {
+    let id: UUID
+    let from_card: UUID
+    let to_card: UUID
+    let sender: UUID
+    let recipient: UUID
+    let body: String
+    let created_at: String
 }

@@ -9,7 +9,6 @@ struct ProfileView: View {
     @State private var following = false
     @State private var followsMe = false
     @State private var blocked = false
-    @State private var atlas: [FriendAtlasGate] = []
     @State private var message: (text: String, isError: Bool)?
     @State private var report: ReportItem?
     @State private var busy = false
@@ -78,25 +77,13 @@ struct ProfileView: View {
                         }
                     }
                     if let message { NoticeText(text: message.text, isError: message.isError) }
-                    if isFriend && !blocked {
-                        Text("\(profile.display_name) さんの図鑑").font(.headline).foregroundStyle(Theme.text)
-                        if atlas.isEmpty {
-                            Text("見せている GATE はまだありません。").font(.subheadline).foregroundStyle(Theme.textSecondary)
+                    if !blocked {
+                        if !isFriend && !isMe {
+                            Text("お互いにフォローすると「友達」になり、友達向けの GATE や、その人が図鑑に載せたグラフィティが見えるようになります。")
+                                .font(.caption).foregroundStyle(Theme.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
-                        LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
-                            ForEach(atlas) { gate in
-                                NavigationLink {
-                                    GateDetailView(gateID: gate.gate_id)
-                                } label: {
-                                    MemoryTile(title: gate.title, subtitle: "\(gate.visits) 回・\(ServerDate.relative(gate.first_at))",
-                                               cover: gate.cover_path)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    } else if !isMe && !blocked {
-                        Text("お互いにフォローすると「友達」になり、友達向けの GATE や、その人が見せると選んだ図鑑が見えるようになります。")
-                            .font(.subheadline).foregroundStyle(Theme.textSecondary)
+                        FriendWorks(userID: userID, name: profile.display_name, isFriend: isFriend, isMe: isMe)
                     }
                 } else if loaded {
                     VStack(spacing: 10) {
@@ -174,7 +161,6 @@ struct ProfileView: View {
             following = r.following.contains(userID)
             followsMe = r.followers.contains(userID)
             blocked = (try? await api.blocks())?.contains { $0.user_id == userID } ?? false
-            atlas = (isFriend && !blocked) ? ((try? await api.friendAtlas(userID)) ?? []) : []
         } catch {
             message = (ErrorText.of(error), true)
         }
