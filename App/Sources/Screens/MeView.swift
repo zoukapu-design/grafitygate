@@ -13,6 +13,9 @@ struct MeView: View {
     @State private var message: (text: String, isError: Bool)?
     @State private var editingName = false
     @State private var loaded = false
+    /// あの日（1 年前・1 か月前・1 週間前の今ごろの、自分の GATE とカード）
+    @State private var onThisDay: OnThisDay.Pick?
+    @State private var savedCardCount: Int?
 
     var body: some View {
         NavigationStack {
@@ -26,6 +29,9 @@ struct MeView: View {
                                       friendCount: friendCount,
                                       onEditName: { editingName = true })
                         AddFriendButtons()
+                        if let onThisDay {
+                            OnThisDayCard(pick: onThisDay)
+                        }
                         myGatesSection
                         lookBackSection
                         if let message {
@@ -129,6 +135,8 @@ struct MeView: View {
                              systemImage: "point.topleft.down.to.point.bottomright.curvepath.fill", tint: Theme.warm) { TrailListView() }
                 LookBackTile(title: "保存", caption: savedCount.map { "保存した GATE \($0)" } ?? "保存した GATE",
                              systemImage: "bookmark.fill", tint: Theme.accent) { CollectionView(kind: "saved") }
+                LookBackTile(title: "お気に入り", caption: savedCardCount.map { "お気に入りのカード \($0)" } ?? "お気に入りのカード",
+                             systemImage: "bookmark.square.fill", tint: Theme.warm) { SavedCardsView() }
                 LookBackTile(title: "友達", caption: friendCount.map { "友達 \($0) 人・フォロー" } ?? "友達・フォロー",
                              systemImage: "person.2.fill", tint: Color(hex: 0x2FA7C9)) { FriendsView() }
             }
@@ -146,6 +154,9 @@ struct MeView: View {
         friendCount = try? await api.friends(me: me).count
         visitedCount = try? await api.collection("visited").count
         savedCount = try? await api.collection("saved").count
+        savedCardCount = try? await api.mySavedCards().count
+        let myCards = (try? await api.userCardAtlas(me)) ?? []
+        onThisDay = OnThisDay.pick(gates: gates, cards: myCards)
         unopenedLetters = (try? await api.letters())?.filter { !$0.sent && !$0.isOpened }.count ?? 0
         loaded = true
     }
@@ -905,6 +916,9 @@ struct MySettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
+                MeGroup(title: "お知らせ") {
+                    MeLink(title: "お知らせの設定（種類ごとに止める）", systemImage: "bell.badge") { NotificationSettingsView() }
+                }
                 MeGroup(title: "安全とデータ") {
                     MeLink(title: "ブロックした人", systemImage: "hand.raised") { BlockedView() }
                     MeLink(title: "自分のデータ（書き出し・アカウントの削除）", systemImage: "externaldrive") { MyDataView() }

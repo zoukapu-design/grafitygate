@@ -58,6 +58,8 @@ struct GateDetailView: View {
     @State private var health: PlaceMapHealth?
     /// 作った本人には正確な位置
     @State private var exactPlace: CLLocationCoordinate2D?
+    /// 自分がこの GATE に来た日
+    @State private var showVisits = false
 
     init(gateID: UUID, tab: GateTab = .graffiti) {
         self.gateID = gateID
@@ -123,6 +125,10 @@ struct GateDetailView: View {
         }
         .sheet(item: $report) { item in
             ReportSheet(item: item)
+        }
+        .sheet(isPresented: $showVisits) {
+            MyVisitsSheet(gateID: gateID, title: summary?.title ?? "")
+                .environmentObject(session)
         }
     }
 
@@ -222,7 +228,15 @@ struct GateDetailView: View {
                         chip("\(s.graffiti_count) 枚の記憶", "square.stack")
                         if let stats {
                             chip("\(stats.visitor_count) 人が訪れた", "figure.walk")
-                            if stats.my_visits > 0 { chip("あなたは \(stats.my_visits) 回", "door.left.hand.open", warm: true) }
+                            if stats.my_visits > 0 {
+                                Button {
+                                    showVisits = true
+                                } label: {
+                                    chip("あなたは \(stats.my_visits) 回", "door.left.hand.open", warm: true)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("あなたが来た日を見る")
+                            }
                             if let last = stats.last_activity_at { chip("最後の記録 \(ServerDate.relative(last))", "clock") }
                         }
                         chip(Visibility.label(of: s.visibility), "eye")

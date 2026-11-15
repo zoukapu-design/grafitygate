@@ -26,11 +26,20 @@
 - 景色の GATE（`0015`・kind `view`）：作るときに最初に「物・場所・景色」を選ぶ（`GateKind`。写し方の案内と 3 方向が種類で変わる。景色は立ったまま向きを変える）。写真の確かめは景色用（`ShotQuality.hasPattern(view:)`：やわらかい輪郭で数え、空・海が多くても稜線・水平線・夜の明かりで通す。空だけ・真っ暗・白い壁は止める）。扉は `GateDoor.Style.window`（向こうに本物の景色が見える額縁。夜空の世界と見えない壁は作らない）。入るときの決まりは同じ。
 - 見え方を足す（`0015`・`gf_add_gate_refs`）：作った本人が現地で（合言葉・120m・精度 35m）見本の写真の特徴を足す（夕方・夜・別の季節）。写真は送らず特徴だけ。1 つの GATE に 12 まで（`max_refs_per_gate`）。入るときは、いちばん近い見本で判定（`gf_enter` のまま）。AR の `Mode.addLooks`、入口は GATE の画面の「別の時間の見え方を足す」（作った本人だけ）。
 - 扉の大きさ（`0016`・`gf_gates.door_scale` 0.2〜1.5）：作る人が置くときに小・中・大／つまんで決める（物ははじめ 0.35）。`GateDoor.setSize` は扉の見た目（root）だけを変え、作品（base に付く）は変えない。入った人には `gf_gate_door` の大きさで出す。作った本人は扉の位置合わせから変えられる。
-- 友達の GATE・グラフィティ図鑑・「来たよ」（`0017`）：`gf_user_gates`（見てよい GATE・おおよその位置）、`gf_user_card_atlas`（書いた本人が `in_atlas` にしたカードだけ、お互いにフォローの友達に写真・場所・日付。文は返さない。現地だけ・写真なし・自分だけのカードは載らない。前からあるカードは載せない）。「来たよ」は `gf_send_card_link`（GATE の中で、友達のカードに自分のカードを添える）、届いた人は `gf_my_card_links` で 2 枚とひとことを見る。写真の受け取りは `gf_can_read_media`（0017 が最新。足すときは 0017 以降で作り直す）。画面は `FriendWorks`（プロフィール）、`CardLinkComposer`・`CardLinksView`、見比べるは `CardCompareView`（自分のカードを上に置いたまま、ほかの人のカードを横にスワイプ）。
-- お知らせの種類の check は `0008` が「最後の一覧」（0017 の card_link もふくむ）。足すときは 0008 と新しい段の両方を直す。
+- 友達の GATE・グラフィティ図鑑・「来たよ」（`0017`）：`gf_user_gates`（見てよい GATE・おおよその位置）、`gf_user_card_atlas`（書いた本人が `in_atlas` にしたカードだけ、お互いにフォローの友達に写真・場所・日付。文は返さない。現地だけ・写真なし・自分だけのカードは載らない。前からあるカードは載せない）。「来たよ」は `gf_send_card_link`（GATE の中で、友達のカードに自分のカードを添える）、届いた人は `gf_my_card_links` で 2 枚とひとことを見る。写真の受け取りは `gf_can_read_media`（0018 が最新。足すときは 0018 以降で作り直す）。画面は `FriendWorks`（プロフィール）、`CardLinkComposer`・`CardLinksView`、見比べるは `CardCompareView`（自分のカードを上に置いたまま、ほかの人のカードを横にスワイプ）。
+- お知らせの種類の check は `0008`・`0017`・`0018` の 3 か所が同じ「最後の一覧」（card_link・card_comment もふくむ）。足すときは 3 か所と新しい段を全部直す。通報の種類（`gf_reports_target_kind_check`）も `0005`・`0006`・`0018` の 3 か所が同じ一覧。
+- カード・掲示板・探す・TRAIL・見返す（`0018`）：
+  - お気に入り（`gf_card_saves`・`gf_save_card`）は自分だけの印（いいね・図鑑とは別）。付けるのはカードが見えるとき（GATE の中）だけ、外すのはいつでも。`gf_my_saved_cards` は図鑑と同じく写真・GATE・おおよその場所・日付だけ（文は自分のカードだけ。現地だけ・写真なしのカードの写真は出さない）。画面は `SavedCardsView`（わたし → 見返す → お気に入り）。
+  - カードへの返信（`gf_card_comments`・`gf_card_comment`・`gf_card_comments_of`）：読む・書くのはカードが見える人（現地の人と、カードを書いた本人）。消せるのは返信を書いた本人とカードを書いた本人。通報の種類 `card_comment`。お知らせ `card_comment`（本人が返したら、それまでの返信者へ）。画面は `CardCommentsSheet`。数とお気に入りは `gf_card_extras`。
+  - カードの裏（`GraffitiCard`）：⟳ で裏返すと、書いた人・残した日・見える人・どこで見られるか・図鑑。表は写真とひとことだけ（詰め込まない）。
+  - 掲示板の「解決しました」（`resolved_at`・`gf_board_resolve`・一覧は `gf_board_list3`）：質問・調べるの話題で、立てた本人か GATE を作った人。
+  - 名前で探す（`gf_search_gates`・`gf_trail_search`）：見てよい GATE・TRAIL だけ、場所はおおよそ（小数 3 桁）、1 分 30 回。地図の「探す」（`MapSearchSheet`）は GATE と場所（MKLocalSearch）。場所を選ぶと地図をそこへ動かし、歩いて行く道を開ける（GATE が見つかるのは、いまいる所の 100m 以内のまま）。
+  - TRAIL：友達のプロフィールの TRAIL（`gf_user_trails`）、リンク `grafitygate://trail/<id>`（`gf_trail_get`・`AppNavigator.trailLink`）、作った本人が名前・説明・見せる範囲を直す（`gf_update_trail`。地点の並びは歩いている人の進み具合が崩れるので変えない）、近くの TRAIL（5km）。
+  - 見返す：「あの日」（`OnThisDay`：1 年前・1 か月前・1 週間前の今ごろの自分の GATE とカード。iPhone の中だけで選ぶ）、GATE の「あなたは n 回」から来た日の一覧（`gf_my_visit_history`・本人だけ）。
+  - お知らせの設定（`gf_notify_prefs`・`gf_set_notify_mute`・`NotificationSettingsView`）：種類ごとに止める。止めた種類は `gf_notify` が作らない（`gf_notify` は 0018 が最新）。
 - 通報は `gf_reports`（`reports` は Lyric Path の形のままにするため使わない）。ブロックは `gf_block` が共通の `lp_blocks` に書く。人が書いたものを出す所には、必ず「通報する」を付ける（App Store の決まり 1.2）。アカウントの削除は、アプリが自分のフォルダのファイルを消してから `gf_delete_me`。
 - お知らせ（`0005_gf_social.sql`）は gf_ の表の trigger で `gf_notify` が作る（自分の操作・ブロックの相手・公開範囲で見えないものは知らせない）。お知らせには本文・写真・正確な位置を入れない。フォローは共通の表 `follows` に trigger を付けず、読むときに混ぜる。DM はお互いにフォローしている友達とだけ（`gf_dm_send`）。
-- TRAIL（`0006`）は、入場の記録（`gf_visits` の trigger）でサーバーが進める。アプリが「着いた」と送る仕組みは作らない。今と昔の写真はカメラだけ（`SnapshotCaptureView`）。通報の関数 `gf_report` は 0006 が最新（新しい種類を足すときは 0006 以降で作り直す）。
+- TRAIL（`0006`）は、入場の記録（`gf_visits` の trigger）でサーバーが進める。アプリが「着いた」と送る仕組みは作らない。今と昔の写真はカメラだけ（`SnapshotCaptureView`）。通報の関数 `gf_report` は 0018 が最新（新しい種類を足すときは 0018 以降で作り直す）。
 - 場所の記憶の見つかりやすさ（`0008`）：入場した人の iPhone が「見つかった／見つからなかった・秒数」だけを送り、ほかの人が見つけられない日が続くと作った人に撮り直しを知らせる。おおよその位置に出た扉は、見る人が指で動かせる（`GateDoor.base`。扉と作品が一緒に動く・自分の画面だけ）。作った本人は、その位置で場所の記憶を撮り直せる（新しい印 `gg.gate` に付け替えて保存）。
 - SQL の check 制約を drop/add し直すときは、あとの段で足した値もふくむ「最後の一覧」にする（データが入ったあとに setup_all.sql を貼り直してもエラーにならないように。run.sh が確かめる）。
 - 場所の記憶（ARWorldMap）は、作った本人と入場中の人だけが受け取れる（`gf_place_map`・`gf-maps`）。見つからない・やめたときは、出さないのではなく目の前（2m 先）に「おおよその位置」として必ず出す。
