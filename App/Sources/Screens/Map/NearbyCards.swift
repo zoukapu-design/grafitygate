@@ -583,16 +583,26 @@ struct NearbyCardDetail: View {
             }
             PlaceNameText(lat: card.approx_lat, lon: card.approx_lon, font: .caption)
                 .foregroundStyle(Theme.textSecondary)
-            Map(initialPosition: .automatic) {
-                UserAnnotation()
-                Marker(card.gate_title, systemImage: "door.left.hand.open", coordinate: card.gateCoordinate)
-                    .tint(Theme.accent)
-                MapCircle(center: card.gateCoordinate, radius: 60)
-                    .foregroundStyle(Theme.accent.opacity(0.1))
-                    .stroke(Theme.accent.opacity(0.4), lineWidth: 1)
-                if let route {
-                    MapPolyline(route.polyline)
-                        .stroke(Theme.warm, style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
+            Group {
+                if Self.demoWithoutMap {
+                    // 画面の見本（クラウドの Mac のシミュレーター）は地図を描けないので、置き場所だけ見せる
+                    ZStack {
+                        Theme.surfaceElevated
+                        Label("地図", systemImage: "map").foregroundStyle(Theme.textSecondary)
+                    }
+                } else {
+                    Map(initialPosition: .automatic) {
+                        UserAnnotation()
+                        Marker(card.gate_title, systemImage: "door.left.hand.open", coordinate: card.gateCoordinate)
+                            .tint(Theme.accent)
+                        MapCircle(center: card.gateCoordinate, radius: 60)
+                            .foregroundStyle(Theme.accent.opacity(0.1))
+                            .stroke(Theme.accent.opacity(0.4), lineWidth: 1)
+                        if let route {
+                            MapPolyline(route.polyline)
+                                .stroke(Theme.warm, style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
+                        }
+                    }
                 }
             }
             .frame(height: 240)
@@ -622,6 +632,12 @@ struct NearbyCardDetail: View {
             .buttonStyle(PrimaryButtonStyle())
         }
     }
+
+    #if DEBUG
+    private static var demoWithoutMap: Bool { DemoGallery.requestedScreen != nil }
+    #else
+    private static let demoWithoutMap = false
+    #endif
 
     private func loadRoute() async {
         guard let here = location.location?.coordinate else { return }

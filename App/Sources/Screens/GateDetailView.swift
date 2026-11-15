@@ -1050,6 +1050,9 @@ struct GraffitiCard: View {
     @State private var viewer: PhotoViewerItem?
     /// 裏返しているか（裏はくわしいこと：書いた人・日時・公開範囲など）
     @State private var flipped = false
+    /// 表と裏の高さ（いま見えている面の高さにする。高いほうに合わせると、低い面の上下に空きができる）
+    @State private var frontHeight: CGFloat = 0
+    @State private var backHeight: CGFloat = 0
     @EnvironmentObject private var session: SessionModel
 
     init(item: Graffiti, author: String, isMine: Bool, likeCount: Int, liked: Bool,
@@ -1083,15 +1086,21 @@ struct GraffitiCard: View {
     }
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .top) {
             front
+                .fixedSize(horizontal: false, vertical: true)
+                .background(HeightReader(height: $frontHeight))
                 .opacity(flipped ? 0 : 1)
                 .accessibilityHidden(flipped)
             back
+                .fixedSize(horizontal: false, vertical: true)
+                .background(HeightReader(height: $backHeight))
                 .opacity(flipped ? 1 : 0)
                 .rotation3DEffect(.degrees(180), axis: (x: 0, y: 1, z: 0))
                 .accessibilityHidden(!flipped)
         }
+        .frame(height: shownHeight, alignment: .top)
+        .clipped()
         .rotation3DEffect(.degrees(flipped ? 180 : 0), axis: (x: 0, y: 1, z: 0), perspective: 0.45)
         .background(Theme.surface)
         .clipShape(RoundedRectangle(cornerRadius: Theme.radiusCard))
@@ -1105,6 +1114,12 @@ struct GraffitiCard: View {
         } message: {
             Text("友達の新着や GATE からも見えなくなります。")
         }
+    }
+
+    /// いま見えている面の高さ（測る前は、決めずに置く）
+    private var shownHeight: CGFloat? {
+        let h = flipped ? backHeight : frontHeight
+        return h > 0 ? h : nil
     }
 
     private func flip() {
@@ -1325,7 +1340,7 @@ struct GraffitiCard: View {
             Spacer(minLength: 0)
         }
         .padding(18)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
         .background(
             LinearGradient(colors: [Theme.accentLight.opacity(0.55), Theme.surface], startPoint: .top, endPoint: .bottom)
         )
@@ -1363,6 +1378,20 @@ struct CompactLabelStyle: LabelStyle {
                 configuration.icon
                 configuration.title
             }
+        }
+    }
+}
+
+
+/// 置かれた面の高さを測る（カードの表と裏で、見えている面の高さにするため）
+struct HeightReader: View {
+    @Binding var height: CGFloat
+
+    var body: some View {
+        GeometryReader { proxy in
+            Color.clear
+                .onAppear { height = proxy.size.height }
+                .onChange(of: proxy.size.height) { _, value in height = value }
         }
     }
 }
