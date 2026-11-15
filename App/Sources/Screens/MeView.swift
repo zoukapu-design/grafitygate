@@ -161,14 +161,14 @@ struct MeView: View {
         }
     }
 
-    /// 見返す：図鑑・思い出・手紙・保存・TRAIL・友達
+    /// 見返す：図鑑・アルバム・手紙・保存・TRAIL・友達
     private var lookBackSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("見返す").font(.title3.weight(.bold)).foregroundStyle(Theme.text)
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                LookBackTile(title: "図鑑", caption: visitedCount.map { "訪れた GATE \($0)" } ?? "訪れた GATE",
+                LookBackTile(title: "訪れた GATE", caption: visitedCount.map { "\($0) か所" } ?? "扉を開けた GATE",
                              systemImage: "books.vertical.fill", tint: Theme.accent) { CollectionView(kind: "visited") }
-                LookBackTile(title: "思い出", caption: "写真・動画・声のアルバム",
+                LookBackTile(title: "アルバム", caption: "写真・動画・声のアルバム",
                              systemImage: "photo.stack.fill", tint: Theme.warm) { MyMemoriesView() }
                 LookBackTile(title: "手紙", caption: unopenedLetters > 0 ? "未開封 \(unopenedLetters)" : "届いた・送った手紙",
                              systemImage: "envelope.fill", tint: Color(hex: 0xE0457B),
@@ -177,9 +177,9 @@ struct MeView: View {
                              systemImage: "hand.wave.fill", tint: Theme.warm) { CardLinksView() }
                 LookBackTile(title: "TRAIL", caption: "GATE をつないだ思い出の道",
                              systemImage: "point.topleft.down.to.point.bottomright.curvepath.fill", tint: Theme.warm) { TrailListView() }
-                LookBackTile(title: "保存", caption: savedCount.map { "保存した GATE \($0)" } ?? "保存した GATE",
+                LookBackTile(title: "保存した GATE", caption: savedCount.map { "\($0) か所" } ?? "保存した GATE",
                              systemImage: "bookmark.fill", tint: Theme.accent) { CollectionView(kind: "saved") }
-                LookBackTile(title: "お気に入り", caption: savedCardCount.map { "お気に入りのカード \($0)" } ?? "お気に入りのカード",
+                LookBackTile(title: "保存したカード", caption: savedCardCount.map { "\($0) 枚" } ?? "保存したグラフィティカード",
                              systemImage: "bookmark.square.fill", tint: Theme.warm) { SavedCardsView() }
                 LookBackTile(title: "友達", caption: friendCount.map { "友達 \($0) 人・フォロー" } ?? "友達・フォロー",
                              systemImage: "person.2.fill", tint: Color(hex: 0x2FA7C9)) { FriendsView() }
@@ -390,7 +390,7 @@ struct NameEditSheet: View {
                     .onChange(of: name) { _, value in
                         if value.count > 30 { name = String(value.prefix(30)) }
                     }
-                Text("30 文字まで。友達のホームや GATE の記憶に、この名前で出ます。")
+                Text("30 文字まで。友達のホームや GATE のグラフィティカードに、この名前で出ます。")
                     .font(.caption).foregroundStyle(Theme.textSecondary)
                 if let error { NoticeText(text: error) }
                 Spacer()
@@ -622,7 +622,7 @@ struct CollectionView: View {
         }
         .scrollContentBackground(.hidden)
         .background(Theme.background.ignoresSafeArea())
-        .navigationTitle(kind == "visited" ? "図鑑" : "保存")
+        .navigationTitle(kind == "visited" ? "訪れた GATE" : "保存した GATE")
         .task { await load() }
         .refreshable { await load() }
     }
@@ -670,7 +670,7 @@ struct MyMemoriesView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 if loaded && memories.isEmpty {
-                    Text("まだありません。GATE の扉を開けて「思い出」から作れます。")
+                    Text("まだありません。GATE の扉を開けて「アルバム」から作れます。")
                         .font(.subheadline).foregroundStyle(Theme.textSecondary)
                 }
                 if let message { NoticeText(text: message) }
@@ -689,7 +689,7 @@ struct MyMemoriesView: View {
             .padding(16)
         }
         .background(Theme.background.ignoresSafeArea())
-        .navigationTitle("思い出")
+        .navigationTitle("アルバム")
         .task { await load() }
         .refreshable { await load() }
     }
@@ -840,7 +840,7 @@ struct MyDataView: View {
             } header: {
                 Text("書き出し")
             } footer: {
-                Text("自分が作った GATE（正確な位置も）・記憶・作品・掲示板・手紙・思い出・保存・図鑑を、1 つのファイル（JSON）にします。写真そのものは入りません。")
+                Text("自分が作った GATE（正確な位置も）・グラフィティカード・AR の飾り・掲示板・手紙・アルバム・保存・訪れた GATEを、1 つのファイル（JSON）にします。写真そのものは入りません。")
             }
 
             Section {
@@ -853,7 +853,7 @@ struct MyDataView: View {
             } header: {
                 Text("アカウントの削除")
             } footer: {
-                Text("GATE・記憶・作品・写真・場所の記憶・手紙・思い出など、Grafity Gate のあなたのデータをすべて消します。元に戻せません。")
+                Text("GATE・グラフィティカード・AR の飾り・写真・GATE の位置の記録・手紙・アルバムなど、Grafity Gate のあなたのデータをすべて消します。元に戻せません。")
             }
 
             if let working {
@@ -901,7 +901,7 @@ struct MyDataView: View {
 
     private func deleteAccount() async {
         guard let api = session.api, let media = session.media, let me = session.userID else { return }
-        working = "写真と場所の記憶を消しています…"
+        working = "写真と GATE の位置の記録を消しています…"
         defer { working = nil }
         do {
             await media.removeEverything(owner: me)

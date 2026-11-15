@@ -3,20 +3,20 @@ import Combine
 import UIKit
 import Vision
 
-/// 手で作品に触れる。カメラの絵から人さし指の先を見つけ（Vision）、人の奥行き（ARKit）で指先までの距離を測って、
-/// 指先の 3D の位置が作品に入ったら「触れた」とする。
-/// - 奥行きが使えないとき（対応していない・端末が熱い・手が人として見分けられない）は、指先の先にある作品を
+/// 手で AR の飾りに触れる。カメラの絵から人さし指の先を見つけ（Vision）、人の奥行き（ARKit）で指先までの距離を測って、
+/// 指先の 3D の位置が AR の飾りに入ったら「触れた」とする。
+/// - 奥行きが使えないとき（対応していない・端末が熱い・手が人として見分けられない）は、指先の先にある AR の飾りを
 ///   少し明るくするだけ（触れたことにはしない）。画面を押せば、いつでも同じ反応が起きる。
-/// - 作品が近く（2.5m 以内）にあるときだけ、1 秒に 10 回ほど（4GB の端末は 8 回）調べる。熱いときは止める。
+/// - AR の飾りが近く（2.5m 以内）にあるときだけ、1 秒に 10 回ほど（4GB の端末は 8 回）調べる。熱いときは止める。
 /// - カメラの絵・手の形はサーバーに送らない。調べ終わったらすぐ離す。
 @MainActor
 final class HandTouch: ObservableObject {
     struct Cursor: Equatable {
         /// 画面の上の指先の位置（pt）
         var point: CGPoint
-        /// 作品に触れている
+        /// AR の飾りに触れている
         var touching: Bool
-        /// 作品の近くにある（触れる手前）
+        /// AR の飾りの近くにある（触れる手前）
         var near: Bool
         /// 指先までの距離が測れている
         var hasDepth: Bool
@@ -26,11 +26,11 @@ final class HandTouch: ObservableObject {
     /// 手で触れる仕組みが動いているか（画面の案内に使う）
     @Published private(set) var isActive = false
 
-    /// 触れた作品を知らせる
+    /// 触れた AR の飾りを知らせる
     var onTouch: ((UUID) -> Void)?
-    /// 指先が近い作品（明るくする）
+    /// 指先が近い AR の飾り（明るくする）
     var onHover: ((UUID?) -> Void)?
-    /// 触れられる作品の一覧（毎回たずねる）
+    /// 触れられる AR の飾りの一覧（毎回たずねる）
     var targets: (() -> [ArtworkScene.Target])?
 
     private weak var stage: ARStage?
@@ -94,7 +94,7 @@ final class HandTouch: ObservableObject {
     private func tick() {
         guard let stage, !busy else { return }
         let list = targets?() ?? []
-        // 熱いとき・近くに作品がないときは調べない
+        // 熱いとき・近くに AR の飾りがないときは調べない
         guard !Perf.isHot, !list.isEmpty else {
             if isActive {
                 isActive = false
@@ -170,7 +170,7 @@ final class HandTouch: ObservableObject {
             }
         } else {
             smoothed = nil
-            // 距離が測れない：指先の先（カメラから指へのまっすぐな線）にある作品だけを明るくする
+            // 距離が測れない：指先の先（カメラから指へのまっすぐな線）にある AR の飾りだけを明るくする
             for t in targets {
                 if let gap = Self.rayGap(origin: sample.rayOrigin, direction: sample.rayDirection, center: t.center,
                                          radius: t.radius), nearest == nil || gap < nearest!.gap {
@@ -192,7 +192,7 @@ final class HandTouch: ObservableObject {
                     touchingID = id
                     touches += 1
                     onTouch?(id)
-                    Trace.log(String(format: "手で作品に触れました（指先から作品のふちまで %.2fm・奥行きの値 %.2fm）",
+                    Trace.log(String(format: "手で AR の飾りに触れました（指先から AR の飾りのふちまで %.2fm・奥行きの値 %.2fm）",
                                      nearest?.gap ?? -1, sample.depth ?? -1))
                 }
             }

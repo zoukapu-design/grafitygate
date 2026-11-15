@@ -53,7 +53,7 @@ struct HomeView: View {
                             }
                             Button {
                                 report = ReportItem(id: card.id, target: .graffiti, userID: card.author,
-                                                    userName: card.author_name, label: "\(card.author_name) さんの記憶")
+                                                    userName: card.author_name, label: "\(card.author_name) さんのグラフィティカード")
                             } label: {
                                 Label("通報する", systemImage: "exclamationmark.bubble")
                             }
@@ -266,7 +266,7 @@ private struct FeedRow: View {
                         .background(Theme.accentLight, in: Capsule())
                     Spacer(minLength: 0)
                     if let onCompare {
-                        // ここに自分のカードもある：ふたりの記憶を並べる
+                        // ここに自分のカードもある：ふたりのグラフィティカードを並べる
                         Button(action: onCompare) {
                             Label("あなたのカードと並べる", systemImage: "rectangle.split.2x1")
                                 .font(.caption.weight(.semibold))

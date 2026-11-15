@@ -332,7 +332,7 @@ struct GraffitiEditSheet: View {
                             .clipShape(RoundedRectangle(cornerRadius: 12))
                             .listRowInsets(EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 8))
                     } footer: {
-                        Text("写真は変えられません（その日に撮った記憶のため）。")
+                        Text("写真は変えられません（その日に撮った写真のため）。")
                     }
                 }
                 Section {
@@ -351,7 +351,7 @@ struct GraffitiEditSheet: View {
                     Toggle("この GATE の中だけで見せる", isOn: $localOnly)
                         .tint(Theme.accent)
                 } footer: {
-                    Text(localOnly ? "友達の新着・図鑑には出ません。GATE に入った人だけが見られます。"
+                    Text(localOnly ? "友達の新着・カード図鑑には出ません。GATE に入った人だけが見られます。"
                                    : "GATE の中と、友達の新着（24 時間）に出ます。")
                 }
                 if let message {

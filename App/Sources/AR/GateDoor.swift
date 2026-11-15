@@ -21,7 +21,7 @@ final class GateDoor {
     let anchorEntity: AnchorEntity
     let shape = ArchShape()
     private(set) var isOpen = false
-    /// 扉と作品を載せる台。見る人が指で少し動かした分（自分の画面だけ）は、この台の位置・向きで持つ
+    /// 扉と AR の飾りを載せる台。見る人が指で少し動かした分（自分の画面だけ）は、この台の位置・向きで持つ
     let base = Entity()
     private(set) var nudgePosition: SIMD3<Float> = .zero
     private(set) var nudgeYaw: Float = 0
@@ -77,7 +77,7 @@ final class GateDoor {
         }
     }
 
-    /// 指で動かした分（印からの位置・向き）。扉と作品が一緒に動く
+    /// 指で動かした分（印からの位置・向き）。扉と AR の飾りが一緒に動く
     func setNudge(position: SIMD3<Float>, yaw: Float) {
         nudgePosition = position
         nudgeYaw = yaw
@@ -383,7 +383,7 @@ final class GateDoor {
 
     // MARK: 動き
 
-    /// 扉の大きさ（1 = 人が通る大きさ）。作品は base に付くので、扉の大きさを変えても作品はそのまま
+    /// 扉の大きさ（1 = 人が通る大きさ）。AR の飾りは base に付くので、扉の大きさを変えても AR の飾りはそのまま
     private(set) var size: Float = 1
 
     func setSize(_ value: Float) {

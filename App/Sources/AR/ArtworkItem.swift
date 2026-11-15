@@ -2,7 +2,7 @@ import AVFoundation
 import RealityKit
 import UIKit
 
-/// GATE に置かれた作品 1 つ。種類ごとの見た目と、触れたときの動き（光る・ゆれる・波紋・はじける・はねる・流す）。
+/// GATE に置かれた AR の飾り 1 つ。種類ごとの見た目と、触れたときの動き（光る・ゆれる・波紋・はじける・はねる・流す）。
 /// 位置・向き・大きさは扉が基準（`root` を扉の印の下に置く）。毎コマ `update` で動かす。
 @MainActor
 final class ArtworkItem {
@@ -109,7 +109,7 @@ final class ArtworkItem {
         isPreview = preview
         root.name = "artwork"
         root.addChild(body)
-        MainWatch.run("作品を組み立てる（\(artwork.artKind.label)）") {
+        MainWatch.run("AR の飾りを組み立てる（\(artwork.artKind.label)）") {
             switch artwork.artKind {
             case .photo, .video: buildPhoto(image)
             case .text: buildText()
@@ -155,7 +155,7 @@ final class ArtworkItem {
         applyPose()
     }
 
-    /// 押した所がこの作品か
+    /// 押した所がこの AR の飾りか
     func contains(_ entity: Entity?) -> Bool {
         var e = entity
         while let current = e {
@@ -165,7 +165,7 @@ final class ArtworkItem {
         return false
     }
 
-    /// 作品の中心（世界の座標）と、触れる判定の半径（m）
+    /// AR の飾りの中心（世界の座標）と、触れる判定の半径（m）
     var worldCenter: SIMD3<Float> { root.convert(position: centerOffset, to: nil) }
     var worldRadius: Float { radius * artwork.scale }
 
@@ -434,7 +434,7 @@ final class ArtworkItem {
             perform(action)
             did = true
         }
-        // ルールが無い作品も、押す・触れると少し光る
+        // ルールが無い AR の飾りも、押す・触れると少し光る
         if !matched, trigger == .tap || trigger == .touch {
             if let last = lastFired[-1], now - last < 0.4 { return false }
             lastFired[-1] = now
@@ -557,7 +557,7 @@ final class ArtworkItem {
         isPlaying = true
         pulseClock = 0
         glow = max(glow, 0.8)
-        Trace.log("作品を流します（\(artwork.artKind.label)・\(String(format: "%.1f", artwork.duration ?? 0)) 秒）")
+        Trace.log("AR の飾りを流します（\(artwork.artKind.label)・\(String(format: "%.1f", artwork.duration ?? 0)) 秒）")
     }
 
     /// 止める（notify が true なら、流し終えたことを知らせる）
@@ -683,7 +683,7 @@ final class ArtworkItem {
             Fade.set(root, 1)
             draftFading = false
         }
-        // カメラの位置（作品の中の座標）。光と波紋をカメラに向ける
+        // カメラの位置（AR の飾りの中の座標）。光と波紋をカメラに向ける
         let camera = root.convert(position: cameraWorld, from: nil)
         if kind == .person {
             // 人物は、いつも見ている人の方を向く（縦の軸だけ回す）

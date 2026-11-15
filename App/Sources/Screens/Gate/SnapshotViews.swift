@@ -45,7 +45,7 @@ struct SnapshotSection: View {
                     Label("同じ角度で「今」を撮る", systemImage: "camera.on.rectangle")
                 }
                 .buttonStyle(SecondaryButtonStyle())
-                Text("前の写真がうすく重なるので、形を合わせて撮ると、同じ場所の移り変わりが分かります。1 回の入場で 1 枚。")
+                Text("前の写真がうすく重なるので、形を合わせて撮ると、同じ場所の移り変わりが分かります。扉を開けるたびに 1 枚。")
                     .font(.caption).foregroundStyle(Theme.textSecondary)
             } else if snapshots.isEmpty {
                 Text("今と昔は、現地で扉を開けると見られます。同じ場所の写真が時の順に並び、2 枚を重ねて比べられます。")
@@ -376,7 +376,7 @@ struct SnapshotCaptureView: View {
     private func save() async {
         guard let api = session.api, let media = session.media, let me = session.userID, let shot else { return }
         guard let visit = context.visit else {
-            message = "入場の時間（20 分）が切れました。現地でもう一度入ってください。"
+            message = "扉が閉じました（GATE から離れたため）。現地でもう一度扉を開けてください。"
             return
         }
         saving = true

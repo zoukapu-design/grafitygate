@@ -2,7 +2,7 @@ import AVFoundation
 import AVKit
 import SwiftUI
 
-/// 思い出の動画を流す（受け取ってから。見ているページのときだけ流し、めくったら止める）
+/// アルバムの動画を流す（受け取ってから。見ているページのときだけ流し、めくったら止める）
 struct MemoryVideoView: View {
     let path: String
     let active: Bool
@@ -30,7 +30,7 @@ struct MemoryVideoView: View {
         .task(id: path) {
             guard player == nil, let url = await session.media?.localFile(path: path) else {
                 failed = player == nil
-                if failed { Trace.log("思い出の動画を受け取れませんでした") }
+                if failed { Trace.log("アルバムの動画を受け取れませんでした") }
                 return
             }
             let p = AVPlayer(url: url)
@@ -59,7 +59,7 @@ enum MemoryPlayback {
     }
 }
 
-/// 思い出の声を流す（大きな丸いボタン・進み具合）
+/// アルバムの声を流す（大きな丸いボタン・進み具合）
 @MainActor
 final class MemoryVoicePlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
     @Published private(set) var playing = false
@@ -73,7 +73,7 @@ final class MemoryVoicePlayer: NSObject, ObservableObject, AVAudioPlayerDelegate
     func load(_ url: URL?) {
         guard let url, let p = try? AVAudioPlayer(contentsOf: url) else {
             failed = true
-            Trace.log("思い出の声を受け取れませんでした")
+            Trace.log("アルバムの声を受け取れませんでした")
             return
         }
         p.delegate = self

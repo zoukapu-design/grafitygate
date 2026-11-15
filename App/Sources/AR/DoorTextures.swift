@@ -137,7 +137,7 @@ enum DoorTextures {
         return make(key: key, ctx: ctx)
     }
 
-    /// 作品のまわりのやわらかい光（色ごとに 1 枚）
+    /// AR の飾りのまわりのやわらかい光（色ごとに 1 枚）
     static func halo(_ color: ArtworkColor) -> TextureResource? {
         radial(key: "halo-\(color.rawValue)", rgb: color.rgb, alpha: 0.85)
     }

@@ -407,7 +407,7 @@ struct LetterComposer: View {
 
     private func send() async {
         guard let api = session.api, let visit = context.visit else {
-            message = "入場の時間（20 分）が切れました。現地でもう一度入ってください。"
+            message = "扉が閉じました（GATE から離れたため）。現地でもう一度扉を開けてください。"
             return
         }
         sending = true

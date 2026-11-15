@@ -2,7 +2,7 @@ import RealityKit
 import SwiftUI
 import UIKit
 
-/// 扉が開いたあとの「AR の作品」：見る・触れる・置く・置き直す・隠す・消す。
+/// 扉が開いたあとの「AR の飾り」：見る・触れる・置く・置き直す・隠す・消す。
 extension ARExperienceModel {
     enum ArtStep: Equatable {
         /// 種類を選ぶ
@@ -12,9 +12,9 @@ extension ARExperienceModel {
         /// 置く所（見本がカメラの前についてくる）
         case placing
         case saving
-        /// 自分の作品を押した
+        /// 自分の AR の飾りを押した
         case selected(UUID)
-        /// ほかの人の作品を押した（だれの作品か・通報）
+        /// ほかの人の AR の飾りを押した（だれの AR の飾りか・通報）
         case viewing(UUID)
     }
 
@@ -38,7 +38,7 @@ extension ARExperienceModel {
         var scale: Float = 1
     }
 
-    /// 1 人が 1 つの GATE に置ける作品の数（サーバーの artworks_per_user_gate と同じ）
+    /// 1 人が 1 つの GATE に置ける AR の飾りの数（サーバーの artworks_per_user_gate と同じ）
     static let artworksPerPerson = 3
     /// 光る文字の長さ（読みやすさのため。サーバーは 120 文字まで）
     static let artTextLimit = 40
@@ -52,7 +52,7 @@ extension ARExperienceModel {
     var visitRemainingText: String? {
         guard let expires = visitExpires else { return nil }
         let minutes = Int(ceil(expires.timeIntervalSinceNow / 60))
-        return minutes > 0 ? "入場の残り 約 \(minutes) 分" : "入場の時間が切れました"
+        return minutes > 0 ? "扉が開いています（その場にいるあいだ）" : "扉が閉じました"
     }
 
     // MARK: 出す
@@ -81,7 +81,7 @@ extension ARExperienceModel {
             guard enteredGate == gate, let scene = artScene else { return }
             for artwork in list { scene.add(artwork, image: nil, animated: false) }
             refreshArtCounts()
-            Trace.log("作品を \(list.count) 個受け取りました（写真パネル \(list.filter { $0.artKind == .photo }.count) 個・"
+            Trace.log("AR の飾りを \(list.count) 個受け取りました（写真パネル \(list.filter { $0.artKind == .photo }.count) 個・"
                       + "映像 \(list.filter { $0.artKind == .video }.count) 個・声 \(list.filter { $0.artKind == .voice }.count) 個）")
             if phase == .doorOpen { startHandIfNeeded() }
             let me = session?.userID
@@ -89,16 +89,16 @@ extension ARExperienceModel {
             let toCheck = mine.filter { $0.needs_replace == true }.count
             let drafts = mine.filter(\.isDraft).count
             if toCheck > 0 {
-                showToast("扉の場所の記憶が撮り直されました。あなたの作品 \(toCheck) つの位置を確かめてください。")
+                showToast("GATE の位置の記録が撮り直されました。あなたの AR の飾り \(toCheck) つの位置を確かめてください。")
             } else if drafts > 0 {
-                showToast("あなたの下書きの作品が \(drafts) つあります。押すと公開できます。")
+                showToast("あなたの下書きの AR の飾りが \(drafts) つあります。押すと公開できます。")
             }
             let owners = Array(Set(list.map(\.owner)))
             if let names = try? await api.names(of: owners) { artNames.merge(names) { _, new in new } }
             await loadArtPhotos(list)
             await prefetchArtMedia(list)
         } catch {
-            Trace.log("作品を受け取れませんでした：\(ErrorText.of(error))")
+            Trace.log("AR の飾りを受け取れませんでした：\(ErrorText.of(error))")
         }
     }
 
@@ -131,7 +131,7 @@ extension ARExperienceModel {
             }
             if artwork.artKind == .person, let file { await showPersonPoster(artwork.id, file: file) }
         }
-        if count > 0 { Trace.log("作品の映像・声を \(count) 個、先に受け取りました") }
+        if count > 0 { Trace.log("AR の飾りの映像・声を \(count) 個、先に受け取りました") }
     }
 
     /// 人物の映像の最初の 1 コマ（透けるところのある絵）を、立ち姿として出す
@@ -160,7 +160,7 @@ extension ARExperienceModel {
             guard artScene === scene, scene.artwork(id) != nil else { return }
             guard let file else {
                 showToast("受け取れませんでした。電波の良い所で、もう一度触れてください。")
-                Trace.log("作品の映像・声を受け取れませんでした")
+                Trace.log("AR の飾りの映像・声を受け取れませんでした")
                 return
             }
             scene.play(id, file: file)
@@ -214,14 +214,14 @@ extension ARExperienceModel {
         return artNames[owner] ?? "だれか"
     }
 
-    /// ブロックした人の作品を、すぐ見えなくする
+    /// ブロックした人の AR の飾りを、すぐ見えなくする
     func removeArtworks(of user: UUID?) {
         guard let user, let scene = artScene else { return }
         let ids = scene.items.filter { $0.value.artwork.owner == user }.map(\.key)
         for id in ids { scene.remove(id) }
         refreshArtCounts()
         art = nil
-        Trace.log("ブロックした人の作品を \(ids.count) 個外しました")
+        Trace.log("ブロックした人の AR の飾りを \(ids.count) 個外しました")
     }
 
     func reportArtwork(_ id: UUID) {
@@ -245,11 +245,11 @@ extension ARExperienceModel {
     func startArt() {
         guard canPlaceArt else {
             if !placedPrecisely {
-                notice = "扉がおおよその位置に出ているため、作品は置けません（置くと、ほかの人にはずれた所に見えます）。作った人が扉を置いた辺りを見回して、扉を出し直してください。"
+                notice = "扉が仮の位置に出ているため、AR の飾りは置けません（置くと、ほかの人にはずれた所に見えます）。作った人が扉を置いた辺りを見回して、扉を出し直してください。"
             } else if myArtworkCount >= Self.artworksPerPerson {
-                notice = "1 つの GATE に置ける作品は、1 人 3 つまでです。前の作品を押して消すと置けます。"
+                notice = "1 つの GATE に置ける AR の飾りは、1 人 3 つまでです。前の AR の飾りを押して消すと置けます。"
             } else {
-                notice = "入場の時間が切れました。現地でもう一度入ると置けます。"
+                notice = "扉が閉じています。現地でもう一度扉を開けると置けます。"
             }
             return
         }
@@ -544,15 +544,15 @@ extension ARExperienceModel {
             art = asDraft ? .selected(id) : nil
             Haptics.success()
             if asDraft { showToast("下書きで置きました。あなたにだけ見えています。") }
-            Trace.log(String(format: "作品を置きました（%@・%@・扉から 横 %.2f 高さ %.2f 奥 %.2f m・大きさ %.1f）",
+            Trace.log(String(format: "AR の飾りを置きました（%@・%@・扉から 横 %.2f 高さ %.2f 奥 %.2f m・大きさ %.1f）",
                              placed.artKind.label, asDraft ? "下書き" : "公開", pose.position.x, pose.position.y,
                              pose.position.z, pose.scale))
         } catch {
             for path in uploaded { await media.removePhoto(path: path) }
             let message = ErrorText.of(error)
-            Trace.log("作品を置けませんでした：\(message)")
+            Trace.log("AR の飾りを置けませんでした：\(message)")
             notice = message
-            if message.contains("入場の時間") {
+            if message.contains("扉が閉じ") {
                 scene.endPreview()
                 art = nil
                 visitExpires = Date()
@@ -575,11 +575,11 @@ extension ARExperienceModel {
             movingArtwork = nil
             art = nil
             Haptics.success()
-            Trace.log(String(format: "作品を置き直しました（版 %d・扉から 横 %.2f 高さ %.2f 奥 %.2f m）",
+            Trace.log(String(format: "AR の飾りを置き直しました（版 %d・扉から 横 %.2f 高さ %.2f 奥 %.2f m）",
                              revision, pose.position.x, pose.position.y, pose.position.z))
         } catch {
             let message = ErrorText.of(error)
-            Trace.log("作品を置き直せませんでした：\(message)")
+            Trace.log("AR の飾りを置き直せませんでした：\(message)")
             notice = message
             scene.endPreview()
             movingArtwork = nil
@@ -593,16 +593,16 @@ extension ARExperienceModel {
         }
     }
 
-    // MARK: 自分の作品
+    // MARK: 自分の AR の飾り
 
     func startMovingArtwork(_ id: UUID) {
         guard let scene = artScene, let artwork = scene.artwork(id) else { return }
         guard placedPrecisely else {
-            notice = "扉がおおよその位置に出ているため、置き直せません。扉が作った人と同じ位置に出たときに置き直せます。"
+            notice = "扉が仮の位置に出ているため、置き直せません。扉が作った人と同じ位置に出たときに置き直せます。"
             return
         }
         guard visitID != nil, (visitExpires ?? .distantFuture) > Date() else {
-            notice = "入場の時間が切れました。現地でもう一度入ると置き直せます。"
+            notice = "扉が閉じています。現地でもう一度扉を開けると置き直せます。"
             return
         }
         notice = nil
@@ -626,7 +626,7 @@ extension ARExperienceModel {
                 art = nil
                 Haptics.success()
                 showToast("公開しました。友達がここで扉を開けると見えます。")
-                Trace.log("下書きの作品を公開しました")
+                Trace.log("下書きの AR の飾りを公開しました")
             } catch {
                 notice = ErrorText.of(error)
             }
@@ -641,7 +641,7 @@ extension ARExperienceModel {
                 try await api.keepArtworkPlace(id)
                 artScene?.update(id, needsReplace: false)
                 art = nil
-                Trace.log("作品の位置をこのままにしました")
+                Trace.log("AR の飾りの位置をこのままにしました")
             } catch {
                 notice = ErrorText.of(error)
             }
@@ -656,7 +656,7 @@ extension ARExperienceModel {
                 artScene?.remove(id)
                 refreshArtCounts()
                 art = nil
-                Trace.log("自分の作品を隠しました")
+                Trace.log("自分の AR の飾りを隠しました")
             } catch {
                 notice = ErrorText.of(error)
             }
@@ -675,7 +675,7 @@ extension ARExperienceModel {
                 refreshArtCounts()
                 art = nil
                 for path in paths { await session?.media?.removePhoto(path: path) }
-                Trace.log("自分の作品を消しました")
+                Trace.log("自分の AR の飾りを消しました")
             } catch {
                 notice = ErrorText.of(error)
             }

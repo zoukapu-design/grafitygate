@@ -1,6 +1,6 @@
 import Foundation
 
-/// 調べものの記録。AR で何が起きたか（扉を置いた・場所の記憶が見つかった・座標が飛んだ・画面が止まった など）を
+/// 調べものの記録。AR で何が起きたか（扉を置いた・GATE の位置の記録が見つかった・座標が飛んだ・画面が止まった など）を
 /// 1 行ずつ端末の中に残す。「わたし」→「調べものの記録を送る」で共有できる。サーバーには送らない。
 enum Trace {
     private static let queue = DispatchQueue(label: "gg.trace", qos: .utility)

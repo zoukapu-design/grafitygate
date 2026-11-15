@@ -11,8 +11,8 @@ enum GateTab: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .graffiti: return "記憶"
-        case .memories: return "思い出"
+        case .graffiti: return "カード"
+        case .memories: return "アルバム"
         case .board: return "掲示板"
         case .letters: return "手紙"
         case .thenNow: return "今と昔"
@@ -38,7 +38,7 @@ struct GateContext: Equatable {
     var isInside: Bool { visit != nil && (visitExpires ?? .distantPast) > Date() }
 }
 
-/// GATE の画面。上に表紙、まん中に「記憶／思い出／掲示板／手紙」の切り替え。
+/// GATE の画面。上に表紙、まん中に「カード／アルバム／掲示板／手紙」の切り替え。
 /// 中身の多くは、現地で扉を開けているあいだ（20 分）だけ読める・書ける。
 struct GateDetailView: View {
     let gateID: UUID
@@ -56,6 +56,7 @@ struct GateDetailView: View {
     /// 一緒に管理する人（作った人のほか）
     @State private var managers: [GateManager] = []
     @State private var editingGate = false
+    @ObservedObject private var keeper = VisitKeeper.shared
     @State private var showManagers = false
     @State private var confirmClose = false
     @State private var report: ReportItem?
@@ -150,7 +151,7 @@ struct GateDetailView: View {
         .confirmationDialog("この GATE を閉じますか？", isPresented: $confirmClose, titleVisibility: .visible) {
             Button("閉じる", role: .destructive) { Task { await setOpen(false) } }
         } message: {
-            Text("ほかの人は見つけられず、入れなくなります。中の記憶は消えず、あとで開け直せます。")
+            Text("ほかの人は見つけられず、入れなくなります。中のグラフィティカードや掲示板は消えず、あとで開け直せます。")
         }
         .sheet(isPresented: $showVisits) {
             MyVisitsSheet(gateID: gateID, title: summary?.title ?? "")
@@ -159,10 +160,12 @@ struct GateDetailView: View {
     }
 
     private func makeContext(_ s: GateSummary, now: Date) -> GateContext {
-        let active = (s.visitExpiresAt ?? .distantPast) > now
+        // その場にいるあいだ延びた時刻（VisitKeeper）があれば、そちらを使う
+        let expires = keeper.expires(visit: s.my_visit) ?? s.visitExpiresAt
+        let active = (expires ?? .distantPast) > now
         return GateContext(gateID: s.id, title: s.title, ownerID: s.owner, ownerName: s.owner_name,
                            coverPath: s.cover_path, createdAt: s.created_at,
-                           visit: active ? s.my_visit : nil, visitExpires: active ? s.visitExpiresAt : nil,
+                           visit: active ? s.my_visit : nil, visitExpires: active ? expires : nil,
                            canManage: canManage(s))
     }
 
@@ -181,7 +184,7 @@ struct GateDetailView: View {
                 .foregroundStyle(Theme.warm)
             VStack(alignment: .leading, spacing: 6) {
                 Text("この GATE は閉じています").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
-                Text("いまは、あなたにだけ見えています。ほかの人は見つけられず、入れません。中の記憶は消えていません。")
+                Text("いまは、あなたにだけ見えています。ほかの人は見つけられず、入れません。中のグラフィティカードや掲示板は消えていません。")
                     .font(.caption).foregroundStyle(Theme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Button {
@@ -349,7 +352,7 @@ struct GateDetailView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         chip(GateKind(raw: s.kind).label, GateKind(raw: s.kind).symbol, warm: GateKind(raw: s.kind) == .view)
-                        chip("\(s.graffiti_count) 枚の記憶", "square.stack")
+                        chip("グラフィティカード \(s.graffiti_count) 枚", "square.stack")
                         if let stats {
                             chip("\(stats.visitor_count) 人が訪れた", "figure.walk")
                             if stats.my_visits > 0 {
@@ -394,16 +397,16 @@ struct GateDetailView: View {
             .background(warm ? Theme.warm.opacity(0.12) : Theme.surfaceElevated, in: Capsule())
     }
 
-    /// 作った本人だけ：場所の記憶が友達の iPhone で見つかっているか
+    /// 作った本人だけ：GATE の位置の記録が友達の iPhone で見つかっているか
     private func placeMemoryNote(_ h: PlaceMapHealth) -> some View {
         let text: String
         if !h.has_map {
-            text = "場所の記憶がありません。友達の iPhone では扉がおおよその位置に出ます。現地で扉を開け、「扉の位置を合わせる」→「この位置で場所の記憶を撮り直す」で保存できます。"
+            text = "GATE の位置の記録がありません。友達の iPhone では扉が仮の位置に出ます。現地で扉を開け、「扉の位置を合わせる」→「この位置で GATE の位置の記録を撮り直す」で保存できます。"
         } else if h.recent_attempts == 0 {
-            text = "場所の記憶：まだ友達が探していません。"
+            text = "GATE の位置の記録：まだ友達が探していません。"
         } else {
-            text = "場所の記憶：最近 \(h.recent_attempts) 回のうち \(h.recent_found) 回、友達の iPhone で見つかりました。"
-                + (h.looksStale ? "見つかりにくくなっています。現地で扉を開けて「場所の記憶を撮り直す」を押してください。" : "")
+            text = "GATE の位置の記録：最近 \(h.recent_attempts) 回のうち \(h.recent_found) 回、友達の iPhone で見つかりました。"
+                + (h.looksStale ? "見つかりにくくなっています。現地で扉を開けて「GATE の位置の記録を撮り直す」を押してください。" : "")
         }
         return Label(text, systemImage: h.looksStale ? "exclamationmark.triangle" : "checkmark.seal")
             .font(.caption)
@@ -437,7 +440,10 @@ struct GateDetailView: View {
     @ViewBuilder private func visitBanner(_ context: GateContext, summary: GateSummary, now: Date) -> some View {
         if let expires = context.visitExpires, context.isInside {
             let minutes = max(1, Int(expires.timeIntervalSince(now) / 60 + 0.5))
-            Label("扉が開いています・あと約 \(minutes) 分", systemImage: "door.left.hand.open")
+            let near = keeper.entries[context.visit ?? UUID()]?.near
+            Label(near == false ? "GATE から離れたので、まもなく扉が閉じます（あと約 \(minutes) 分）"
+                                : "扉が開いています（その場にいるあいだ開いたまま）",
+                  systemImage: near == false ? "door.left.hand.closed" : "door.left.hand.open")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(Theme.accent)
                 .padding(12)
@@ -474,7 +480,7 @@ struct GateDetailView: View {
                     }
                     .buttonStyle(PrimaryButtonStyle())
                     .disabled(session.api == nil)
-                    Text("作った人が写した場所・物にカメラを向けます。位置（120m 以内）と景色の両方が合うと扉が現れ、20 分のあいだ中の記憶を読んだり残したりできます。")
+                    Text("作った人が写した場所・物にカメラを向けます。位置（120m 以内）と景色の両方が合うと扉が現れ、その場にいるあいだ、中のグラフィティカードや掲示板を読んだり残したりできます。")
                         .font(.caption)
                         .foregroundStyle(Theme.textSecondary)
                 }
@@ -534,6 +540,9 @@ struct GateDetailView: View {
         guard let api = session.api else { return }
         do {
             summary = try await api.summary(gateID)
+            if let s = summary, let visit = s.my_visit {
+                VisitKeeper.shared.track(visit: visit, gate: s.id, expires: s.visitExpiresAt, session: session, location: location)
+            }
             loadError = nil
             if let saved = try? await api.collection("saved") {
                 self.saved = saved.contains { $0.gate_id == gateID }
@@ -567,7 +576,7 @@ struct GateDetailView: View {
 
 // MARK: - 記憶（グラフィティ）
 
-/// みんなの記憶：入場中は 1 枚残せて、みんなのカードが読める。入る前は自分のカードだけ。
+/// みんなのグラフィティカード：入場中は 1 枚残せて、みんなのカードが読める。入る前は自分のカードだけ。
 struct GraffitiSection: View {
     let context: GateContext
     let refreshToken: Int
@@ -645,7 +654,7 @@ struct GraffitiSection: View {
         do {
             try await api.setGraffitiAtlas(item.id, on: next)
             if let i = graffiti.firstIndex(where: { $0.id == item.id }) { graffiti[i].in_atlas = next }
-            postMessage = (next ? "友達の図鑑に載せました（写真・場所・日付。ひとことは現地だけ）。" : "図鑑から外しました。", false)
+            postMessage = (next ? "友達のカード図鑑に載せました（写真・場所・日付。ひとことは現地だけ）。" : "カード図鑑から外しました。", false)
         } catch {
             postMessage = (ErrorText.isMissingFunction(error) ? "サーバーの準備がまだです（SQL を貼り直すと使えます）。" : ErrorText.of(error), true)
         }
@@ -766,14 +775,14 @@ struct GraffitiSection: View {
             }
             let shown = context.isInside ? searched(arranged(graffiti)) : graffiti.filter { $0.author == session.userID }
             if !context.isInside && !shown.isEmpty {
-                Text("ここに残した自分の記憶").font(.headline).foregroundStyle(Theme.text)
+                Text("ここに残した自分のグラフィティカード").font(.headline).foregroundStyle(Theme.text)
             }
             if context.isInside && shown.isEmpty {
-                Text(graffiti.isEmpty ? "まだ記憶はありません。最初の 1 枚を残せます。" : "この並べ方に合う記憶はありません。")
+                Text(graffiti.isEmpty ? "まだグラフィティカードはありません。最初の 1 枚を残せます。" : "この並べ方に合うグラフィティカードはありません。")
                     .font(.subheadline).foregroundStyle(Theme.textSecondary)
             }
             if !context.isInside && shown.isEmpty {
-                Text("みんなの記憶は、現地で扉を開けると読めます。")
+                Text("みんなのグラフィティカードは、現地で扉を開けると読めます。")
                     .font(.subheadline).foregroundStyle(Theme.textSecondary)
             }
             if let error { NoticeText(text: error) }
@@ -786,7 +795,7 @@ struct GraffitiSection: View {
                              onDelete: { Task { await delete(item) } },
                              onReport: {
                                  onReport(ReportItem(id: item.id, target: .graffiti, userID: item.author,
-                                                     userName: names[item.author], label: "記憶のカード"))
+                                                     userName: names[item.author], label: "グラフィティカード"))
                              },
                              onShare: isMine ? { sharing = snapshot(item) } : nil,
                              onCompare: (!isMine && !myCards.isEmpty) ? { compare(start: item.id) } : nil,
@@ -873,7 +882,7 @@ struct GraffitiSection: View {
                             ForEach(Visibility.allCases) { v in Text(v.label).tag(v) }
                         }
                         Toggle("現地だけで見せる（友達の新着に出さない）", isOn: $draftLocalOnly)
-                        Toggle("友達の図鑑に写真を載せる", isOn: $draftInAtlas)
+                        Toggle("友達のカード図鑑に写真を載せる", isOn: $draftInAtlas)
                             .disabled(draftLocalOnly)
                     } label: {
                         Label(draftVisibility.label + (draftLocalOnly ? "・現地だけ" : ""), systemImage: "eye")
@@ -892,7 +901,7 @@ struct GraffitiSection: View {
                 }
                 .buttonStyle(PrimaryButtonStyle())
                 .disabled(posting || (draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && photo == nil))
-                Text("1 回の入場で 1 枚。同じ GATE には 12 時間あけると、また残せます。写真の位置情報などは消して送ります。")
+                Text("扉を開けるたびに 1 枚。同じ GATE には 12 時間あけると、また残せます。写真の位置情報などは消して送ります。")
                     .font(.caption).foregroundStyle(Theme.textSecondary)
                 if let postMessage {
                     NoticeText(text: postMessage.text, isError: postMessage.isError)
@@ -922,7 +931,7 @@ struct GraffitiSection: View {
         }
     }
 
-    /// お気に入りにする・外す（先に見た目を変え、だめなら戻す）
+    /// 保存する・外す（先に見た目を変え、だめなら戻す）
     private func toggleSave(_ item: Graffiti) async {
         guard let api = session.api, extras != nil else { return }
         let was = extras?[item.id]?.saved ?? false
@@ -930,7 +939,7 @@ struct GraffitiSection: View {
         Haptics.tap()
         do {
             try await api.saveCard(item.id, on: !was)
-            Trace.log("カード：お気に入りを\(was ? "外した" : "付けた")")
+            Trace.log("カード：保存を\(was ? "外した" : "付けた")")
         } catch {
             extras?[item.id]?.saved = was
             self.error = ErrorText.of(error)
@@ -957,7 +966,7 @@ struct GraffitiSection: View {
             }
             let newID = try await api.postGraffiti(visit: visit, body: draft.trimmingCharacters(in: .whitespacesAndNewlines),
                                                    photoPath: photoPath, visibility: draftVisibility, localOnly: draftLocalOnly)
-            // 写真つきで「現地だけ」でなければ、選んだとおり友達の図鑑に載せる（前のサーバーでは何もしない）
+            // 写真つきで「現地だけ」でなければ、選んだとおり友達のカード図鑑に載せる（前のサーバーでは何もしない）
             if photoPath != nil, !draftLocalOnly, draftInAtlas, draftVisibility != .private {
                 try? await api.setGraffitiAtlas(newID, on: true)
             }
@@ -1017,7 +1026,7 @@ struct GraffitiCard: View {
     let onCardLink: (() -> Void)?
     /// 「来たよ」の札（送った・届いた）
     let linkNote: String?
-    /// 友達の図鑑に載せているか（自分の写真つきカードだけ。nil なら出さない）
+    /// 友達のカード図鑑に載せているか（自分の写真つきカードだけ。nil なら出さない）
     let inAtlas: Bool?
     let onToggleAtlas: () -> Void
     /// 返信の数と、返信を開く（nil なら出さない＝サーバーが 0018 の前）
@@ -1080,7 +1089,7 @@ struct GraffitiCard: View {
             PhotoViewer(path: item.path, caption: item.caption)
                 .environmentObject(session)
         }
-        .confirmationDialog("この記憶を消しますか？", isPresented: $confirmDelete, titleVisibility: .visible) {
+        .confirmationDialog("このグラフィティカードを消しますか？", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("消す", role: .destructive, action: onDelete)
         } message: {
             Text("友達の新着や GATE からも見えなくなります。")
@@ -1206,7 +1215,7 @@ struct GraffitiCard: View {
                         .frame(width: 28, height: 24)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(saved ? "お気に入りから外す" : "お気に入りにする")
+                .accessibilityLabel(saved ? "保存をやめる" : "保存する")
             }
             Menu {
                 if isMine {
@@ -1218,7 +1227,7 @@ struct GraffitiCard: View {
                     }
                     if let inAtlas {
                         Button(action: onToggleAtlas) {
-                            Label(inAtlas ? "友達の図鑑から外す" : "友達の図鑑に載せる",
+                            Label(inAtlas ? "友達のカード図鑑から外す" : "友達のカード図鑑に載せる",
                                   systemImage: inAtlas ? "books.vertical" : "books.vertical.fill")
                         }
                     }
@@ -1276,12 +1285,12 @@ struct GraffitiCard: View {
             backRow(item.local_only ? "mappin.and.ellipse" : "sparkles", "どこで見られるか",
                     item.local_only ? "この GATE の中だけ" : "GATE の中と、友達の新着（24 時間）")
             if let inAtlas {
-                backRow("books.vertical", "友達の図鑑", inAtlas ? "載せています（写真・場所・日付だけ）" : "載せていません")
+                backRow("books.vertical", "友達のカード図鑑", inAtlas ? "載せています（写真・場所・日付だけ）" : "載せていません")
             }
             HStack(spacing: 14) {
                 Label("いいね \(likeCount)", systemImage: "heart")
                 if onComments != nil { Label("返信 \(commentCount)", systemImage: "bubble.left") }
-                if saved == true { Label("お気に入り", systemImage: "bookmark.fill").foregroundStyle(Theme.warm) }
+                if saved == true { Label("保存しています", systemImage: "bookmark.fill").foregroundStyle(Theme.warm) }
             }
             .font(.caption)
             .foregroundStyle(Theme.textSecondary)

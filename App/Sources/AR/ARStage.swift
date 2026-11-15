@@ -5,7 +5,7 @@ import RealityKit
 import UIKit
 import Vision
 
-/// AR の舞台。カメラと AR の状態を見張り、床を探し、場所の記憶（ARWorldMap）を保存・探索する。
+/// AR の舞台。カメラと AR の状態を見張り、床を探し、GATE の位置の記録（ARWorldMap）を保存・探索する。
 /// - iPhone 12（メモリ 4GB）では、映像を 30 コマ/秒にし、周りの映り込みを作らない
 /// - 人の奥行き（人が扉の手前を通ると人が前に見える・手の距離）は、端末が熱くないときだけ使う
 /// - ARFrame は長く持たない（持つと AR が止まる）。必要なときに currentFrame から取り出してすぐ離す
@@ -40,7 +40,7 @@ final class ARStage: NSObject, ObservableObject {
 
         var errorDescription: String? {
             switch self {
-            case .noWorldMap: return "場所の記憶を作れませんでした。扉のまわりを、もう少し見回してください。"
+            case .noWorldMap: return "GATE の位置の記録を作れませんでした。扉のまわりを、もう少し見回してください。"
             case .noFrame: return "カメラの準備ができていません。少し待ってからお試しください。"
             }
         }
@@ -79,7 +79,7 @@ final class ARStage: NSObject, ObservableObject {
               current.providesAudioData != on,
               let config = current.copy() as? ARWorldTrackingConfiguration else { return }
         config.providesAudioData = on
-        // もう場所は分かっている。場所の記憶を付けたまま動かし直すと、探し直して扉がずれることがある
+        // もう場所は分かっている。GATE の位置の記録を付けたまま動かし直すと、探し直して扉がずれることがある
         config.initialWorldMap = nil
         arView.session.run(config)
         Trace.log("AR：マイクの声を\(on ? "受け取り始めました" : "受け取るのをやめました")")
@@ -111,7 +111,7 @@ final class ARStage: NSObject, ObservableObject {
         arView.session.run(config, options: options)
         isRunning = true
         lastPosition = nil
-        Trace.log("AR を始める（場所の記憶：\(initialMap != nil ? "あり" : "なし")・人の奥行き：\(usesPeopleDepth ? "使う" : "使わない")・メモリの少ない端末：\(Perf.isLowMemoryDevice)・端末の温度：\(Perf.thermalText)）")
+        Trace.log("AR を始める（GATE の位置の記録：\(initialMap != nil ? "あり" : "なし")・人の奥行き：\(usesPeopleDepth ? "使う" : "使わない")・メモリの少ない端末：\(Perf.isLowMemoryDevice)・端末の温度：\(Perf.thermalText)）")
     }
 
     func pause() {
@@ -233,7 +233,7 @@ final class ARStage: NSObject, ObservableObject {
         case .limited(.initializing): return "準備中"
         case .limited(.excessiveMotion): return "動きが速い"
         case .limited(.insufficientFeatures): return "点が少ない"
-        case .limited(.relocalizing): return "場所の記憶を探している"
+        case .limited(.relocalizing): return "GATE の位置の記録を探している"
         case .limited: return "かぎられている"
         }
     }
@@ -255,7 +255,7 @@ final class ARStage: NSObject, ObservableObject {
         return data.flatMap(UIImage.init(data:))
     }
 
-    // MARK: 場所の記憶
+    // MARK: GATE の位置の記録
 
     func captureWorldMap() async throws -> ARWorldMap {
         try await withCheckedThrowingContinuation { continuation in
@@ -269,7 +269,7 @@ final class ARStage: NSObject, ObservableObject {
         }
     }
 
-    /// 場所の記憶で、作った人と同じ座標に合わせる。見つかれば、作った人が置いた印（ARAnchor）を返す。
+    /// GATE の位置の記録で、作った人と同じ座標に合わせる。見つかれば、作った人が置いた印（ARAnchor）を返す。
     /// 見つからない・やめたときは nil を返し、ふつうの AR で始め直す。
     func relocalize(with map: ARWorldMap, anchorName: String, timeout: TimeInterval,
                     shouldStop: () -> Bool) async -> ARAnchor? {
@@ -285,7 +285,7 @@ final class ARStage: NSObject, ObservableObject {
             case .normal:
                 if let anchor = frame.anchors.first(where: { $0.name == anchorName }) {
                     relocalizing = false
-                    Trace.log(String(format: "場所の記憶が見つかりました（%.1f 秒）", Date().timeIntervalSince(started)))
+                    Trace.log(String(format: "GATE の位置の記録が見つかりました（%.1f 秒）", Date().timeIntervalSince(started)))
                     return anchor
                 }
             default:
@@ -293,7 +293,7 @@ final class ARStage: NSObject, ObservableObject {
             }
         }
         relocalizing = false
-        Trace.log(String(format: "場所の記憶が見つかりませんでした（%.1f 秒・探索中の表示：%@・途中でやめた：%@）。ふつうの AR で始め直します",
+        Trace.log(String(format: "GATE の位置の記録が見つかりませんでした（%.1f 秒・探索中の表示：%@・途中でやめた：%@）。ふつうの AR で始め直します",
                          Date().timeIntervalSince(started), sawRelocalizing ? "あり" : "なし",
                          (Task.isCancelled || shouldStop()) ? "はい" : "いいえ"))
         run(initialMap: nil, reset: true)

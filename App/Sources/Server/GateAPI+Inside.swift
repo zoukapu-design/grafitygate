@@ -389,9 +389,9 @@ extension GateAPI {
         try await client.rpc("gf_delete_snapshot", params: IDOnlyParam(p_id: id)).execute().value
     }
 
-    // MARK: 場所の記憶の見つかりやすさと GATE の数字
+    // MARK: GATE の位置の記録の見つかりやすさと GATE の数字
 
-    /// 場所の記憶が見つかったか・探した秒数だけを送る（写真・位置は送らない）
+    /// GATE の位置の記録が見つかったか・探した秒数だけを送る（写真・位置は送らない）
     func reportRelocalize(visit: UUID, found: Bool, seconds: Double) async throws {
         try await client.rpc("gf_report_relocalize",
                              params: RelocalizeParams(p_visit: visit, p_found: found, p_seconds: Float(seconds)))

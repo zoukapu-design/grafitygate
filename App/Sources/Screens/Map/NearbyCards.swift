@@ -544,7 +544,7 @@ struct NearbyCardDetail: View {
             Button {
                 Task { await toggleSave() }
             } label: {
-                Label(saved ? "保存しました" : "お気に入りに保存", systemImage: saved ? "bookmark.fill" : "bookmark")
+                Label(saved ? "保存しました" : "保存する", systemImage: saved ? "bookmark.fill" : "bookmark")
                     .font(.subheadline.weight(.semibold))
                     .frame(maxWidth: .infinity, minHeight: 44)
             }
@@ -596,7 +596,7 @@ struct NearbyCardDetail: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Theme.warm)
             }
-            Text("場所はおおよそです。100m 以内に近づくと、地図に GATE が出ます。中の記憶は、現地で扉を開けると見られます。")
+            Text("場所はおおよそです。100m 以内に近づくと、地図に GATE が出ます。中のグラフィティカードや掲示板は、現地で扉を開けると見られます。")
                 .font(.caption).foregroundStyle(Theme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
             Button {

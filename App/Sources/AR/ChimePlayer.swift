@@ -1,8 +1,8 @@
 import AVFoundation
 import Foundation
 
-/// AR の画面の音（作品の鐘・映像・声）の決まり。
-/// 作品の音は、触れた・押したときだけ鳴るので、消音スイッチが入っていても鳴らす（playback）。
+/// AR の画面の音（AR の飾りの鐘・映像・声）の決まり。
+/// AR の飾りの音は、触れた・押したときだけ鳴るので、消音スイッチが入っていても鳴らす（playback）。
 /// ほかのアプリの音（音楽など）は止めずに重ねる（mixWithOthers）。
 /// 途中で種類を変えると鐘の音の仕組みが止まるので、AR の画面ではいつもこの 1 つにそろえる。
 enum ARAudio {
@@ -19,7 +19,7 @@ enum ARAudio {
     }
 }
 
-/// 作品の「鳴る」：やさしい鐘の音をその場で作って鳴らす（音のファイルは持たない）。
+/// AR の飾りの「鳴る」：やさしい鐘の音をその場で作って鳴らす（音のファイルは持たない）。
 /// 音の決まりは `ARAudio`。同時に鳴るのは 4 つまで。
 final class ChimePlayer: @unchecked Sendable {
     static let shared = ChimePlayer()

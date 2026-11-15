@@ -11,7 +11,7 @@ enum Haptics {
         UIImpactFeedbackGenerator(style: .soft).impactOccurred(intensity: 0.9)
     }
 
-    /// 作品に近づいたときの、ごく軽い合図
+    /// AR の飾りに近づいたときの、ごく軽い合図
     static func soft() {
         UIImpactFeedbackGenerator(style: .soft).impactOccurred(intensity: 0.45)
     }

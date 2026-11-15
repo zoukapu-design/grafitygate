@@ -45,7 +45,7 @@ final class AppNavigator: ObservableObject {
 
     /// GATE を送るときの文（現地でしか中は見られないことも書く）
     nonisolated static func gateShareText(title: String, id: UUID) -> String {
-        "Grafity Gate の「\(title)」\n現地で扉を開けると、中の記憶が見られます。\n\(gateURL(id).absoluteString)"
+        "Grafity Gate の「\(title)」\n現地で扉を開けると、中のグラフィティカードや掲示板が見られます。\n\(gateURL(id).absoluteString)"
     }
 
     /// QR・リンク・打った文字から、友達の ID を取り出す（ID の形でなければ nil）

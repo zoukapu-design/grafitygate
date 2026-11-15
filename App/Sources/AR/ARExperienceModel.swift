@@ -1,10 +1,11 @@
 import ARKit
+import Combine
 import CoreLocation
 import RealityKit
 import SwiftUI
 
 /// AR の画面の流れ。
-/// 入る：向けて「ここで開く」→ サーバーが位置と写真の特徴で確かめる → 場所の記憶で同じ位置を探す
+/// 入る：向けて「ここで開く」→ サーバーが位置と写真の特徴で確かめる → GATE の位置の記録で同じ位置を探す
 ///      （見つからなければ、おおよその位置）→ 扉が現れる → 押すと開く → 中へ
 /// 作る：3 方向から写す → 名前など → 扉を置く所を押す → 扉のまわりを見回して場所を覚える → 保存して開く
 @MainActor
@@ -38,7 +39,7 @@ final class ARExperienceModel: ObservableObject {
         case createSaving(String)
         /// 送れなかった（写真・名前・扉の位置は残っている。「もう一度送る」で続きから）
         case createRetry(String)
-        /// 作った人が、場所の記憶を撮り直している（扉のまわりを見回す）
+        /// 作った人が、GATE の位置の記録を撮り直している（扉のまわりを見回す）
         case remapping
         case failed(String)
     }
@@ -117,7 +118,7 @@ final class ARExperienceModel: ObservableObject {
     @Published var presentedGate: GateRoute?
     @Published var form = GateForm()
 
-    // AR の作品（扉が開いたあと）
+    // AR の飾り（扉が開いたあと）
     @Published var art: ArtStep?
     @Published var draft = ArtDraft()
     /// その場で人を撮る（人物の映像）
@@ -134,9 +135,9 @@ final class ARExperienceModel: ObservableObject {
     @Published var reportItem: ReportItem?
     /// この入場で進んだ TRAIL（「TRAIL「…」の 2/5 に着きました」）
     @Published var trailNote: String?
-    /// 扉の位置を指で合わせているあいだ（おおよその位置に出たとき。動かすのは自分の画面だけ）
+    /// 扉の位置を指で合わせているあいだ（仮の位置に出たとき。動かすのは自分の画面だけ）
     @Published private(set) var adjustingDoor = false
-    /// この GATE を作った本人か（場所の記憶を撮り直せる）
+    /// この GATE を作った本人か（GATE の位置の記録を撮り直せる）
     @Published private(set) var isGateOwner = false
     /// ちょっとした知らせ（数秒で消える）
     @Published private(set) var toast: String?
@@ -150,13 +151,14 @@ final class ARExperienceModel: ObservableObject {
     private weak var location: LocationModel?
     private(set) var door: GateDoor?
     private var doorAnchor: ARAnchor?
-    /// いま扉が付いている印（場所の記憶で見つけた印か、おおよその位置に置いた印）
+    /// いま扉が付いている印（GATE の位置の記録で見つけた印か、おおよその位置に置いた印）
     private var currentAnchor: ARAnchor?
     private var rotateStartYaw: Float?
     private var toastTask: Task<Void, Never>?
     private(set) var enteredGate: UUID?
-    /// いまの入場券（作品を置く・動かすのに使う）と、その期限
+    /// いまの入場券（AR の飾りを置く・動かすのに使う）と、その期限
     var visitID: UUID?
+    private var keeperWatch: AnyCancellable?
     var visitExpires: Date?
     var artScene: ArtworkScene?
     var artImages: [UUID: UIImage] = [:]
@@ -167,7 +169,7 @@ final class ARExperienceModel: ObservableObject {
     var captionTask: Task<Void, Never>?
     private var lastPrint: [Float]?
     private var clientKey = UUID().uuidString
-    /// 送り直しのための途中の記録（できた GATE・送った表紙・場所の記憶を保存したか）
+    /// 送り直しのための途中の記録（できた GATE・送った表紙・GATE の位置の記録を保存したか）
     private var createdGate: UUID?
     private var uploadedCover: String?
     private var placeMapSaved = false
@@ -181,6 +183,17 @@ final class ARExperienceModel: ObservableObject {
     func attach(session: SessionModel, location: LocationModel) {
         self.session = session
         self.location = location
+        keeperWatch = VisitKeeper.shared.$entries.sink { [weak self] entries in
+            guard let self, let visit = self.visitID, let entry = entries[visit] else { return }
+            // その場にいるあいだ延びた時刻（離れて閉じかけたときも、ここで短くなる）
+            self.visitExpires = entry.expires
+        }
+    }
+
+    /// 扉は、その場にいるあいだ開いたまま（位置を送るのは VisitKeeper）
+    private func keepDoorOpen(gate: UUID) {
+        guard let visit = visitID, let session, let location else { return }
+        VisitKeeper.shared.track(visit: visit, gate: gate, expires: visitExpires, session: session, location: location)
     }
 
     var showsReticle: Bool {
@@ -359,6 +372,7 @@ final class ARExperienceModel: ObservableObject {
             enteredGate = gate
             visitID = result.visit_id
             visitExpires = result.expires_at.flatMap(ServerDate.parse)
+            keepDoorOpen(gate: gate)
             if let visit = result.visit_id { Task { await loadTrailNote(visit) } }
             await showDoor(for: gate)
         } catch {
@@ -366,7 +380,7 @@ final class ARExperienceModel: ObservableObject {
         }
     }
 
-    /// 場所の記憶があれば作った人と同じ位置に、なければ（見つからなければ）おおよその位置に扉を出す
+    /// GATE の位置の記録があれば作った人と同じ位置に、なければ（見つからなければ）おおよその位置に扉を出す
     private func showDoor(for gate: UUID) async {
         clearDoor()
         var anchor: ARAnchor?
@@ -390,12 +404,12 @@ final class ARExperienceModel: ObservableObject {
                 // 見つかったか・何秒探したかだけを送る（見つからない日が続くと、作った人に撮り直しを知らせる）
                 let seconds = Date().timeIntervalSince(started)
                 let found = anchor != nil
-                Trace.log(String(format: "場所の記憶：%@（%.1f 秒）", found ? "見つかった" : "見つからなかった", seconds))
+                Trace.log(String(format: "GATE の位置の記録：%@（%.1f 秒）", found ? "見つかった" : "見つからなかった", seconds))
                 if let visit = visitID {
                     Task { try? await api.reportRelocalize(visit: visit, found: found, seconds: seconds) }
                 }
             } catch {
-                Trace.log("場所の記憶を受け取れませんでした：\(ErrorText.of(error))")
+                Trace.log("GATE の位置の記録を受け取れませんでした：\(ErrorText.of(error))")
             }
         }
         placedPrecisely = anchor != nil
@@ -419,7 +433,7 @@ final class ARExperienceModel: ObservableObject {
             newDoor.appear()
             Haptics.success()
             phase = .doorClosed
-            Trace.log(placedPrecisely ? "扉を作った人と同じ位置に出しました" : "扉をおおよその位置（2m 前）に出しました")
+            Trace.log(placedPrecisely ? "扉を作った人と同じ位置に出しました" : "扉を仮の位置（2m 前）に出しました")
             makeArtScene()
             Task { await loadDoorPhotos(gate) }
             Task { await loadArtworks(gate) }
@@ -438,7 +452,7 @@ final class ARExperienceModel: ObservableObject {
         Trace.log("TRAIL が進みました（\(reached.count) 本）")
     }
 
-    /// 場所の記憶を探すのをやめて、おおよその位置に出す
+    /// GATE の位置の記録を探すのをやめて、仮の位置に出す
     func stopFindingPlace() {
         stopFindingRequested = true
     }
@@ -734,9 +748,9 @@ final class ARExperienceModel: ObservableObject {
                                  retrying ? "・送り直し" : ""))
             }
 
-            // 2. 場所の記憶（失敗しても GATE は使える。友達の iPhone では、おおよその位置に出る）
+            // 2. GATE の位置の記録（失敗しても GATE は使える。友達の iPhone では、仮の位置に出る）
             if !placeMapSaved {
-                phase = .createSaving("場所の記憶を保存しています…")
+                phase = .createSaving("GATE の位置の記録を保存しています…")
                 do {
                     let map = try await stage.captureWorldMap()
                     let saved = try await media.uploadWorldMap(map, owner: me, gate: gate)
@@ -744,8 +758,8 @@ final class ARExperienceModel: ObservableObject {
                     placeMapSaved = true
                     mapWarning = nil
                 } catch {
-                    Trace.log("場所の記憶を保存できませんでした：\(ErrorText.of(error))")
-                    mapWarning = "場所の記憶を保存できませんでした。友達の iPhone では、扉がおおよその位置に出ます。"
+                    Trace.log("GATE の位置の記録を保存できませんでした：\(ErrorText.of(error))")
+                    mapWarning = "GATE の位置の記録を保存できませんでした。友達の iPhone では、扉が仮の位置に出ます。"
                     placeMapSaved = true   // 送り直しのたびに見回しをやり直させない（あとで「撮り直す」ができる）
                 }
             }
@@ -765,7 +779,8 @@ final class ARExperienceModel: ObservableObject {
             if result.ok {
                 visitID = result.visit_id
                 visitExpires = result.expires_at.flatMap(ServerDate.parse)
-                placedPrecisely = true   // 作った人が置いたその場所（場所の記憶の印そのもの）
+                keepDoorOpen(gate: gate)
+                placedPrecisely = true   // 作った人が置いたその場所（GATE の位置の記録の印そのもの）
                 isGateOwner = true
                 makeArtScene()
                 door?.open()
@@ -796,10 +811,10 @@ final class ARExperienceModel: ObservableObject {
     var createRetryHasGate: Bool { createdGate != nil }
 }
 
-// MARK: - 扉の位置を指で合わせる・場所の記憶を撮り直す
+// MARK: - 扉の位置を指で合わせる・GATE の位置の記録を撮り直す
 
 extension ARExperienceModel {
-    /// 扉の位置を指で合わせ始める（おおよその位置に出たとき。動かすのは自分の画面だけ）
+    /// 扉の位置を指で合わせ始める（仮の位置に出たとき。動かすのは自分の画面だけ）
     func beginAdjust() {
         guard door != nil else { return }
         art = nil
@@ -856,7 +871,7 @@ extension ARExperienceModel {
         Haptics.success()
     }
 
-    /// 作った人が、いまの扉の位置で場所の記憶を撮り直す（まわりを見回してから保存）
+    /// 作った人が、いまの扉の位置で GATE の位置の記録を撮り直す（まわりを見回してから保存）
     func startRemap() {
         guard isGateOwner, door != nil, enteredGate != nil else { return }
         adjustingDoor = false
@@ -864,7 +879,7 @@ extension ARExperienceModel {
         notice = nil
         phase = .remapping
         startMappingProgress()
-        Trace.log("場所の記憶の撮り直しを始めました")
+        Trace.log("GATE の位置の記録の撮り直しを始めました")
     }
 
     func cancelRemap() {
@@ -880,7 +895,7 @@ extension ARExperienceModel {
         guard let door, let gate = enteredGate, let api = session?.api, let media = session?.media,
               let me = session?.userID else { return }
         mappingTask?.cancel()
-        phase = .createSaving("場所の記憶を撮り直しています…")
+        phase = .createSaving("GATE の位置の記録を撮り直しています…")
         // いまの扉の台の位置に新しい印を置き、扉をその印に付け替える（見た目の位置は変わらない）
         let newAnchor = stage.addAnchor(named: "gg.gate", transform: door.baseWorldTransform)
         door.anchorEntity.reanchor(.anchor(identifier: newAnchor.identifier), preservingWorldTransform: true)
@@ -894,11 +909,11 @@ extension ARExperienceModel {
             placedPrecisely = true
             mapWarning = nil
             Haptics.success()
-            showToast("場所の記憶を撮り直しました。友達の iPhone でも、この位置に扉が出ます。")
-            Trace.log("場所の記憶を撮り直しました（\(saved.size / 1024)KB）")
+            showToast("GATE の位置の記録を撮り直しました。友達の iPhone でも、この位置に扉が出ます。")
+            Trace.log("GATE の位置の記録を撮り直しました（\(saved.size / 1024)KB）")
         } catch {
-            notice = "場所の記憶を保存できませんでした。" + ErrorText.of(error)
-            Trace.log("場所の記憶を撮り直せませんでした：\(ErrorText.of(error))")
+            notice = "GATE の位置の記録を保存できませんでした。" + ErrorText.of(error)
+            Trace.log("GATE の位置の記録を撮り直せませんでした：\(ErrorText.of(error))")
         }
         phase = door.isOpen ? .doorOpen : .doorClosed
     }

@@ -2,9 +2,9 @@ import Combine
 import RealityKit
 import UIKit
 
-/// 扉のまわりの作品をまとめて扱う。扉と同じ印（ARAnchor）の下に置くので、扉が動いても一緒に動く。
+/// 扉のまわりの AR の飾りをまとめて扱う。扉と同じ印（ARAnchor）の下に置くので、扉が動いても一緒に動く。
 /// - 扉が開くまでは見せない（開いたら、少しずつ順に現れる）
-/// - 近づく・押す・手で触れると、作品ごとのルールで動く
+/// - 近づく・押す・手で触れると、AR の飾りごとのルールで動く
 /// - 置くときは、見本がカメラの前についてくる（扉から 4m・地面から 3.5m の内側だけに置ける）
 @MainActor
 final class ArtworkScene {
@@ -33,13 +33,13 @@ final class ArtworkScene {
     }
     /// 見本が置ける範囲の外に出た・戻ったとき
     var onPreviewRangeChange: ((Bool) -> Void)?
-    /// 近づいて作品が動いたとき（手ざわりの合図などに使う）
+    /// 近づいて AR の飾りが動いたとき（手ざわりの合図などに使う）
     var onApproach: ((UUID) -> Void)?
     /// 映像・声を流してほしいとき（ファイルを受け取って `play` を呼ぶ）
     var onPlayRequest: ((UUID) -> Void)?
-    /// 流している作品が変わったとき（nil は止まった）
+    /// 流している AR の飾りが変わったとき（nil は止まった）
     var onPlaybackChange: ((UUID?) -> Void)?
-    /// いま流している作品（同時に流すのは 1 つだけ）
+    /// いま流している AR の飾り（同時に流すのは 1 つだけ）
     private(set) var playingID: UUID?
 
     private weak var arView: ARView?
@@ -47,7 +47,7 @@ final class ArtworkScene {
     private var clock: TimeInterval = 0
     private var revealQueue: [(id: UUID, at: TimeInterval)] = []
 
-    /// parent は扉の台（GateDoor.base）。見る人が扉を指で動かすと、作品も一緒に動く
+    /// parent は扉の台（GateDoor.base）。見る人が扉を指で動かすと、AR の飾りも一緒に動く
     init(parent: Entity, arView: ARView) {
         self.arView = arView
         container.name = "artworks"
@@ -62,7 +62,7 @@ final class ArtworkScene {
     var isEmpty: Bool { items.isEmpty }
     var count: Int { items.count }
 
-    // MARK: 作品を出す・消す
+    // MARK: AR の飾りを出す・消す
 
     @discardableResult
     func add(_ artwork: Artwork, image: UIImage?, animated: Bool) -> ArtworkItem {
@@ -114,7 +114,7 @@ final class ArtworkScene {
 
     func artwork(_ id: UUID) -> Artwork? { items[id]?.artwork }
 
-    /// 作品の状態を変える（下書き → 公開・置き直しの印を外す）
+    /// AR の飾りの状態を変える（下書き → 公開・置き直しの印を外す）
     func update(_ id: UUID, status: String? = nil, needsReplace: Bool? = nil) {
         items[id]?.update(status: status, needsReplace: needsReplace)
     }
@@ -135,17 +135,17 @@ final class ArtworkScene {
         items[current]?.stopPlayback(notify: false)
         playingID = nil
         onPlaybackChange?(nil)
-        Trace.log("作品を流すのを止めました")
+        Trace.log("AR の飾りを流すのを止めました")
     }
 
-    /// 扉が開いたとき：作品が順に現れ、「扉が開いたとき」のルールが動く
+    /// 扉が開いたとき：AR の飾りが順に現れ、「扉が開いたとき」のルールが動く
     func reveal() {
         guard !isRevealed else { return }
         isRevealed = true
         for (i, id) in order.enumerated() {
             revealQueue.append((id, clock + 0.35 + Double(i) * 0.18))
         }
-        Trace.log("扉の前の作品を見せます（\(order.count) 個）")
+        Trace.log("扉の前の AR の飾りを見せます（\(order.count) 個）")
     }
 
     // MARK: 反応
@@ -156,13 +156,13 @@ final class ArtworkScene {
         return item.fire(trigger, now: clock)
     }
 
-    /// 押した所の作品（なければ nil）
+    /// 押した所の AR の飾り（なければ nil）
     func artworkID(at entity: Entity?) -> UUID? {
         guard let entity else { return nil }
         return items.first(where: { $0.value.contains(entity) })?.key
     }
 
-    /// 手で触れられる作品（カメラから maxDistance m 以内）
+    /// 手で触れられる AR の飾り（カメラから maxDistance m 以内）
     func targets(within maxDistance: Float) -> [Target] {
         guard isRevealed, let camera = arView?.cameraTransform.translation else { return [] }
         return items.values.compactMap { item in
@@ -189,7 +189,7 @@ final class ArtworkScene {
         previewScale = draft.scale
         previewPosition = nil
         container.addChild(item.root)
-        Trace.log("作品の見本を出しました（\(draft.artKind.label)\(hiding != nil ? "・置き直し" : "")）")
+        Trace.log("AR の飾りの見本を出しました（\(draft.artKind.label)\(hiding != nil ? "・置き直し" : "")）")
     }
 
     /// いまの見本の位置（扉が基準）・向き・大きさ

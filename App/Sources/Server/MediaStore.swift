@@ -5,7 +5,7 @@ import Supabase
 import SwiftUI
 import UIKit
 
-/// 写真（gf-media）と場所の記憶（gf-maps）の置き場所。見てよいかはサーバーが決める。
+/// 写真（gf-media）と GATE の位置の記録（gf-maps）の置き場所。見てよいかはサーバーが決める。
 /// 置き場所のフォルダ名はサーバーの auth.uid()::text と同じ小文字の ID（大文字だと断られる）。
 struct MediaStore {
     let client: SupabaseClient
@@ -47,7 +47,7 @@ struct MediaStore {
         return path
     }
 
-    /// 送ったけれど使わなかった自分の写真を消す（作品を置けなかったときなど。失敗しても続ける）
+    /// 送ったけれど使わなかった自分の写真を消す（AR の飾りを置けなかったときなど。失敗しても続ける）
     func removePhoto(path: String) async {
         do {
             _ = try await client.storage.from("gf-media").remove(paths: [path])
@@ -57,7 +57,7 @@ struct MediaStore {
         }
     }
 
-    /// アカウントを消す前に、自分のフォルダのファイル（写真・場所の記憶）をすべて消す
+    /// アカウントを消す前に、自分のフォルダのファイル（写真・GATE の位置の記録）をすべて消す
     func removeEverything(owner: UUID) async {
         let folder = owner.uuidString.lowercased()
         for bucket in ["gf-media", "gf-maps"] {
@@ -130,11 +130,11 @@ struct MediaStore {
             .appendingPathComponent(path.replacingOccurrences(of: "/", with: "_"))
     }
 
-    // MARK: 場所の記憶
+    // MARK: GATE の位置の記録
 
-    /// 場所の記憶を縮めて送る（同じ GATE なら上書き）。置き場所の名前と大きさを返す。
+    /// GATE の位置の記録を縮めて送る（同じ GATE なら上書き）。置き場所の名前と大きさを返す。
     func uploadWorldMap(_ map: ARWorldMap, owner: UUID, gate: UUID) async throws -> (path: String, size: Int) {
-        let packed: Data = try MainWatch.run("場所の記憶を縮める") {
+        let packed: Data = try MainWatch.run("GATE の位置の記録を縮める") {
             let raw = try NSKeyedArchiver.archivedData(withRootObject: map, requiringSecureCoding: true)
             return try (raw as NSData).compressed(using: .zlib) as Data
         }
@@ -142,7 +142,7 @@ struct MediaStore {
         try await client.storage.from("gf-maps").upload(path, data: packed,
                                                         options: FileOptions(contentType: "application/octet-stream",
                                                                              upsert: true))
-        Trace.log("場所の記憶を送りました（\(packed.count / 1024)KB・特徴点 \(map.rawFeaturePoints.points.count) 個・印 \(map.anchors.count) 個）")
+        Trace.log("GATE の位置の記録を送りました（\(packed.count / 1024)KB・特徴点 \(map.rawFeaturePoints.points.count) 個・印 \(map.anchors.count) 個）")
         return (path, packed.count)
     }
 
@@ -152,7 +152,7 @@ struct MediaStore {
         guard let map = try NSKeyedUnarchiver.unarchivedObject(ofClass: ARWorldMap.self, from: raw) else {
             throw URLError(.cannotDecodeContentData)
         }
-        Trace.log("場所の記憶を受け取りました（\(packed.count / 1024)KB）")
+        Trace.log("GATE の位置の記録を受け取りました（\(packed.count / 1024)KB）")
         return map
     }
 }

@@ -96,7 +96,7 @@ struct CardShareSheet: View {
     @State private var failed = false
 
     private var shareText: String {
-        "Grafity Gate の「\(card.gateTitle)」に記憶を残しました。\n\(AppNavigator.gateURL(card.gateID).absoluteString)"
+        "Grafity Gate の「\(card.gateTitle)」にグラフィティカードを残しました。\n\(AppNavigator.gateURL(card.gateID).absoluteString)"
     }
 
     var body: some View {
@@ -120,7 +120,7 @@ struct CardShareSheet: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding(.horizontal, 28)
 
-                Text("この絵と GATE へのリンクを送ります。リンクを開いた人に見えるのは GATE の名前と表紙だけで、記憶の中身は現地で扉を開けた人だけが見られます。")
+                Text("この絵と GATE へのリンクを送ります。リンクを開いた人に見えるのは GATE の名前と表紙だけで、GATE の中身は現地で扉を開けた人だけが見られます。")
                     .font(.footnote)
                     .foregroundStyle(Theme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -128,7 +128,7 @@ struct CardShareSheet: View {
                 if let image {
                     ShareLink(item: Image(uiImage: image),
                               message: Text(shareText),
-                              preview: SharePreview("「\(card.gateTitle)」の記憶", image: Image(uiImage: image))) {
+                              preview: SharePreview("「\(card.gateTitle)」のグラフィティカード", image: Image(uiImage: image))) {
                         Label("送る・保存する", systemImage: "square.and.arrow.up")
                     }
                     .buttonStyle(PrimaryButtonStyle())
@@ -282,7 +282,7 @@ struct CardCompareRequest: Identifiable {
     var id: UUID { startID ?? UUID() }
 }
 
-/// 同じ場所の、みんなの記憶。上に自分のカード（何枚もあれば選べる）、下にほかの人のカードを横にスワイプして見比べる。
+/// 同じ場所の、みんなのグラフィティカード。上に自分のカード（何枚もあれば選べる）、下にほかの人のカードを横にスワイプして見比べる。
 /// どちらも写真があるときは「重ねる」で、2 枚の写真を指でなぞって入れ替えられる。
 struct CardCompareView: View {
     let request: CardCompareRequest
@@ -341,7 +341,7 @@ struct CardCompareView: View {
                 .padding(16)
             }
             .background(Theme.background.ignoresSafeArea())
-            .navigationTitle("みんなの記憶")
+            .navigationTitle("みんなのグラフィティカード")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("閉じる") { dismiss() } }
@@ -370,7 +370,7 @@ struct CardCompareView: View {
                     .padding(.horizontal, 10).padding(.vertical, 5)
                     .background(Theme.accentLight, in: Capsule())
             }
-            Text(request.others.count > 1 ? "同じ場所の、みんなの記憶" : "同じ場所の、ふたりの記憶")
+            Text(request.others.count > 1 ? "同じ場所の、みんなのグラフィティカード" : "同じ場所の、ふたりのグラフィティカード")
                 .font(.title3.weight(.bold))
                 .foregroundStyle(Theme.text)
             if let a = mine?.date, let other, let b = other.date {
@@ -386,7 +386,7 @@ struct CardCompareView: View {
     private func gapText(mine a: Date, other b: Date, name: String) -> String {
         let who = "\(name) さん"
         let gap = CardDates.gap(a, b)
-        if gap == "同じ日" { return "あなたと \(who) は、同じ日にここで記憶を残しました。" }
+        if gap == "同じ日" { return "あなたと \(who) は、同じ日にここでグラフィティカードを残しました。" }
         return a < b
             ? "あなたが残してから \(gap) あとに、\(who) がここに来ました。"
             : "\(who) が残してから \(gap) あとに、あなたがここに来ました。"

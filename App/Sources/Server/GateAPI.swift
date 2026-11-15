@@ -86,7 +86,7 @@ struct GateAPI {
         return try await client.rpc("gf_add_gate_refs", params: params).execute().value
     }
 
-    /// 場所の記憶の置き場所（作った本人か、入場中だけ返る）
+    /// GATE の位置の記録の置き場所（作った本人か、入場中だけ返る）
     func placeMap(_ gate: UUID) async throws -> PlaceMapInfo? {
         let rows: [PlaceMapInfo] = try await client.rpc("gf_place_map", params: GateParam(p_gate: gate)).execute().value
         return rows.first
@@ -172,9 +172,9 @@ struct GateAPI {
             .execute().value
     }
 
-    // MARK: AR の作品
+    // MARK: AR の飾り
 
-    /// GATE の作品（入場中なら公開範囲が合うもの、そうでなければ自分のものだけが返る）
+    /// GATE の AR の飾り（入場中なら公開範囲が合うもの、そうでなければ自分のものだけが返る）
     func artworks(in gate: UUID) async throws -> [Artwork] {
         let base = "id,gate_id,owner,kind,body,photo_path,color,px,py,pz,yaw,scale,rules,visibility,status,revision,created_at"
         // 新しいサーバーから順に試す（0011：置き直しの印、0010：映像・声、それより前）
@@ -195,7 +195,7 @@ struct GateAPI {
         throw lastError ?? URLError(.badServerResponse)
     }
 
-    /// 作品を置く（入場中だけ）。置いた作品の ID を返す。
+    /// AR の飾りを置く（入場中だけ）。置いた AR の飾りの ID を返す。
     /// 映像・声は path にファイル、映像は thumbPath に表紙の絵、duration に長さ（秒）
     func placeArtwork(visit: UUID, kind: ArtworkKind, body: String, photoPath: String?, thumbPath: String? = nil,
                       duration: Double? = nil, color: ArtworkColor, position: SIMD3<Float>, yaw: Float, scale: Float,
@@ -225,7 +225,7 @@ struct GateAPI {
         }
     }
 
-    /// 自分の作品を置き直す。新しい版の番号を返す（ほかの端末で先に動かしていたら断られる）。
+    /// 自分の AR の飾りを置き直す。新しい版の番号を返す（ほかの端末で先に動かしていたら断られる）。
     func moveArtwork(_ id: UUID, visit: UUID, position: SIMD3<Float>, yaw: Float, scale: Float,
                      revision: Int) async throws -> Int {
         try await client.rpc("gf_move_artwork",
@@ -239,7 +239,7 @@ struct GateAPI {
         try await setArtworkStatus(id, status: hidden ? "hidden" : "published")
     }
 
-    /// 自分の作品の状態（draft 下書き／published 公開／hidden 非公開）
+    /// 自分の AR の飾りの状態（draft 下書き／published 公開／hidden 非公開）
     func setArtworkStatus(_ id: UUID, status: String) async throws {
         try await client.rpc("gf_set_artwork_status", params: ArtworkStatusParams(p_id: id, p_status: status))
             .execute()
@@ -250,7 +250,7 @@ struct GateAPI {
         try await client.rpc("gf_keep_artwork_place", params: IDParam(p_id: id)).execute()
     }
 
-    /// 自分の作品を消す。消したファイルの名前を返す（映像は表紙の絵も。ファイルも消すため）
+    /// 自分の AR の飾りを消す。消したファイルの名前を返す（映像は表紙の絵も。ファイルも消すため）
     func deleteArtwork(_ id: UUID, knownPaths: [String]) async throws -> [String] {
         do {
             return try await client.rpc("gf_delete_artwork2", params: IDParam(p_id: id)).execute().value

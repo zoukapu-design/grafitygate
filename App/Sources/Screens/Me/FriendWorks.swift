@@ -2,8 +2,8 @@ import MapKit
 import SwiftUI
 
 /// プロフィールの下の「作った GATE・グラフィティ・訪れた」。
-/// 作った GATE はサーバーが見せてよいものだけ（位置はおおよそ）。グラフィティは本人が図鑑に載せたカードの写真・場所・日付
-/// （ひとことの文は現地だけ）。訪れたは本人が見せると選んだ図鑑。中身はどれも現地で扉を開けた人だけ。
+/// 作った GATE はサーバーが見せてよいものだけ（位置はおおよそ）。グラフィティは本人がカード図鑑に載せたカードの写真・場所・日付
+/// （ひとことの文は現地だけ）。訪れたは本人が見せると選んだカード図鑑。中身はどれも現地で扉を開けた人だけ。
 struct FriendWorks: View {
     let userID: UUID
     let name: String
@@ -21,9 +21,9 @@ struct FriendWorks: View {
 
     enum Tab: String, CaseIterable, Identifiable {
         case gates = "GATE"
-        case cards = "グラフィティ"
+        case cards = "カード図鑑"
         case trails = "TRAIL"
-        case visited = "訪れた"
+        case visited = "訪れた GATE"
         var id: String { rawValue }
     }
 
@@ -132,18 +132,18 @@ struct FriendWorks: View {
         }
     }
 
-    // MARK: グラフィティ図鑑（写真・場所・日付）
+    // MARK: グラフィティカード図鑑（写真・場所・日付）
 
     @ViewBuilder private var cardsView: some View {
         if !isFriend && !isMe {
-            note("お互いにフォローすると、\(name) さんが図鑑に載せたグラフィティの写真が見られます。")
+            note("お互いにフォローすると、\(name) さんがカード図鑑に載せたグラフィティの写真が見られます。")
         } else if !loaded {
             ProgressView().frame(maxWidth: .infinity).padding(.vertical, 30)
         } else if cards.isEmpty {
-            note(isMe ? "写真つきのカードを残すと、ここに並びます。友達に見せるかは、カードごとに「図鑑に載せる」で選べます。"
-                      : "\(name) さんが図鑑に載せたカードはまだありません。")
+            note(isMe ? "写真つきのカードを残すと、ここに並びます。友達に見せるかは、カードごとに「カード図鑑に載せる」で選べます。"
+                      : "\(name) さんがカード図鑑に載せたカードはまだありません。")
         } else {
-            Text(isMe ? "友達には、「図鑑に載せる」を選んだカードだけが見えます。ひとことの文は現地だけです。"
+            Text(isMe ? "友達には、「カード図鑑に載せる」を選んだカードだけが見えます。ひとことの文は現地だけです。"
                       : "ひとことの文は、現地で扉を開けると読めます。")
                 .font(.caption).foregroundStyle(Theme.textSecondary)
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
@@ -159,7 +159,7 @@ struct FriendWorks: View {
         }
     }
 
-    // MARK: 訪れた（本人が見せると選んだ図鑑）
+    // MARK: 訪れた（本人が見せると選んだカード図鑑）
 
     @ViewBuilder private var visitedView: some View {
         if !isFriend && !isMe {
@@ -167,7 +167,7 @@ struct FriendWorks: View {
         } else if !loaded {
             ProgressView().frame(maxWidth: .infinity).padding(.vertical, 30)
         } else if visited.isEmpty {
-            note(isMe ? "「わたし」→「図鑑」で、友達に見せる GATE を選べます。" : "見せている GATE はまだありません。")
+            note(isMe ? "「わたし」→「訪れた GATE」で、友達に見せる GATE を選べます。" : "見せている GATE はまだありません。")
         } else {
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
                 ForEach(visited) { gate in
@@ -209,7 +209,7 @@ struct FriendWorks: View {
     }
 }
 
-/// グラフィティ図鑑の 1 枚：写真に GATE の名前と日付・場所を重ねる
+/// グラフィティカード図鑑の 1 枚：写真に GATE の名前と日付・場所を重ねる
 struct AtlasCardTile: View {
     let card: AtlasCard
 

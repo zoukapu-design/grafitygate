@@ -143,7 +143,7 @@ struct SavedCardsView: View {
                     .font(.subheadline).foregroundStyle(Theme.textSecondary)
                 if let message { NoticeText(text: message) }
                 if loaded && cards.isEmpty && message == nil {
-                    EmptyNote(title: "まだお気に入りはありません",
+                    EmptyNote(title: "まだ保存したカードはありません",
                               message: "GATE の中のカードの 🔖 を押すと、ここに集まります。",
                               systemImage: "bookmark")
                 }
@@ -159,7 +159,7 @@ struct SavedCardsView: View {
                             Button(role: .destructive) {
                                 Task { await remove(card) }
                             } label: {
-                                Label("お気に入りから外す", systemImage: "bookmark.slash")
+                                Label("保存をやめる", systemImage: "bookmark.slash")
                             }
                         }
                     }
@@ -168,7 +168,7 @@ struct SavedCardsView: View {
             .padding(16)
         }
         .background(Theme.background.ignoresSafeArea())
-        .navigationTitle("お気に入りのカード")
+        .navigationTitle("保存したグラフィティカード")
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }
         .refreshable { await load() }
@@ -224,7 +224,7 @@ struct SavedCardsView: View {
             message = nil
         } catch {
             message = ErrorText.isMissingFunction(error)
-                ? "お気に入りは、サーバーの準備（setup_all.sql の貼り直し）のあとで使えます。" : ErrorText.of(error)
+                ? "カードの保存は、サーバーの準備（setup_all.sql の貼り直し）のあとで使えます。" : ErrorText.of(error)
         }
         loaded = true
     }
@@ -333,7 +333,7 @@ struct NotificationSettingsView: View {
     }
 
     static let groups: [NotifyGroup] = [
-        NotifyGroup(id: "gate", title: "自分の GATE に記憶・作品", detail: "あなたの GATE に、だれかがカードや AR の作品を残したとき",
+        NotifyGroup(id: "gate", title: "自分の GATE にグラフィティカード・AR の飾り", detail: "あなたの GATE に、だれかがカードや AR の飾りを残したとき",
               symbol: "square.stack", kinds: ["gate_graffiti", "gate_artwork"]),
         NotifyGroup(id: "cards", title: "カードへの返信・来たよ", detail: "あなたのカードに返信や「来たよ」が届いたとき",
               symbol: "bubble.left", kinds: ["card_comment", "card_link"]),
@@ -342,11 +342,11 @@ struct NotificationSettingsView: View {
               symbol: "bubble.left.and.bubble.right", kinds: ["board_thread", "board_reply"]),
         NotifyGroup(id: "letters", title: "手紙", detail: "手紙が届いた・あなたの手紙が開かれたとき",
               symbol: "envelope", kinds: ["letter", "letter_opened"]),
-        NotifyGroup(id: "memories", title: "思い出", detail: "思い出の仲間に入った・写真が足されたとき",
+        NotifyGroup(id: "memories", title: "アルバム", detail: "アルバムの仲間に入った・写真が足されたとき",
               symbol: "photo.stack", kinds: ["memory_invite", "memory_photo"]),
         NotifyGroup(id: "managers", title: "一緒に管理", detail: "友達があなたを GATE の「一緒に管理する人」に入れたとき",
                     symbol: "person.2.badge.gearshape", kinds: ["gate_manager"]),
-        NotifyGroup(id: "maps", title: "場所の記憶の撮り直し", detail: "あなたの GATE が、ほかの人の iPhone で見つかりにくくなったとき",
+        NotifyGroup(id: "maps", title: "GATE の位置の記録の撮り直し", detail: "あなたの GATE が、ほかの人の iPhone で見つかりにくくなったとき",
               symbol: "arrow.triangle.2.circlepath.camera", kinds: ["place_map_stale"]),
     ]
 

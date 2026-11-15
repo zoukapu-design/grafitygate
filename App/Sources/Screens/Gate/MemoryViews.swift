@@ -2,7 +2,7 @@ import PhotosUI
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// 思い出：何枚かの写真を 1 つにまとめる。一緒にいた友達を仲間に入れると、それぞれが自分の写真を足せる。
+/// アルバム：何枚かの写真を 1 つにまとめる。一緒にいた友達を仲間に入れると、それぞれが自分の写真を足せる。
 struct MemorySection: View {
     let context: GateContext
     let refreshToken: Int
@@ -25,16 +25,16 @@ struct MemorySection: View {
                 Button {
                     showComposer = true
                 } label: {
-                    Label("思い出を作る", systemImage: "rectangle.stack.badge.plus")
+                    Label("アルバムを作る", systemImage: "rectangle.stack.badge.plus")
                 }
                 .buttonStyle(SecondaryButtonStyle())
             } else if memories.isEmpty {
-                Text("思い出は、現地で扉を開けると見られます。何枚かの写真を 1 つにまとめ、一緒にいた友達も写真を足せます。")
+                Text("アルバムは、現地で扉を開けると見られます。何枚かの写真を 1 つにまとめ、一緒にいた友達も写真を足せます。")
                     .font(.subheadline).foregroundStyle(Theme.textSecondary)
             }
             if let error { NoticeText(text: error) }
             if context.isInside && memories.isEmpty && error == nil {
-                Text("まだ思い出はありません。").font(.subheadline).foregroundStyle(Theme.textSecondary)
+                Text("まだアルバムはありません。").font(.subheadline).foregroundStyle(Theme.textSecondary)
             }
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
                 ForEach(memories) { memory in
@@ -65,7 +65,7 @@ struct MemorySection: View {
     }
 }
 
-/// 思い出の表紙（写真と題）
+/// アルバムの表紙（写真と題）
 struct MemoryTile: View {
     let title: String
     let subtitle: String
@@ -96,7 +96,7 @@ struct MemoryTile: View {
     }
 }
 
-/// 思い出に足す前の 1 つ（写真・動画・声）
+/// アルバムに足す前の 1 つ（写真・動画・声）
 struct MemoryDraftItem: Identifiable {
     enum Kind {
         case photo(UIImage)
@@ -153,7 +153,7 @@ enum MemoryDraftLoader {
         return (drafts, trimmed, failed)
     }
 
-    /// 1 つを送って思い出に足す（足せなかったら、送ったファイルを消す）
+    /// 1 つを送ってアルバムに足す（足せなかったら、送ったファイルを消す）
     static func add(_ draft: MemoryDraftItem, to memory: UUID, api: GateAPI, media: MediaStore, me: UUID) async throws {
         switch draft.kind {
         case .photo(let image):
@@ -253,7 +253,7 @@ struct MemoryDraftStrip: View {
     }
 }
 
-/// 思い出を作る：題・ひとこと・見せる人 → 写真・動画（12 まで）・声 → 一緒にいた友達
+/// アルバムを作る：題・ひとこと・見せる人 → 写真・動画（12 まで）・声 → 一緒にいた友達
 struct MemoryComposer: View {
     let context: GateContext
     let onCreated: () -> Void
@@ -334,7 +334,7 @@ struct MemoryComposer: View {
                     Section { NoticeText(text: message) }
                 }
             }
-            .navigationTitle("思い出を作る")
+            .navigationTitle("アルバムを作る")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("やめる") { dismiss() } }
@@ -373,11 +373,11 @@ struct MemoryComposer: View {
     private func create() async {
         guard let api = session.api, let media = session.media, let me = session.userID else { return }
         guard let visit = context.visit else {
-            message = "入場の時間（20 分）が切れました。現地でもう一度入ってください。"
+            message = "扉が閉じました（GATE から離れたため）。現地でもう一度扉を開けてください。"
             return
         }
         message = nil
-        progress = "思い出を作っています…"
+        progress = "アルバムを作っています…"
         defer { progress = nil }
         do {
             let memory = try await api.createMemory(visit: visit,
@@ -392,7 +392,7 @@ struct MemoryComposer: View {
             for friend in members {
                 try? await api.inviteToMemory(memory, user: friend)
             }
-            Trace.log("思い出を作りました（\(all.count) つ・仲間 \(members.count) 人）")
+            Trace.log("アルバムを作りました（\(all.count) つ・仲間 \(members.count) 人）")
             Haptics.success()
             onCreated()
             dismiss()
@@ -403,7 +403,7 @@ struct MemoryComposer: View {
     }
 }
 
-/// 思い出の中：写真・動画・声を並べて見る・足す・仲間・消す
+/// アルバムの中：写真・動画・声を並べて見る・足す・仲間・消す
 struct MemoryDetailView: View {
     let memory: MemorySummary
     let context: GateContext?
@@ -480,7 +480,7 @@ struct MemoryDetailView: View {
                             if item.author != session.userID {
                                 Button {
                                     report = ReportItem(id: item.id, target: .memory_item, userID: item.author,
-                                                        userName: names[item.author], label: "思い出の\(Self.kindLabel(item))")
+                                                        userName: names[item.author], label: "アルバムの\(Self.kindLabel(item))")
                                 } label: {
                                     Label("通報する", systemImage: "exclamationmark.bubble")
                                 }
@@ -492,7 +492,7 @@ struct MemoryDetailView: View {
             .padding(16)
         }
         .background(Theme.background.ignoresSafeArea())
-        .navigationTitle("思い出")
+        .navigationTitle("アルバム")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -507,7 +507,7 @@ struct MemoryDetailView: View {
                         Button(role: .destructive) {
                             confirmDelete = true
                         } label: {
-                            Label("思い出を消す", systemImage: "trash")
+                            Label("アルバムを消す", systemImage: "trash")
                         }
                     } else {
                         if memory.is_member {
@@ -529,7 +529,7 @@ struct MemoryDetailView: View {
                 }
             }
         }
-        .confirmationDialog("この思い出を消しますか？", isPresented: $confirmDelete, titleVisibility: .visible) {
+        .confirmationDialog("このアルバムを消しますか？", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("消す", role: .destructive) { Task { await deleteMemory() } }
         } message: {
             Text("仲間が足した写真・動画・声も一緒に消えます。")
@@ -660,7 +660,7 @@ struct MemoryDetailView: View {
     }
 }
 
-/// 思い出の並びの 1 つ（写真・動画の表紙・声）
+/// アルバムの並びの 1 つ（写真・動画の表紙・声）
 struct MemoryItemTile: View {
     let item: MemoryItem
 
@@ -692,7 +692,7 @@ struct MemoryItemTile: View {
     }
 }
 
-/// 思い出を 1 つずつ大きく見る（左右にめくる。動画・声はその場で流す）
+/// アルバムを 1 つずつ大きく見る（左右にめくる。動画・声はその場で流す）
 struct MemoryPager: View {
     let items: [MemoryItem]
     let captions: [String]

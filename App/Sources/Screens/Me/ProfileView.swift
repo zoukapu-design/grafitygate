@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// ほかの人のプロフィール：名前・フォロー・（友達なら）その人が見せると選んだ図鑑。通報・ブロックもここから。
+/// ほかの人のプロフィール：名前・フォロー・（友達なら）その人が見せると選んだカード図鑑。通報・ブロックもここから。
 struct ProfileView: View {
     let userID: UUID
 
@@ -27,7 +27,7 @@ struct ProfileView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 if let profile {
-                    // 「わたし」と同じ形のプロフィール（数は、友達が見せている図鑑の数だけ）
+                    // 「わたし」と同じ形のプロフィール（数は、友達が見せているカード図鑑の数だけ）
                     HStack(spacing: 16) {
                         NeonAvatar(name: profile.display_name, size: 72)
                         VStack(alignment: .leading, spacing: 4) {
@@ -79,7 +79,7 @@ struct ProfileView: View {
                     if let message { NoticeText(text: message.text, isError: message.isError) }
                     if !blocked {
                         if !isFriend && !isMe {
-                            Text("お互いにフォローすると「友達」になり、友達向けの GATE や、その人が図鑑に載せたグラフィティが見えるようになります。")
+                            Text("お互いにフォローすると「友達」になり、友達向けの GATE や、その人がカード図鑑に載せたグラフィティカードが見えるようになります。")
                                 .font(.caption).foregroundStyle(Theme.textSecondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -133,7 +133,7 @@ struct ProfileView: View {
                             titleVisibility: .visible) {
             Button("フォローをやめる", role: .destructive) { Task { await toggleFollow() } }
         } message: {
-            Text("友達ではなくなり、友達向けの GATE や図鑑、メッセージが使えなくなります。")
+            Text("友達ではなくなり、友達向けの GATE やカード図鑑、メッセージが使えなくなります。")
         }
         .confirmationDialog("\(profile?.display_name ?? "この人") さんをブロックしますか？", isPresented: $confirmBlock,
                             titleVisibility: .visible) {

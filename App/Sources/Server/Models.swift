@@ -109,7 +109,7 @@ struct GateStats: Decodable, Hashable {
     let my_visits: Int
 }
 
-/// 場所の記憶の見つかりやすさ（gf_place_map_health。作った本人だけ）
+/// GATE の位置の記録の見つかりやすさ（gf_place_map_health。作った本人だけ）
 struct PlaceMapHealth: Decodable, Hashable {
     let has_map: Bool
     let map_saved_at: String?
@@ -119,7 +119,7 @@ struct PlaceMapHealth: Decodable, Hashable {
     let recent_found: Int
     let last_found_at: String?
 
-    /// 撮り直したほうがよいか（場所の記憶が無い・最近 3 回以上探して、半分も見つかっていない）
+    /// 撮り直したほうがよいか（GATE の位置の記録が無い・最近 3 回以上探して、半分も見つかっていない）
     var looksStale: Bool { !has_map || (recent_attempts >= 3 && Double(recent_found) / Double(recent_attempts) < 0.5) }
 }
 
@@ -184,7 +184,7 @@ struct MyGate: Decodable, Identifiable, Hashable {
     }
 }
 
-/// GATE に置いた AR の作品（表 gf_artworks。見てよいものだけがサーバーから返る）。
+/// GATE に置いた AR の飾り（表 gf_artworks。見てよいものだけがサーバーから返る）。
 /// 位置・向き・大きさは扉の足もとの中心が基準（+Z は扉の手前＝置いたときに扉を見ていた側）。
 struct Artwork: Decodable, Identifiable, Hashable {
     let id: UUID
@@ -208,7 +208,7 @@ struct Artwork: Decodable, Identifiable, Hashable {
     var thumb_path: String? = nil
     /// 映像・声の長さ（秒）
     var duration: Double? = nil
-    /// 場所の記憶が撮り直されたので、置き直したほうがよいかもしれない（0011 を入れる前のサーバーでは無い）
+    /// GATE の位置の記録が撮り直されたので、置き直したほうがよいかもしれない（0011 を入れる前のサーバーでは無い）
     var needs_replace: Bool? = nil
 
     /// 下書き（置いた本人にだけ見える）
@@ -718,16 +718,16 @@ struct NotificationItem: Decodable, Identifiable, Hashable {
         let gate = gate_title.map { "「\($0)」" } ?? "GATE"
         switch kind {
         case "place_map_stale":
-            return "\(gate)の場所の記憶が、ほかの人の iPhone で見つかりにくくなっています。現地で扉を開けて「場所の記憶を撮り直す」を押してください"
-        case "gate_graffiti": return "\(who)が\(gate)に記憶を残しました"
-        case "gate_artwork": return "\(who)が\(gate)に作品を置きました"
+            return "\(gate)の GATE の位置の記録が、ほかの人の iPhone で見つかりにくくなっています。現地で扉を開けて「GATE の位置の記録を撮り直す」を押してください"
+        case "gate_graffiti": return "\(who)が\(gate)にグラフィティカードを残しました"
+        case "gate_artwork": return "\(who)が\(gate)に AR の飾りを置きました"
         case "board_thread": return "\(who)が\(gate)の掲示板に話題を立てました"
         case "board_reply": return "\(who)があなたの話題に返信しました（\(gate)）"
         case "letter": return "\(who)から手紙が届きました。\(gate)で開けます"
         case "letter_opened": return "\(who)があなたの手紙を開きました（\(gate)）"
-        case "memory_invite": return "\(who)が\(gate)の思い出の仲間に入れてくれました"
-        case "memory_photo": return "\(who)が思い出に写真を足しました（\(gate)）"
-        case "like": return "\(who)があなたの記憶にいいねしました（\(gate)）"
+        case "memory_invite": return "\(who)が\(gate)のアルバムの仲間に入れてくれました"
+        case "memory_photo": return "\(who)がアルバムに写真を足しました（\(gate)）"
+        case "like": return "\(who)があなたのグラフィティカードにいいねしました（\(gate)）"
         case "card_link": return "\(who)があなたのカードに「来たよ」を送りました（\(gate)）"
         case "card_comment": return "\(who)がカードに返信しました（\(gate)。読めるのは GATE の中です）"
         case "gate_manager": return "\(who)があなたを\(gate)の「一緒に管理する人」に入れました"
@@ -793,7 +793,7 @@ struct DMMessage: Decodable, Identifiable, Hashable {
     let read_at: String?
 }
 
-/// 場所の記憶の置き場所（gf_place_map）
+/// GATE の位置の記録の置き場所（gf_place_map）
 struct PlaceMapInfo: Decodable {
     let path: String
     let anchor_name: String

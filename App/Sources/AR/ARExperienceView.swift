@@ -249,7 +249,7 @@ private struct ExperienceCard: View {
                 Button {
                     model.startRemap()
                 } label: {
-                    Label("この位置で場所の記憶を撮り直す", systemImage: "arrow.triangle.2.circlepath.camera")
+                    Label("この位置で GATE の位置の記録を撮り直す", systemImage: "arrow.triangle.2.circlepath.camera")
                 }
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(Theme.accent)
@@ -285,7 +285,7 @@ private struct ExperienceCard: View {
                         .foregroundStyle(Theme.warm)
                 }
                 Caption(model.placedPrecisely ? "作った人が扉を置いた場所です。扉を押すと開きます。"
-                                              : "場所の記憶が見つからなかったので、おおよその位置に出しています。扉を押すと開きます。")
+                                              : "GATE の位置の記録が見つからなかったので、仮の位置に出しています。扉を押すと開きます。")
                 Button("扉を開く") { model.openDoor() }
                     .buttonStyle(PrimaryButtonStyle())
                 if !model.placedPrecisely {
@@ -336,7 +336,7 @@ private struct ExperienceCard: View {
         case .createMapping:
             VStack(alignment: .leading, spacing: 10) {
                 Title("場所を覚えています")
-                Caption("扉とそのまわりを、ゆっくり左右に見回してください。友達が来たとき、同じ位置に扉を出すために使います（まわりの景色の特徴が、入場した人の iPhone に届きます。写真そのものは送りません）。")
+                Caption("扉とそのまわりを、ゆっくり左右に見回してください。友達が来たとき、同じ位置に扉を出すために使います（まわりの景色の特徴が、扉を開けた人の iPhone に届きます。写真そのものは送りません）。")
                 ProgressView(value: model.mappingProgress).tint(Theme.accent)
                 Button("覚えた（保存する）") { model.saveGate() }
                     .buttonStyle(PrimaryButtonStyle())
@@ -344,8 +344,8 @@ private struct ExperienceCard: View {
             }
         case .remapping:
             VStack(alignment: .leading, spacing: 10) {
-                Title("場所の記憶を撮り直す")
-                Caption("扉とそのまわりを、ゆっくり左右に見回してください。保存すると、入場した友達の iPhone でも、いまの位置に扉と作品が出ます（まわりの景色の特徴が、入場した人に届きます）。")
+                Title("GATE の位置の記録を撮り直す")
+                Caption("扉とそのまわりを、ゆっくり左右に見回してください。保存すると、扉を開けた友達の iPhone でも、いまの位置に扉と AR の飾りが出ます（まわりの景色の特徴が、扉を開けた人に届きます）。")
                 ProgressView(value: model.mappingProgress).tint(Theme.accent)
                 HStack(spacing: 10) {
                     Button("やめる") { model.cancelRemap() }
@@ -459,7 +459,7 @@ private struct ExperienceCard: View {
     private func similar(_ list: [MatchCandidate]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Title("近くに似た GATE があります")
-            Caption("同じ場所の GATE なら、そこに入って記憶を足せます。ちがう場所なら、そのまま新しく作れます。")
+            Caption("同じ場所の GATE なら、そこに入ってグラフィティカードを足せます。ちがう場所なら、そのまま新しく作れます。")
             ForEach(list.prefix(3)) { candidate in
                 Button {
                     model.choose(candidate)
@@ -674,7 +674,7 @@ private struct Caption: View {
     }
 }
 
-/// 扉が開いたとき：作品の案内・中へ・作品を置く
+/// 扉が開いたとき：AR の飾りの案内・中へ・AR の飾りを置く
 private struct DoorOpenCard: View {
     @ObservedObject var model: ARExperienceModel
     @ObservedObject var hand: HandTouch
@@ -688,8 +688,8 @@ private struct DoorOpenCard: View {
         VStack(alignment: .leading, spacing: 10) {
             Title("扉が開きました")
             if model.artworkCount > 0 {
-                Caption(hand.isActive ? "作品が \(model.artworkCount) 個あります。手をのばして触れてみてください（画面で押しても動きます）。"
-                                      : "作品が \(model.artworkCount) 個あります。近づいたり、画面で押したりすると動きます。")
+                Caption(hand.isActive ? "AR の飾りが \(model.artworkCount) 個あります。手をのばして触れてみてください（画面で押しても動きます）。"
+                                      : "AR の飾りが \(model.artworkCount) 個あります。近づいたり、画面で押したりすると動きます。")
             }
             if let warning = model.mapWarning { Caption(warning) }
             Button("中へ") { model.goInside() }
@@ -711,7 +711,7 @@ private struct DoorOpenCard: View {
                     Button {
                         model.startRemap()
                     } label: {
-                        Label("場所の記憶を撮り直す", systemImage: "arrow.triangle.2.circlepath.camera")
+                        Label("GATE の位置の記録を撮り直す", systemImage: "arrow.triangle.2.circlepath.camera")
                     }
                 }
                 .font(.subheadline.weight(.semibold))
@@ -721,8 +721,8 @@ private struct DoorOpenCard: View {
                 Button {
                     model.startArt()
                 } label: {
-                    Label(model.myArtworkCount > 0 ? "作品を置く（あと \(max(0, ARExperienceModel.artworksPerPerson - model.myArtworkCount)) つ）"
-                                                   : "作品を置く",
+                    Label(model.myArtworkCount > 0 ? "AR の飾りを置く（あと \(max(0, ARExperienceModel.artworksPerPerson - model.myArtworkCount)) つ）"
+                                                   : "AR の飾りを置く",
                           systemImage: "sparkles")
                 }
                 .buttonStyle(SecondaryButtonStyle())
@@ -732,7 +732,7 @@ private struct DoorOpenCard: View {
     }
 }
 
-/// 作品を置く・自分の作品を直すカード
+/// AR の飾りを置く・自分の AR の飾りを直すカード
 private struct ArtCard: View {
     @ObservedObject var model: ARExperienceModel
     let step: ARExperienceModel.ArtStep
@@ -760,7 +760,7 @@ private struct ArtCard: View {
             case .saving:
                 HStack(spacing: 12) {
                     ProgressView()
-                    Text("作品を置いています…").font(.subheadline).foregroundStyle(Theme.text)
+                    Text("AR の飾りを置いています…").font(.subheadline).foregroundStyle(Theme.text)
                 }
             case .selected(let id): selected(id)
             case .viewing(let id): viewing(id)
@@ -772,7 +772,7 @@ private struct ArtCard: View {
     // 種類を選ぶ
     private var choosing: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Title("どんな作品を置きますか？")
+            Title("どんな AR の飾りを置きますか？")
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
                 ForEach(ArtworkKind.allCases) { kind in
                     Button {
@@ -1131,11 +1131,11 @@ private struct ArtCard: View {
         }
     }
 
-    // ほかの人の作品
+    // ほかの人の AR の飾り
     private func viewing(_ id: UUID) -> some View {
         let artwork = model.artScene?.artwork(id)
         return VStack(alignment: .leading, spacing: 10) {
-            Title("\(model.artworkOwnerName(id)) さんの\(artwork?.artKind.label ?? "作品")")
+            Title("\(model.artworkOwnerName(id)) さんの\(artwork?.artKind.label ?? "AR の飾り")")
             if let artwork {
                 Caption("\(ServerDate.relative(artwork.created_at))に置かれました。"
                         + (artwork.artKind.isMedia ? "触れる・押すと流れます。" : "近づいたり、手で触れたりすると動きます。"))
@@ -1150,11 +1150,11 @@ private struct ArtCard: View {
         }
     }
 
-    // 自分の作品
+    // 自分の AR の飾り
     private func selected(_ id: UUID) -> some View {
         let artwork = model.artScene?.artwork(id)
         return VStack(alignment: .leading, spacing: 10) {
-            Title(artwork?.isDraft == true ? "下書きの\(artwork?.artKind.label ?? "作品")" : "あなたの\(artwork?.artKind.label ?? "作品")")
+            Title(artwork?.isDraft == true ? "下書きの\(artwork?.artKind.label ?? "AR の飾り")" : "あなたの\(artwork?.artKind.label ?? "AR の飾り")")
             if let artwork {
                 if artwork.isDraft {
                     Caption("あなたにだけ見えています。触れたり近づいたりして動きを確かめたら、公開してください。")
@@ -1162,7 +1162,7 @@ private struct ArtCard: View {
                     Caption("見せる人：\(Visibility.label(of: artwork.visibility))・\(ServerDate.relative(artwork.created_at))")
                 }
                 if artwork.needs_replace == true {
-                    Label("扉の場所の記憶が撮り直されました。位置がずれていたら、置き直してください。", systemImage: "exclamationmark.triangle")
+                    Label("GATE の位置の記録が撮り直されました。位置がずれていたら、置き直してください。", systemImage: "exclamationmark.triangle")
                         .font(.subheadline)
                         .foregroundStyle(Theme.warm)
                     Button("このままでよい") { model.keepArtworkPlace(id) }
@@ -1215,7 +1215,7 @@ extension ArtCard {
     }
 }
 
-/// 指先の印（手が見えているあいだ。作品に近いと光り、触れるとふくらむ）
+/// 指先の印（手が見えているあいだ。AR の飾りに近いと光り、触れるとふくらむ）
 private struct HandCursorView: View {
     @ObservedObject var hand: HandTouch
 

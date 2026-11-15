@@ -1,7 +1,7 @@
 import PhotosUI
 import SwiftUI
 
-/// お知らせ：自分の GATE に残されたもの・返信・手紙・思い出・いいね・フォロー。現地だけの中身は出さない。
+/// お知らせ：自分の GATE に残されたもの・返信・手紙・アルバム・いいね・フォロー。現地だけの中身は出さない。
 struct NotificationsView: View {
     @EnvironmentObject private var session: SessionModel
     @EnvironmentObject private var inbox: InboxModel
@@ -15,7 +15,7 @@ struct NotificationsView: View {
                 NoticeText(text: error)
             }
             if loaded && items.isEmpty && error == nil {
-                Text("まだお知らせはありません。あなたの GATE に記憶が残されたり、手紙が届いたりすると、ここに出ます。")
+                Text("まだお知らせはありません。あなたの GATE にグラフィティカードが残されたり、手紙が届いたりすると、ここに出ます。")
                     .font(.subheadline).foregroundStyle(Theme.textSecondary)
             }
             // 今日・この 1 週間・それより前に分ける
