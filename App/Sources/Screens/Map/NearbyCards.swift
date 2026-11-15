@@ -81,6 +81,17 @@ final class NearbyCardsModel: ObservableObject {
         Trace.log("近くの友達のカード：くわしく見る")
     }
 
+    #if DEBUG
+    /// 画面の見本（シミュレーターだけ）
+    func showDemo(_ list: [NearbyCard]) {
+        cards = list
+        done = []
+        viewed = []
+        loaded = true
+        problem = nil
+    }
+    #endif
+
     /// 今日「見ない」にしたカードを、もう一度出す
     func showPassedAgain() {
         NearbyCardMemory.resetToday()

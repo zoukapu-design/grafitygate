@@ -10,6 +10,22 @@ struct GrafityGateApp: App {
 
     var body: some Scene {
         WindowGroup {
+            #if DEBUG
+            if let screen = DemoGallery.requestedScreen {
+                DemoGallery(screen: screen)
+                    .environmentObject(session)
+                    .environmentObject(location)
+                    .environmentObject(nav)
+            } else {
+                app
+            }
+            #else
+            app
+            #endif
+        }
+    }
+
+    @ViewBuilder private var app: some View {
             ZStack {
                 if onboarded {
                     RootView()
@@ -37,6 +53,5 @@ struct GrafityGateApp: App {
                 if onboarded { location.start() }
                 await session.start()
             }
-        }
     }
 }

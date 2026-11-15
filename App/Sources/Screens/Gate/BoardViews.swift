@@ -592,7 +592,7 @@ struct ThreadView: View {
     }
 }
 
-private struct ReplyRow: View {
+struct ReplyRow: View {
     let reply: BoardReply
     let canDelete: Bool
     let isMine: Bool

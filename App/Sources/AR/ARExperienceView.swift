@@ -1369,7 +1369,7 @@ private struct PersonCaptureCard: View {
 
 
 /// TRAIL を歩き終えたときの「ゴール！」（扉の足もとから光が舞い上がったあとに出す）
-private struct TrailGoalOverlay: View {
+struct TrailGoalOverlay: View {
     let goal: TrailReached
     let onClose: () -> Void
 

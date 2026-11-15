@@ -28,6 +28,13 @@ struct MediaStore {
         photos.object(forKey: path as NSString)
     }
 
+    #if DEBUG
+    /// 画面の見本（シミュレーターだけ）：見本の写真を手もとに置く
+    static func seedDemoPhoto(_ image: UIImage, path: String) {
+        photos.setObject(image, forKey: path as NSString)
+    }
+    #endif
+
     // MARK: 写真
 
     /// 写真を送る（向きを直して縮め、JPEG にし直す＝位置などの付加情報は入らない）。置き場所の名前を返す。

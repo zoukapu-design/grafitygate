@@ -1,0 +1,115 @@
+name: 画面の見本
+
+# シミュレーターで見本のデータの画面を開いて撮り、shots ブランチに置く（Claude が文字やボタンの重なりを確かめる）。
+# 見本は Debug の組み立てだけにある画面（App/Sources/Screens/Demo/DemoGallery.swift）。サーバーにはつながない。
+on:
+  workflow_dispatch:
+    inputs:
+      screens:
+        description: "撮る画面（空なら全部。例：cards nearby）"
+        type: string
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: shots
+  cancel-in-progress: true
+
+jobs:
+  shots:
+    runs-on: ${{ vars.MAC_RUNNER || 'macos-15-intel' }}
+    timeout-minutes: 60
+    env:
+      PROJECT_DIR: App
+      SCHEME: GrafityGate
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: いちばん新しい Xcode を選ぶ
+        run: |
+          XC=$(ls -d /Applications/Xcode_*.app | grep -v -i beta | sort -V | tail -1)
+          sudo xcode-select -s "$XC"
+          xcodebuild -version
+
+      - name: XcodeGen を入れる
+        run: brew install xcodegen
+
+      - name: Xcode プロジェクトを作る（鍵なし）
+        run: |
+          : > "$PROJECT_DIR/Config/Secrets.xcconfig"
+          xcodegen generate --spec "$PROJECT_DIR/project.yml"
+
+      - name: パッケージのキャッシュ
+        uses: actions/cache@v4
+        with:
+          path: .spm
+          key: spm-${{ runner.os }}-${{ hashFiles('App/project.yml') }}
+          restore-keys: spm-${{ runner.os }}-
+
+      - name: シミュレーター用に組み立てる
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project "$PROJECT_DIR/$SCHEME.xcodeproj" -scheme "$SCHEME" \
+            -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build -clonedSourcePackagesDirPath .spm \
+            CODE_SIGNING_ALLOWED=NO > build.log 2>&1 || true
+          if ! grep -q "BUILD SUCCEEDED" build.log; then
+            report() { python3 -c 'import sys; t=sys.stdin.read()[-3800:]; print("::error title=%s::%s" % (sys.argv[1], t.replace("%","%25").replace("\r","").replace("\n","%0A")))' "$1"; }
+            grep -E "error:|fatal|Failed" build.log | sed "s#$GITHUB_WORKSPACE/##g" | sort -u | head -60 | report "build errors"
+            exit 1
+          fi
+          APP=$(find build/Build/Products/Debug-iphonesimulator -maxdepth 1 -name "*.app" | head -1)
+          echo "APP=$APP" >> "$GITHUB_ENV"
+          echo "BUNDLE=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")" >> "$GITHUB_ENV"
+
+      - name: 小さい iPhone と大きい iPhone で撮る
+        env:
+          SCREENS_IN: ${{ inputs.screens }}
+        run: |
+          SCREENS="${SCREENS_IN:-cards nearby nearby-detail chat lookback goal board edit-card edit-gate progress notifications onboarding}"
+          mkdir -p shots
+          pick() {
+            xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          want = sys.argv[1]
+          devs = json.load(sys.stdin)["devices"]
+          for runtime, items in sorted(devs.items(), reverse=True):
+              if "iOS" not in runtime: continue
+              for d in items:
+                  if want in d["name"]:
+                      print(d["udid"]); sys.exit(0)
+          ' "$1"
+          }
+          for spec in "small:iPhone SE" "large:Pro Max"; do
+            label="${spec%%:*}"; name="${spec#*:}"
+            UDID=$(pick "$name")
+            if [ -z "$UDID" ]; then echo "::warning title=見本::$name のシミュレーターがありません"; continue; fi
+            xcrun simctl boot "$UDID" || true
+            xcrun simctl bootstatus "$UDID" -b
+            xcrun simctl status_bar "$UDID" override --time 9:41 --batteryState charged --batteryLevel 100 --cellularBars 4 || true
+            xcrun simctl install "$UDID" "$APP"
+            for s in $SCREENS; do
+              xcrun simctl launch --terminate-running-process "$UDID" "$BUNDLE" -GGDemoScreen "$s" \
+                -AppleLanguages "(ja)" -AppleLocale ja_JP > /dev/null
+              sleep 6
+              xcrun simctl io "$UDID" screenshot "shots/$label-$s.png" > /dev/null
+            done
+            xcrun simctl shutdown "$UDID" || true
+          done
+          ls shots | head -50
+          echo "::notice title=見本::$(ls shots | wc -l | tr -d ' ') 枚を撮りました"
+
+      - name: shots ブランチに置く
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd shots
+          git init -q
+          git checkout -q -b shots
+          printf '画面の見本（%s）\n' "$GITHUB_SHA" > README.md
+          git add .
+          git -c user.name="github-actions" -c user.email="github-actions@users.noreply.github.com" commit -qm "画面の見本 ${GITHUB_SHA::7}"
+          git push -qf "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" shots

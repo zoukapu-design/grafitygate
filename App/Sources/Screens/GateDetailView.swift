@@ -1058,7 +1058,8 @@ struct GraffitiCard: View {
          linkNote: String? = nil, inAtlas: Bool? = nil, onToggleAtlas: @escaping () -> Void = {},
          commentCount: Int = 0, onComments: (() -> Void)? = nil,
          saved: Bool? = nil, onToggleSave: @escaping () -> Void = {}, onEdit: (() -> Void)? = nil,
-         onSendToFriend: (() -> Void)? = nil) {
+         onSendToFriend: (() -> Void)? = nil, startFlipped: Bool = false) {
+        _flipped = State(initialValue: startFlipped)
         self.item = item
         self.author = author
         self.isMine = isMine
