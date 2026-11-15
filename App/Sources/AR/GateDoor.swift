@@ -383,6 +383,15 @@ final class GateDoor {
 
     // MARK: 動き
 
+    /// 扉の大きさ（1 = 人が通る大きさ）。作品は base に付くので、扉の大きさを変えても作品はそのまま
+    private(set) var size: Float = 1
+
+    func setSize(_ value: Float) {
+        let v = min(max(value, 0.2), 1.5)
+        size = v
+        root.scale = .one * v
+    }
+
     /// 足もとから現れ、ネオンがまたたいて灯る
     func appear() {
         root.position = [0, -0.05, 0]

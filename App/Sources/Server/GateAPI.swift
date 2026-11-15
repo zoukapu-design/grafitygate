@@ -51,6 +51,16 @@ struct GateAPI {
         return try await client.rpc("gf_create_gate", params: params).execute().value
     }
 
+    /// 扉の大きさ（作った本人が決めたもの。1 = 人が通る大きさ）
+    func doorScale(_ gate: UUID) async throws -> Float {
+        let door: DoorInfo = try await client.rpc("gf_gate_door", params: GateParam(p_gate: gate)).execute().value
+        return door.scale
+    }
+
+    func setDoorScale(gate: UUID, scale: Float) async throws {
+        try await client.rpc("gf_set_door_scale", params: DoorScaleParams(p_gate: gate, p_scale: scale)).execute()
+    }
+
     /// 見本の写真の特徴の数と上限（作った本人だけ）
     func gateRefCount(_ gate: UUID) async throws -> RefCount {
         try await client.rpc("gf_gate_ref_count", params: GateParam(p_gate: gate)).execute().value
@@ -495,4 +505,14 @@ private struct AddRefsParams: Encodable {
     let p_lon: Double
     let p_accuracy: Double
     let p_refs: [RefPayload]
+}
+
+
+private struct DoorInfo: Decodable {
+    let scale: Float
+}
+
+private struct DoorScaleParams: Encodable {
+    let p_gate: UUID
+    let p_scale: Float
 }

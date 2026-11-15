@@ -32,6 +32,11 @@ struct ARExperienceView: View {
                     .onChanged { value in model.rotateDoor(by: value.rotation.radians) }
                     .onEnded { _ in model.endRotate() },
                                      including: model.adjustingDoor ? .all : .none)
+                // 扉の大きさ：2 本の指でつまむ（置くとき・作った本人が合わせるとき）
+                .simultaneousGesture(MagnifyGesture()
+                    .onChanged { value in model.pinchDoor(by: value.magnification) }
+                    .onEnded { _ in model.endPinch() },
+                                     including: model.canResizeDoor ? .all : .none)
             if model.showsReticle {
                 Reticle()
                     .allowsHitTesting(false)
@@ -226,8 +231,12 @@ private struct ExperienceCard: View {
     /// 扉の位置を指で合わせる
     private var adjustCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Title("扉の位置を合わせる")
+            Title(model.isGateOwner ? "扉の位置・大きさ" : "扉の位置を合わせる")
             Caption("画面をなぞると、指の下の地面へ扉が動きます。2 本の指で回すと向きが変わります。動かしたのは、あなたの画面の中だけです。")
+            if model.isGateOwner {
+                DoorSizePicker(model: model)
+                Caption("大きさは、入った人にも同じ大きさで出ます。")
+            }
             HStack(spacing: 10) {
                 Button("元に戻す") { model.resetAdjust() }
                     .buttonStyle(SecondaryButtonStyle())
@@ -313,8 +322,11 @@ private struct ExperienceCard: View {
         case .createPlace:
             VStack(alignment: .leading, spacing: 10) {
                 Title("扉を置く")
-                Caption(model.hasPlacedDoor ? "置き直すときは、別の所の地面を押してください。"
-                                            : "扉を置きたい所の地面を、画面で押してください。")
+                Caption(model.hasPlacedDoor ? "置き直すときは、別の所の地面を押してください。2 本の指でつまむと、扉の大きさが変わります。"
+                                            : "扉を置きたい所の地面（机の上の物なら机の上）を、画面で押してください。")
+                if model.hasPlacedDoor {
+                    DoorSizePicker(model: model)
+                }
                 Button("ここに置く") { model.confirmPlace() }
                     .buttonStyle(PrimaryButtonStyle())
                     .disabled(!model.hasPlacedDoor)
@@ -688,10 +700,17 @@ private struct DoorOpenCard: View {
                 }
                 .buttonStyle(SecondaryButtonStyle())
             } else if model.isGateOwner {
-                Button {
-                    model.startRemap()
-                } label: {
-                    Label("場所の記憶を撮り直す", systemImage: "arrow.triangle.2.circlepath.camera")
+                HStack(spacing: 16) {
+                    Button {
+                        model.beginAdjust()
+                    } label: {
+                        Label("扉の大きさ", systemImage: "arrow.up.left.and.arrow.down.right")
+                    }
+                    Button {
+                        model.startRemap()
+                    } label: {
+                        Label("場所の記憶を撮り直す", systemImage: "arrow.triangle.2.circlepath.camera")
+                    }
                 }
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(Theme.accent)
@@ -1215,5 +1234,36 @@ private extension ArtworkColor {
     var swatch: Color {
         let (r, g, b) = rgb
         return Color(red: Double(r), green: Double(g), blue: Double(b))
+    }
+}
+
+
+/// 扉の大きさ：小・中・大（いまの大きさに近いものが選ばれて見える）。つまんで細かく変えることもできる
+private struct DoorSizePicker: View {
+    @ObservedObject var model: ARExperienceModel
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text("大きさ").font(.caption.weight(.semibold)).foregroundStyle(Theme.textSecondary)
+            ForEach(ARExperienceModel.doorSizes, id: \.label) { size in
+                let selected = abs(model.doorScale - size.scale) < 0.08
+                Button {
+                    withAnimation(.snappy) { model.setDoorScale(size.scale) }
+                    model.endPinch()
+                    Haptics.tap()
+                } label: {
+                    Text(size.label)
+                        .font(.subheadline.weight(.semibold))
+                        .frame(width: 44, height: 32)
+                        .foregroundStyle(selected ? .white : Theme.text)
+                        .background(selected ? Theme.accent : Theme.surfaceElevated, in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+            Spacer(minLength: 0)
+            Text(String(format: "%.0f%%", model.doorScale * 100))
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(Theme.textSecondary)
+        }
     }
 }

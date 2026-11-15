@@ -60,6 +60,41 @@ final class ARExperienceModel: ObservableObject {
 
     /// 作るときの種類（はじめに選ぶ）
     var createKind: GateKind { GateKind(raw: form.kind) }
+    /// 扉の大きさ（1 = 人が通る大きさ）。作る人が置くときに選び、サーバーに残して見る人にも同じ大きさで出す
+    @Published private(set) var doorScale: Float = 1
+    static let doorSizes: [(label: String, scale: Float)] = [("小", 0.3), ("中", 0.6), ("大", 1.0)]
+    /// 種類ごとのはじめの大きさ（机の上の物に人の大きさの扉は大きすぎる）
+    static func defaultDoorScale(for kind: GateKind) -> Float {
+        switch kind {
+        case .object: return 0.35
+        case .place, .view: return 1.0
+        }
+    }
+    /// つまんで大きさを変えるときの、つまみ始めの大きさ
+    private var pinchStartScale: Float?
+    /// サーバーに残っている扉の大きさ
+    private var savedDoorScale: Float = 1
+
+    func setDoorScale(_ value: Float) {
+        doorScale = min(max(value, 0.2), 1.5)
+        door?.setSize(doorScale)
+    }
+
+    func pinchDoor(by magnification: CGFloat) {
+        let start = pinchStartScale ?? doorScale
+        pinchStartScale = start
+        setDoorScale(start * Float(magnification))
+    }
+
+    func endPinch() {
+        pinchStartScale = nil
+        Trace.log(String(format: "扉の大きさ：%.2f 倍", doorScale))
+    }
+
+    /// 扉の大きさを変えられるとき（作って置くとき・作った本人が位置を合わせるとき）
+    var canResizeDoor: Bool {
+        (phase == .createPlace && hasPlacedDoor) || (adjustingDoor && isGateOwner)
+    }
     /// 入る・見え方を足す GATE の種類（分かったら入れる。景色なら写真の確かめを景色用にする）
     @Published private(set) var targetKind: GateKind?
     /// 見え方を足すときに写した写真の特徴
@@ -332,6 +367,9 @@ final class ARExperienceModel: ObservableObject {
             isGateOwner = summary.owner == session?.userID
             // 景色の GATE は、扉の向こうに本物の景色が見える額縁にする
             targetKind = GateKind(raw: summary.kind)
+            // 扉の大きさは作った人が決めたもの（前のサーバーでは 1 倍）
+            doorScale = (try? await api.doorScale(gate)) ?? 1
+            savedDoorScale = doorScale
         }
         if let api = session?.api, let media = session?.media, let info = try? await api.placeMap(gate) {
             phase = .findingPlace
@@ -368,6 +406,7 @@ final class ARExperienceModel: ObservableObject {
         currentAnchor = anchor
         do {
             let newDoor = try GateDoor(anchor: anchor, in: stage.arView, style: targetKind == .view ? .window : .portal)
+            newDoor.setSize(doorScale)
             door = newDoor
             hasPlacedDoor = true
             newDoor.appear()
@@ -521,6 +560,7 @@ final class ARExperienceModel: ObservableObject {
     /// 何を GATE にするかを選んで、写し始める
     func chooseKind(_ kind: GateKind) {
         form.kind = kind.rawValue
+        doorScale = Self.defaultDoorScale(for: kind)
         notice = nil
         Trace.log("作る：種類「\(kind.label)」")
         phase = .createShoot(0)
@@ -597,6 +637,7 @@ final class ARExperienceModel: ObservableObject {
         let anchor = stage.addAnchor(named: "gg.gate", transform: stage.facingCamera(at: floor))
         do {
             let newDoor = try GateDoor(anchor: anchor, in: stage.arView, style: createKind == .view ? .window : .portal)
+            newDoor.setSize(doorScale)
             newDoor.appear()
             door = newDoor
             doorAnchor = anchor
@@ -672,6 +713,16 @@ final class ARExperienceModel: ObservableObject {
                                                 heading: location?.heading, coverPath: form.useCover ? uploadedCover : nil,
                                                 prints: shots.map(\.print))
                 createdGate = gate
+                // 扉の大きさ（前のサーバーでは無いので、送れなくても続ける）
+                savedDoorScale = 1
+                if abs(doorScale - 1) > 0.01 {
+                    do {
+                        try await api.setDoorScale(gate: gate, scale: doorScale)
+                        savedDoorScale = doorScale
+                    } catch {
+                        Trace.log("扉の大きさを残せませんでした：\(ErrorText.of(error))")
+                    }
+                }
                 Trace.log(String(format: "GATE を作りました（位置の精度 ±%.0fm%@）", fix.horizontalAccuracy,
                                  retrying ? "・送り直し" : ""))
             }
@@ -692,10 +743,17 @@ final class ARExperienceModel: ObservableObject {
                 }
             }
 
-            // 3. 作った人も、同じ手順で入る
+            // 3. 作った人も、同じ手順で入る（新しい合言葉・いまの位置・写真の特徴をサーバーが確かめる）。
+            // 写真の特徴は、さっき正面から写したもの。前はここでカメラの絵を写し直していたが、扉を置いて見回したあとの
+            // カメラは床や別の方向を向いているので、登録した物と合わず「写したものが合いません」になっていた（2026-11-15）。
             phase = .createSaving("扉を開けています…")
-            let shot = try await stage.grabShot(withPhoto: false)
-            let result = try await api.enter(gate: gate, location: fix, print: shot.print)
+            let print: [Float]
+            if let front = shots.first?.print {
+                print = front
+            } else {
+                print = try await stage.grabShot(withPhoto: false).print
+            }
+            let result = try await api.enter(gate: gate, location: fix, print: print)
             enteredGate = gate
             if result.ok {
                 visitID = result.visit_id
@@ -770,6 +828,20 @@ extension ARExperienceModel {
     func finishAdjust() {
         adjustingDoor = false
         rotateStartYaw = nil
+        // 作った本人が大きさを変えたら、サーバーに残す（入った人にも同じ大きさで出る）
+        if isGateOwner, abs(doorScale - savedDoorScale) > 0.01, let gate = enteredGate, let api = session?.api {
+            let scale = doorScale
+            Task {
+                do {
+                    try await api.setDoorScale(gate: gate, scale: scale)
+                    savedDoorScale = scale
+                    showToast("扉の大きさを保存しました")
+                    Trace.log(String(format: "扉の大きさを保存しました（%.2f 倍）", scale))
+                } catch {
+                    notice = ErrorText.of(error)
+                }
+            }
+        }
         if let door {
             Trace.log(String(format: "扉の位置を指で合わせました（印から %.2fm・%.0f°）",
                              simd_length(door.nudgePosition), door.nudgeYaw * 180 / .pi))
