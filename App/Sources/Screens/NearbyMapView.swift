@@ -53,7 +53,8 @@ struct NearbyMapView: View {
                                         selected = selected == gate.id ? nil : gate.id
                                     }
                                 } label: {
-                                    GatePin(mine: gate.mine, selected: selected == gate.id)
+                                    GatePin(mine: gate.mine, selected: selected == gate.id,
+                                            coverPath: gate.cover_path, ownerName: gate.owner_name)
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -251,26 +252,63 @@ private struct NearbyGateCard: View {
 }
 
 /// 地図の GATE の印：アイコンと同じネオンの扉（自分の GATE は夕焼けの色の縁）
+/// 地図の GATE の印：表紙の写真（無ければ扉のしるし）に、作った人の顔の丸と名前。自分のものはだいだいの縁で「あなた」
 struct GatePin: View {
     let mine: Bool
     var selected = false
+    var coverPath: String? = nil
+    var ownerName: String? = nil
+    /// 名前の札を出すか（たくさん並ぶ地図では選んだものだけ）
+    var showsName = true
+
+    @EnvironmentObject private var session: SessionModel
+
+    private var size: CGFloat { selected ? 52 : 40 }
+    private var border: Color { mine ? Theme.warm : .white }
+    private var nameText: String { mine ? "あなた" : (ownerName ?? "") }
 
     var body: some View {
-        VStack(spacing: 0) {
-            Image("BrandMark")
-                .resizable()
-                .interpolation(.high)
-                .frame(width: selected ? 46 : 34, height: selected ? 46 : 34)
-                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .stroke(mine ? Theme.warm : .white, lineWidth: mine ? 3 : 2))
-                .shadow(color: .black.opacity(0.25), radius: 4, y: 2)
-            Triangle()
-                .fill(mine ? Theme.warm : .white)
-                .frame(width: 10, height: 6)
-                .shadow(color: .black.opacity(0.15), radius: 1, y: 1)
+        VStack(spacing: 2) {
+            VStack(spacing: 0) {
+                ZStack(alignment: .bottomTrailing) {
+                    Group {
+                        if let coverPath {
+                            RemotePhoto(path: coverPath)
+                        } else {
+                            Image("BrandMark").resizable().interpolation(.high)
+                        }
+                    }
+                    .frame(width: size, height: size)
+                    .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).stroke(border, lineWidth: mine ? 3 : 2.5))
+                    .shadow(color: .black.opacity(0.28), radius: 4, y: 2)
+                    if !nameText.isEmpty {
+                        // 作った人の顔の丸
+                        NeonAvatar(name: mine ? (session.profile?.display_name ?? "あなた") : nameText, size: selected ? 24 : 20)
+                            .background(Circle().fill(.white))
+                            .overlay(Circle().stroke(.white, lineWidth: 1.5))
+                            .offset(x: 7, y: 7)
+                    }
+                }
+                Triangle()
+                    .fill(border)
+                    .frame(width: 10, height: 6)
+                    .shadow(color: .black.opacity(0.15), radius: 1, y: 1)
+            }
+            if showsName && !nameText.isEmpty {
+                Text(nameText)
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(mine ? .white : Theme.text)
+                    .lineLimit(1)
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(mine ? Theme.warm : Color.white.opacity(0.92), in: Capsule())
+                    .shadow(color: .black.opacity(0.15), radius: 2, y: 1)
+                    .frame(maxWidth: 90)
+            }
         }
-        .accessibilityLabel(mine ? "自分の GATE" : "GATE")
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: selected)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(mine ? "あなたの GATE" : "\(ownerName ?? "だれか") さんの GATE")
     }
 }
 

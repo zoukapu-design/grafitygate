@@ -56,6 +56,8 @@ struct GateDetailView: View {
     @State private var trails: [TrailSummary] = []
     @State private var stats: GateStats?
     @State private var health: PlaceMapHealth?
+    /// 作った本人には正確な位置
+    @State private var exactPlace: CLLocationCoordinate2D?
 
     init(gateID: UUID, tab: GateTab = .graffiti) {
         self.gateID = gateID
@@ -226,6 +228,11 @@ struct GateDetailView: View {
                         chip(Visibility.label(of: s.visibility), "eye")
                     }
                 }
+                // いつ・どこで
+                GateWhereWhen(title: s.title, createdAt: s.created_at,
+                              coordinate: exactPlace ?? CLLocationCoordinate2D(latitude: s.approx_lat, longitude: s.approx_lon),
+                              exact: exactPlace != nil, coverPath: s.cover_path,
+                              mine: s.owner == session.userID, ownerName: s.owner_name)
                 if let health {
                     placeMemoryNote(health)
                 }
@@ -396,6 +403,9 @@ struct GateDetailView: View {
             trails = (try? await api.trails(including: gateID)) ?? []
             stats = try? await api.gateStats(gateID)
             health = summary?.owner == session.userID ? (try? await api.placeMapHealth(gateID)) ?? nil : nil
+            if summary?.owner == session.userID {
+                exactPlace = (try? await api.myGate(gateID))?.coordinate
+            }
         } catch {
             loadError = ErrorText.of(error)
         }

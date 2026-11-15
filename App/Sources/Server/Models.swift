@@ -1,5 +1,6 @@
 import CoreGraphics
 import Foundation
+import CoreLocation
 
 // サーバー（Supabase の gf_ 関数）が返す形。名前はサーバーの列名に合わせている。
 
@@ -167,6 +168,16 @@ struct MyGate: Decodable, Identifiable, Hashable {
     let created_at: String
     /// 表紙の写真（付けなかったときは無い）
     var cover_path: String? = nil
+    /// 作った所（本人には正確な位置が見える）
+    var lat: Double? = nil
+    var lon: Double? = nil
+    var kind: String? = nil
+    var note: String? = nil
+
+    var coordinate: CLLocationCoordinate2D? {
+        guard let lat, let lon else { return nil }
+        return CLLocationCoordinate2D(latitude: lat, longitude: lon)
+    }
 }
 
 /// GATE に置いた AR の作品（表 gf_artworks。見てよいものだけがサーバーから返る）。

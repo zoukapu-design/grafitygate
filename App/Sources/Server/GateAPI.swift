@@ -51,6 +51,16 @@ struct GateAPI {
         return try await client.rpc("gf_create_gate", params: params).execute().value
     }
 
+    /// 自分の GATE 1 つ（本人には正確な位置）
+    func myGate(_ id: UUID) async throws -> MyGate? {
+        let rows: [MyGate] = try await client.from("gf_gates")
+            .select("id,title,visibility,status,created_at,cover_path,lat,lon,kind,note")
+            .eq("id", value: id.uuidString)
+            .limit(1)
+            .execute().value
+        return rows.first
+    }
+
     /// 扉の大きさ（作った本人が決めたもの。1 = 人が通る大きさ）
     func doorScale(_ gate: UUID) async throws -> Float {
         let door: DoorInfo = try await client.rpc("gf_gate_door", params: GateParam(p_gate: gate)).execute().value
@@ -232,7 +242,7 @@ struct GateAPI {
 
     func myGates(owner: UUID) async throws -> [MyGate] {
         try await client.from("gf_gates")
-            .select("id,title,visibility,status,created_at,cover_path")
+            .select("id,title,visibility,status,created_at,cover_path,lat,lon,kind,note")
             .eq("owner", value: owner.uuidString)
             .order("created_at", ascending: false)
             .execute().value
