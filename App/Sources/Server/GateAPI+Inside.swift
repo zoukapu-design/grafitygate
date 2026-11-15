@@ -261,6 +261,13 @@ extension GateAPI {
     // MARK: 通報とブロック
 
     func report(_ target: ReportTarget, id: UUID, reason: ReportReason, note: String) async throws {
+        if target == .nearby_card {
+            // 近くで見た友達のカード（GATE の外。近くの券で確かめる）
+            try await client.rpc("gf_report_nearby_card",
+                                 params: ReportDMParams(p_id: id, p_reason: reason.rawValue, p_note: note.isEmpty ? nil : note))
+                .execute()
+            return
+        }
         if target == .dm {
             try await client.rpc("gf_report_dm",
                                  params: ReportDMParams(p_id: id, p_reason: reason.rawValue, p_note: note.isEmpty ? nil : note))

@@ -641,6 +641,8 @@ enum ReportReason: String, CaseIterable, Identifiable {
 /// 通報できるもの（サーバーの gf_reports.target_kind と同じ）
 enum ReportTarget: String {
     case gate, graffiti, artwork, thread, reply, memory, memory_item, letter, user, dm, trail, snapshot, card_comment
+    /// 近くで見た友達のカード（サーバーには graffiti として残る。gf_report_nearby_card）
+    case nearby_card
 }
 
 // MARK: - TRAIL と今と昔

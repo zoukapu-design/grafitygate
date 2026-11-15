@@ -21,10 +21,79 @@ struct NearbyMapView: View {
     @State private var showSearch = false
     /// 探して選んだ場所（地図に印を出し、歩いて行く道を開ける）
     @State private var place: MKMapItem?
+    /// 上の切り替え：地図／近くの友達のカード
+    @State private var mode: Mode = .map
+    @StateObject private var nearbyCards = NearbyCardsModel()
+
+    enum Mode: Hashable { case map, cards }
 
     var body: some View {
         NavigationStack {
             ScreenScaffold(title: "地図") {
+                VStack(spacing: 0) {
+                    Picker("見るもの", selection: $mode) {
+                        Text("地図").tag(Mode.map)
+                        Text(nearbyCards.deck.isEmpty ? "近くの友達のカード" : "近くの友達のカード \(nearbyCards.deck.count)")
+                            .tag(Mode.cards)
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    if mode == .cards {
+                        NearbyCardsView(model: nearbyCards)
+                    } else {
+                        mapContent
+                    }
+                }
+            }
+            .task(id: location.location?.timestamp) {
+                await refreshIfMoved()
+                await nearbyCards.refresh(api: session.api, location: location.location)
+            }
+            .task(id: session.state) {
+                await refresh(force: true)
+                await loadWalking()
+            }
+            .sheet(isPresented: $showSearch) {
+                MapSearchSheet { item in
+                    mode = .map
+                    place = item
+                    withAnimation(.easeInOut(duration: 0.6)) {
+                        position = .region(MKCoordinateRegion(center: MapSearchSheet.coordinate(of: item),
+                                                              latitudinalMeters: 700, longitudinalMeters: 700))
+                    }
+                }
+                .environmentObject(session)
+                .environmentObject(location)
+                .environmentObject(nav)
+            }
+            .toolbar { toolbarContent }
+        }
+    }
+
+    @ToolbarContentBuilder private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            Button {
+                showSearch = true
+            } label: {
+                Label("探す", systemImage: "magnifyingglass")
+                    .labelStyle(.titleAndIcon)
+                    .font(.subheadline.weight(.semibold))
+            }
+            .accessibilityLabel("GATE や場所を名前で探す")
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            NavigationLink {
+                TrailListView()
+            } label: {
+                Label("TRAIL", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
+                    .labelStyle(.titleAndIcon)
+                    .font(.subheadline.weight(.semibold))
+            }
+        }
+    }
+
+    private var mapContent: some View {
                 VStack(spacing: 0) {
                     Map(position: $position) {
                         UserAnnotation()
@@ -78,46 +147,6 @@ struct NearbyMapView: View {
 
                     nearbyList
                 }
-            }
-            .task(id: location.location?.timestamp) { await refreshIfMoved() }
-            .task(id: session.state) {
-                await refresh(force: true)
-                await loadWalking()
-            }
-            .sheet(isPresented: $showSearch) {
-                MapSearchSheet { item in
-                    place = item
-                    withAnimation(.easeInOut(duration: 0.6)) {
-                        position = .region(MKCoordinateRegion(center: MapSearchSheet.coordinate(of: item),
-                                                              latitudinalMeters: 700, longitudinalMeters: 700))
-                    }
-                }
-                .environmentObject(session)
-                .environmentObject(location)
-                .environmentObject(nav)
-            }
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        showSearch = true
-                    } label: {
-                        Label("探す", systemImage: "magnifyingglass")
-                            .labelStyle(.titleAndIcon)
-                            .font(.subheadline.weight(.semibold))
-                    }
-                    .accessibilityLabel("GATE や場所を名前で探す")
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    NavigationLink {
-                        TrailListView()
-                    } label: {
-                        Label("TRAIL", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
-                            .labelStyle(.titleAndIcon)
-                            .font(.subheadline.weight(.semibold))
-                    }
-                }
-            }
-        }
     }
 
     private var nearbyList: some View {

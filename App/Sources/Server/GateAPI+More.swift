@@ -1,3 +1,4 @@
+import CoreLocation
 import Foundation
 import Supabase
 
@@ -72,6 +73,17 @@ extension GateAPI {
     func updateTrail(_ id: UUID, title: String, note: String, visibility: Visibility) async throws {
         try await client.rpc("gf_update_trail", params: UpdateTrailParam(p_trail: id, p_title: title, p_note: note,
                                                                           p_visibility: visibility.rawValue)).execute()
+    }
+
+    // MARK: 近くにある友達のカード（0020）
+
+    /// いまいる所から 300m 以内の GATE にある、友達のカード（近いもの・新しいものから）
+    func nearbyCards(at location: CLLocation) async throws -> [NearbyCard] {
+        try await client.rpc("gf_nearby_cards",
+                             params: NearbyCardsParam(p_lat: location.coordinate.latitude,
+                                                      p_lon: location.coordinate.longitude,
+                                                      p_accuracy: Float(max(location.horizontalAccuracy, 0))))
+            .execute().value
     }
 
     // MARK: 自分の訪問・お知らせの設定
@@ -149,6 +161,25 @@ struct GateSearchHit: Decodable, Identifiable, Hashable {
     var gateKind: GateKind { GateKind(rawValue: kind) ?? .place }
 }
 
+/// 近くにある友達のカード（gf_nearby_cards）。GATE の場所はおおよそ、距離もおおよそ
+struct NearbyCard: Decodable, Identifiable, Hashable {
+    let id: UUID
+    let gate_id: UUID
+    let gate_title: String
+    let gate_kind: String
+    let author: UUID
+    let author_name: String
+    let body: String
+    let photo_path: String?
+    let created_at: String
+    let approx_lat: Double
+    let approx_lon: Double
+    let distance_m: Double
+
+    var gateCoordinate: CLLocationCoordinate2D { CLLocationCoordinate2D(latitude: approx_lat, longitude: approx_lon) }
+}
+
+private struct NearbyCardsParam: Encodable { let p_lat: Double; let p_lon: Double; let p_accuracy: Float }
 private struct VisitDay: Decodable { let visited_at: String }
 private struct MoreGateParam: Encodable { let p_gate: UUID }
 private struct MoreTrailParam: Encodable { let p_trail: UUID }

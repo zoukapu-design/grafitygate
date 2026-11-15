@@ -43,6 +43,12 @@ enum ErrorText {
         return (error as NSError).domain == NSURLErrorDomain && (error as NSError).code == NSURLErrorCancelled
     }
 
+    /// サーバーが断った理由の印（gf_…）がふくまれるか
+    static func hasCode(_ error: Error, _ code: String) -> Bool {
+        let message = (error as? PostgrestError)?.message ?? error.localizedDescription
+        return message.contains(code)
+    }
+
     /// サーバーに関数がまだ無い（新しい SQL を入れる前）
     static func isMissingFunction(_ error: Error) -> Bool {
         let message = (error as? PostgrestError)?.message ?? error.localizedDescription
