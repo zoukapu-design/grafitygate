@@ -135,6 +135,10 @@ final class ARExperienceModel: ObservableObject {
     @Published var reportItem: ReportItem?
     /// この入場で進んだ TRAIL（「TRAIL「…」の 2/5 に着きました」）
     @Published var trailNote: String?
+    /// 歩き終えた TRAIL（「ゴール！」を出す）
+    @Published var trailGoal: TrailReached?
+    /// 扉が出たら光を出す、着いた TRAIL
+    private var pendingTrail: [TrailReached] = []
     /// 扉の位置を指で合わせているあいだ（仮の位置に出たとき。動かすのは自分の画面だけ）
     @Published private(set) var adjustingDoor = false
     /// この GATE を作った本人か（GATE の位置の記録を撮り直せる）
@@ -158,6 +162,8 @@ final class ARExperienceModel: ObservableObject {
     private(set) var enteredGate: UUID?
     /// いまの入場券（AR の飾りを置く・動かすのに使う）と、その期限
     var visitID: UUID?
+    /// 入ろうとしている GATE の方向の案内（GATE の画面から開いたとき）
+    @Published var guideGate: GuideGate?
     private var keeperWatch: AnyCancellable?
     var visitExpires: Date?
     var artScene: ArtworkScene?
@@ -237,7 +243,13 @@ final class ARExperienceModel: ObservableObject {
         case .explore:
             return
         case .enter(let gate):
-            targetKind = GateKind(raw: try? await api.summary(gate)?.kind)
+            let summary = try? await api.summary(gate)
+            targetKind = GateKind(raw: summary?.kind)
+            if let summary {
+                // カメラの景色に、この GATE の方向と距離を出す（場所はおおよそ）
+                guideGate = GuideGate(id: summary.id, title: summary.title,
+                                      latitude: summary.approx_lat, longitude: summary.approx_lon)
+            }
         case .addLooks(let gate):
             targetKind = GateKind(raw: try? await api.summary(gate)?.kind)
             if let c = try? await api.gateRefCount(gate) { refCount = (c.count, c.max) }
@@ -265,6 +277,8 @@ final class ARExperienceModel: ObservableObject {
         visitID = nil
         visitExpires = nil
         trailNote = nil
+        trailGoal = nil
+        pendingTrail = []
         isGateOwner = false
         lookShots = []
         if case .addLooks = mode {
@@ -433,6 +447,13 @@ final class ARExperienceModel: ObservableObject {
             newDoor.appear()
             Haptics.success()
             phase = .doorClosed
+            if !pendingTrail.isEmpty {
+                let reached = pendingTrail
+                Task {
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                    celebrateTrail(reached)
+                }
+            }
             Trace.log(placedPrecisely ? "扉を作った人と同じ位置に出しました" : "扉を仮の位置（2m 前）に出しました")
             makeArtScene()
             Task { await loadDoorPhotos(gate) }
@@ -450,6 +471,34 @@ final class ARExperienceModel: ObservableObject {
         }.joined(separator: "\n")
         Haptics.success()
         Trace.log("TRAIL が進みました（\(reached.count) 本）")
+        if door != nil {
+            celebrateTrail(reached)
+        } else {
+            pendingTrail = reached
+        }
+    }
+
+    /// TRAIL の地点に着いた・歩き終えたときの演出（扉の足もとの光・鐘・ゴールの画面）
+    private func celebrateTrail(_ reached: [TrailReached]) {
+        pendingTrail = []
+        let goal = reached.first(where: \.completed)
+        door?.celebrate(big: goal != nil)
+        let notes: [ArtworkColor] = goal != nil ? [.warm, .sakura, .mint, .sky, .sky] : [.warm, .sky]
+        Task {
+            for (i, note) in notes.enumerated() {
+                if i > 0 { try? await Task.sleep(nanoseconds: 180_000_000) }
+                ChimePlayer.shared.play(note)
+            }
+        }
+        if let goal {
+            Haptics.success()
+            Task {
+                try? await Task.sleep(nanoseconds: 1_200_000_000)
+                trailGoal = goal
+            }
+        } else if let first = reached.first {
+            showToast("TRAIL「\(first.title)」 \(first.reached)/\(first.stop_count) に着きました")
+        }
     }
 
     /// GATE の位置の記録を探すのをやめて、仮の位置に出す

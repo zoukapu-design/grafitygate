@@ -115,3 +115,82 @@ struct TrailCompassPill: View {
         }
     }
 }
+
+
+/// カメラの景色に出す「GATE の方向」（GATE の画面から開いたとき・撮る画面でいちばん近い GATE）。場所はおおよそ
+struct GuideGate: Equatable {
+    let id: UUID
+    let title: String
+    let latitude: Double
+    let longitude: Double
+
+    var coordinate: CLLocationCoordinate2D { CLLocationCoordinate2D(latitude: latitude, longitude: longitude) }
+
+    init(id: UUID, title: String, latitude: Double, longitude: Double) {
+        self.id = id
+        self.title = title
+        self.latitude = latitude
+        self.longitude = longitude
+    }
+
+    init(_ near: NearbyGate) {
+        self.init(id: near.id, title: near.title, latitude: near.approx_lat, longitude: near.approx_lon)
+    }
+}
+
+/// GATE の方向と距離（矢印は、端末の向きと GATE の方角から）。GATE の場所はおおよそ（約 100m）なので、
+/// 60m 以内では矢印を出さず「このあたり」と出して、作った人が写したものを探してもらう
+struct GateCompassPill: View {
+    let target: GuideGate
+
+    @EnvironmentObject private var location: LocationModel
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 0.4)) { _ in
+            content
+        }
+    }
+
+    @ViewBuilder private var content: some View {
+        if let here = location.location {
+            let distance = here.distance(from: CLLocation(latitude: target.latitude, longitude: target.longitude))
+            let bearing = TrailGuide.bearing(from: here.coordinate, to: target.coordinate)
+            let arrived = distance < 60
+            if distance < 3000 {
+                HStack(spacing: 10) {
+                    ZStack {
+                        Circle().fill(Theme.accent).frame(width: 34, height: 34)
+                        if arrived {
+                            Image(systemName: "viewfinder").font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
+                        } else if let heading = location.heading {
+                            Image(systemName: "location.north.fill")
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(.white)
+                                .rotationEffect(.degrees(bearing - heading))
+                                .animation(.easeOut(duration: 0.35), value: Int(bearing - heading))
+                        } else {
+                            Image(systemName: "figure.walk").font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
+                        }
+                    }
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(target.title)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(Theme.textSecondary)
+                            .lineLimit(1)
+                        Text(arrived ? "このあたりです。作った人が写したものを探してください"
+                                     : "GATE まで \(TrailGuide.distanceText(distance))・矢印の方へ")
+                            .font(.footnote.weight(.bold))
+                            .foregroundStyle(Theme.text)
+                            .lineLimit(2)
+                    }
+                }
+                .padding(.leading, 6)
+                .padding(.trailing, 14)
+                .padding(.vertical, 6)
+                .background(.ultraThinMaterial, in: Capsule())
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(arrived ? "\(target.title) のあたりです" : "\(target.title) まで \(TrailGuide.distanceText(distance))")
+            }
+        }
+    }
+}

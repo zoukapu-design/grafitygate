@@ -44,10 +44,17 @@ struct ARExperienceView: View {
             HandCursorView(hand: model.hand)
             VStack(spacing: 12) {
                 ARTopBar(model: model, stage: model.stage, onClose: onClose)
-                if let trailTarget, model.mode == .explore, model.phase == .scanning {
-                    TrailCompassPill(target: trailTarget)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .transition(.opacity)
+                if model.phase == .scanning {
+                    if let trailTarget, model.mode == .explore {
+                        TrailCompassPill(target: trailTarget)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .transition(.opacity)
+                    } else if let gate = model.guideGate ?? (model.mode == .explore ? model.nearby.first.map(GuideGate.init) : nil) {
+                        // GATE の画面から開いたときはその GATE、撮る画面ではいちばん近い GATE の方向
+                        GateCompassPill(target: gate)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .transition(.opacity)
+                    }
                 }
                 if let caption = model.toast ?? model.artCaption {
                     Text(caption)
@@ -87,6 +94,15 @@ struct ARExperienceView: View {
             // 次の地点が 100m 以内に入ったら、少し細かい位置で案内する
             if let t = trailTarget { trailTarget = TrailGuide.target(trail: t.trail, stop: t.stop, nearby: nearby) ?? t }
         }
+        .overlay {
+            if let goal = model.trailGoal {
+                TrailGoalOverlay(goal: goal) {
+                    withAnimation(.easeOut(duration: 0.25)) { model.trailGoal = nil }
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.92)))
+            }
+        }
+        .animation(.spring(response: 0.45, dampingFraction: 0.8), value: model.trailGoal)
         .sheet(item: $model.reportItem) { item in
             ReportSheet(item: item) { model.removeArtworks(of: item.userID) }
                 .environmentObject(session)
@@ -1348,5 +1364,58 @@ private struct PersonCaptureCard: View {
                 }
             }
         }
+    }
+}
+
+
+/// TRAIL を歩き終えたときの「ゴール！」（扉の足もとから光が舞い上がったあとに出す）
+private struct TrailGoalOverlay: View {
+    let goal: TrailReached
+    let onClose: () -> Void
+
+    @State private var glow = false
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.45).ignoresSafeArea()
+                .onTapGesture(perform: onClose)
+            VStack(spacing: 16) {
+                ZStack {
+                    Circle()
+                        .fill(Theme.neonBand)
+                        .frame(width: 112, height: 112)
+                        .blur(radius: glow ? 22 : 10)
+                        .opacity(0.8)
+                    GateMark(size: 76, glowing: true)
+                }
+                .animation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true), value: glow)
+                Text("ゴール！")
+                    .font(.system(size: 40, weight: .heavy, design: .rounded))
+                    .foregroundStyle(Theme.neonBand)
+                Text("TRAIL「\(goal.title)」")
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(Theme.text)
+                    .multilineTextAlignment(.center)
+                Text("\(goal.stop_count) か所の GATE を、順番に歩き終えました。")
+                    .font(.subheadline)
+                    .foregroundStyle(Theme.textSecondary)
+                    .multilineTextAlignment(.center)
+                Text("歩き終えた TRAIL は、わたし → 見返す → TRAIL に残ります。")
+                    .font(.caption)
+                    .foregroundStyle(Theme.textSecondary)
+                    .multilineTextAlignment(.center)
+                Button("扉に戻る", action: onClose)
+                    .buttonStyle(PrimaryButtonStyle())
+                    .padding(.top, 4)
+            }
+            .padding(28)
+            .frame(maxWidth: 340)
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+            .shadow(color: Theme.accent.opacity(0.35), radius: 30, y: 10)
+            .padding(24)
+        }
+        .onAppear { glow = true }
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(.isModal)
     }
 }

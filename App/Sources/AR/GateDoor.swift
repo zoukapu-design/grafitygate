@@ -456,6 +456,39 @@ final class GateDoor {
         Trace.log("扉が開きました")
     }
 
+    /// TRAIL の地点に着いたときの光：扉の足もとから、夕焼けと夜空の色の光の粒が舞い上がる（big＝歩き終えた）
+    func celebrate(big: Bool) {
+        let colors: [UIColor] = [UIColor(red: 1.0, green: 0.55, blue: 0.2, alpha: 1),
+                                 UIColor(red: 1.0, green: 0.35, blue: 0.6, alpha: 1),
+                                 UIColor(red: 0.62, green: 0.4, blue: 1.0, alpha: 1),
+                                 UIColor(red: 0.4, green: 0.85, blue: 1.0, alpha: 1)]
+        let count = big ? (Perf.isLowMemoryDevice ? 36 : 54) : 20
+        let holder = Entity()
+        base.addChild(holder)
+        let mesh = MeshResource.generateSphere(radius: big ? 0.024 : 0.018)
+        var dots: [(Entity, SIMD3<Float>, SIMD3<Float>)] = []
+        for i in 0..<count {
+            let dot = ModelEntity(mesh: mesh, materials: [UnlitMaterial(color: colors[i % colors.count])])
+            let angle = Float(i) / Float(count) * 2 * .pi + Float.random(in: -0.25...0.25)
+            let spread: Float = big ? Float.random(in: 0.25...1.0) : Float.random(in: 0.3...0.7)
+            let start = SIMD3<Float>(cos(angle) * 0.3, 0.04, sin(angle) * 0.3 + 0.25)
+            let end = SIMD3<Float>(cos(angle) * spread, big ? Float.random(in: 1.4...2.8) : Float.random(in: 0.8...1.7),
+                                   sin(angle) * spread + 0.25)
+            dot.position = start
+            holder.addChild(dot)
+            dots.append((dot, start, end))
+        }
+        animate(big ? 2.6 : 1.8) { t in
+            let e = Self.easeOut(t)
+            for (dot, start, end) in dots {
+                dot.position = start + (end - start) * e
+                dot.scale = SIMD3(repeating: max(0.01, 1 - t * t))
+            }
+            if t >= 1 { holder.removeFromParent() }
+        }
+        Trace.log(big ? "TRAIL：歩き終えた光を出した" : "TRAIL：地点に着いた光を出した")
+    }
+
     func remove() {
         subscription?.cancel()
         subscription = nil
