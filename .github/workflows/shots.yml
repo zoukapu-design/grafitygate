@@ -20,7 +20,7 @@ concurrency:
 jobs:
   shots:
     runs-on: ${{ vars.MAC_RUNNER || 'macos-15-intel' }}
-    timeout-minutes: 60
+    timeout-minutes: 40
     env:
       PROJECT_DIR: App
       SCHEME: GrafityGate
@@ -91,15 +91,14 @@ jobs:
             xcrun simctl bootstatus "$UDID" -b
             xcrun simctl status_bar "$UDID" override --time 9:41 --batteryState charged --batteryLevel 100 --cellularBars 4 || true
             xcrun simctl install "$UDID" "$APP"
+            # 1 つの手順が止まったままにならないよう、60 秒で打ち切る
+            limit() { perl -e 'alarm shift; exec @ARGV' "$@"; }
             for s in $SCREENS; do
-              xcrun simctl launch --terminate-running-process "$UDID" "$BUNDLE" -GGDemoScreen "$s" \
-                -AppleLanguages "(ja)" -AppleLocale ja_JP > /dev/null
+              limit 60 xcrun simctl terminate "$UDID" "$BUNDLE" > /dev/null 2>&1 || true
+              limit 60 xcrun simctl launch "$UDID" "$BUNDLE" -GGDemoScreen "$s" \
+                -AppleLanguages "(ja)" -AppleLocale ja_JP > /dev/null || echo "::warning title=見本::$label の $s を開けませんでした"
               sleep 8
-              xcrun simctl io "$UDID" screenshot "shots/$label-$s.png" > /dev/null
-              # アプリが落ちていないか（落ちていたら見本の画面に問題がある）
-              if ! xcrun simctl spawn "$UDID" launchctl list | grep -q "UIKitApplication:$BUNDLE"; then
-                echo "::warning title=見本::$label の $s でアプリが止まっていました"
-              fi
+              limit 60 xcrun simctl io "$UDID" screenshot "shots/$label-$s.png" > /dev/null || echo "::warning title=見本::$label の $s を撮れませんでした"
             done
             # 落ちた記録があれば、どこで落ちたかを出す
             for f in $(ls -t ~/Library/Logs/DiagnosticReports/*GrafityGate* 2>/dev/null | head -3); do
