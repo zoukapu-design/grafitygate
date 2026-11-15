@@ -148,7 +148,7 @@ struct MessagesView: View {
                                 Spacer()
                                 Text(ServerDate.relative(thread.last_at)).font(.caption2).foregroundStyle(Theme.textSecondary)
                             }
-                            Text((thread.last_from_me ? "あなた：" : "") + (thread.last_body.isEmpty ? "📷 写真" : thread.last_body))
+                            Text((thread.last_from_me ? "あなた：" : "") + thread.preview)
                                 .font(.caption).foregroundStyle(Theme.textSecondary).lineLimit(1)
                         }
                         if thread.unread > 0 {
@@ -237,6 +237,8 @@ struct ChatView: View {
     @State private var photoItem: PhotosPickerItem?
     @State private var photo: UIImage?
     @State private var viewer: PhotoViewerItem?
+    /// 添えられたグラフィティカードを大きく見る
+    @State private var cardViewer: DMMessage?
     @FocusState private var typing: Bool
 
     init(other: UUID, name: String?) {
@@ -327,6 +329,10 @@ struct ChatView: View {
         .sheet(item: $report) { item in ReportSheet(item: item) }
         .fullScreenCover(item: $viewer) { item in
             PhotoViewer(path: item.path, caption: item.caption)
+                .environmentObject(session)
+        }
+        .sheet(item: $cardViewer) { message in
+            ChatCardSheet(message: message, senderName: message.sender == session.userID ? "あなた" : (otherName ?? name ?? "友達"))
                 .environmentObject(session)
         }
         .task {
@@ -449,6 +455,21 @@ struct ChatView: View {
         return HStack(alignment: .bottom, spacing: 6) {
             if mine { Spacer(minLength: 56) }
             VStack(alignment: mine ? .trailing : .leading, spacing: 3) {
+                if message.card_id != nil {
+                    Button {
+                        cardViewer = message
+                    } label: {
+                        ChatCardBubble(message: message)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("グラフィティカードを開く")
+                } else if message.card_gone == true {
+                    Label("このグラフィティカードは、書いた人が消しました", systemImage: "rectangle.slash")
+                        .font(.caption)
+                        .foregroundStyle(Theme.textSecondary)
+                        .padding(10)
+                        .background(Theme.surfaceElevated, in: RoundedRectangle(cornerRadius: 14))
+                }
                 if let path = message.photo_path {
                     Button {
                         viewer = PhotoViewerItem(path: path, caption: message.body)

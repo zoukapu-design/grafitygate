@@ -608,6 +608,7 @@ struct GraffitiSection: View {
     @State private var extras: [UUID: CardExtra]?
     @State private var commenting: Graffiti?
     @State private var editingCard: Graffiti?
+    @State private var sendingCard: Graffiti?
     @State private var cardQuery = ""
 
     init(context: GateContext, refreshToken: Int, onReport: @escaping (ReportItem) -> Void) {
@@ -807,8 +808,13 @@ struct GraffitiSection: View {
                              onComments: extras == nil ? nil : { commenting = item },
                              saved: extras == nil ? nil : (extras?[item.id]?.saved ?? false),
                              onToggleSave: { Task { await toggleSave(item) } },
-                             onEdit: isMine ? { editingCard = item } : nil)
+                             onEdit: isMine ? { editingCard = item } : nil,
+                             onSendToFriend: isMine ? { sendingCard = item } : nil)
             }
+        }
+        .sheet(item: $sendingCard) { card in
+            SendCardSheet(card: card, gateTitle: context.title) { text in postMessage = (text, false) }
+                .environmentObject(session)
         }
         .sheet(item: $editingCard) { card in
             GraffitiEditSheet(item: card) { Task { await load() } }
@@ -1037,6 +1043,8 @@ struct GraffitiCard: View {
     let onToggleSave: () -> Void
     /// 自分のカードを直す（自分のカードだけ）
     let onEdit: (() -> Void)?
+    /// 自分のカードを友達に送る（自分のカードだけ）
+    let onSendToFriend: (() -> Void)?
 
     @State private var confirmDelete = false
     @State private var viewer: PhotoViewerItem?
@@ -1049,7 +1057,8 @@ struct GraffitiCard: View {
          onShare: (() -> Void)? = nil, onCompare: (() -> Void)? = nil, onCardLink: (() -> Void)? = nil,
          linkNote: String? = nil, inAtlas: Bool? = nil, onToggleAtlas: @escaping () -> Void = {},
          commentCount: Int = 0, onComments: (() -> Void)? = nil,
-         saved: Bool? = nil, onToggleSave: @escaping () -> Void = {}, onEdit: (() -> Void)? = nil) {
+         saved: Bool? = nil, onToggleSave: @escaping () -> Void = {}, onEdit: (() -> Void)? = nil,
+         onSendToFriend: (() -> Void)? = nil) {
         self.item = item
         self.author = author
         self.isMine = isMine
@@ -1069,6 +1078,7 @@ struct GraffitiCard: View {
         self.saved = saved
         self.onToggleSave = onToggleSave
         self.onEdit = onEdit
+        self.onSendToFriend = onSendToFriend
     }
 
     var body: some View {
@@ -1219,6 +1229,9 @@ struct GraffitiCard: View {
             }
             Menu {
                 if isMine {
+                    if let onSendToFriend {
+                        Button(action: onSendToFriend) { Label("友達に送る", systemImage: "paperplane") }
+                    }
                     if let onEdit {
                         Button(action: onEdit) { Label("直す（ひとこと・見せる範囲）", systemImage: "pencil") }
                     }

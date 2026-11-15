@@ -778,8 +778,19 @@ struct DMThread: Decodable, Identifiable, Hashable {
     let last_from_me: Bool
     let unread: Int
     let can_send: Bool
+    /// いちばん新しいメッセージの種類（text・photo・card。0022 の前のサーバーでは無い）
+    var last_kind: String? = nil
 
     var id: UUID { other }
+
+    /// 一覧に出す、いちばん新しいメッセージ
+    var preview: String {
+        switch last_kind {
+        case "card": return last_body.isEmpty ? "🃏 グラフィティカード" : "🃏 " + last_body
+        case "photo": return last_body.isEmpty ? "📷 写真" : "📷 " + last_body
+        default: return last_body.isEmpty ? "📷 写真" : last_body
+        }
+    }
 }
 
 /// DM のメッセージ（gf_dm_messages_with）
@@ -791,6 +802,15 @@ struct DMMessage: Decodable, Identifiable, Hashable {
     var photo_path: String? = nil
     let created_at: String
     let read_at: String?
+    /// 添えたグラフィティカード（送った人のカード。0022 の前のサーバーでは無い）
+    var card_id: UUID? = nil
+    var card_body: String? = nil
+    var card_photo: String? = nil
+    var card_gate_id: UUID? = nil
+    var card_gate_title: String? = nil
+    var card_created_at: String? = nil
+    /// 添えたカードを書いた人が消した
+    var card_gone: Bool? = nil
 }
 
 /// GATE の位置の記録の置き場所（gf_place_map）

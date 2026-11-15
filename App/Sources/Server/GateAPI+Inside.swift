@@ -308,11 +308,27 @@ extension GateAPI {
     }
 
     func dmThreads() async throws -> [DMThread] {
-        try await client.rpc("gf_dm_threads").execute().value
+        do {
+            return try await client.rpc("gf_dm_threads2").execute().value
+        } catch let error where ErrorText.isMissingFunction(error) {
+            return try await client.rpc("gf_dm_threads").execute().value
+        }
+    }
+
+    /// 自分のグラフィティカードを、お互いにフォローの友達に送る
+    @discardableResult
+    func sendCard(to other: UUID, card: UUID, body: String) async throws -> UUID {
+        try await client.rpc("gf_dm_send_card", params: DMSendCardParams(p_to: other, p_card: card, p_body: body))
+            .execute().value
     }
 
     /// メッセージ（写真つき。0019 の前のサーバーでは文だけ）
     func dmMessages(with other: UUID) async throws -> [DMMessage] {
+        do {
+            return try await client.rpc("gf_dm_messages_with3", params: OtherParam(p_other: other)).execute().value
+        } catch let error where ErrorText.isMissingFunction(error) {
+            // 0022 の前：カードなし
+        }
         do {
             return try await client.rpc("gf_dm_messages_with2", params: OtherParam(p_other: other)).execute().value
         } catch let error where ErrorText.isMissingFunction(error) {
@@ -633,4 +649,10 @@ private struct DMSendPhotoParams: Encodable {
     let p_to: UUID
     let p_body: String
     let p_photo_path: String
+}
+
+private struct DMSendCardParams: Encodable {
+    let p_to: UUID
+    let p_card: UUID
+    let p_body: String
 }
