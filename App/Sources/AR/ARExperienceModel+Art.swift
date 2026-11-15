@@ -300,6 +300,74 @@ extension ARExperienceModel {
         notice = result.trimmed ? "10 秒より長い動画は、はじめの 10 秒にしました。" : nil
     }
 
+    // MARK: その場で人を撮る（人物の映像）
+
+    /// 撮る画面にする（まだ撮り始めない）
+    func beginPersonCapture() {
+        notice = nil
+        capturingPerson = true
+        personRecorder.onLimit = { [weak self] in self?.stopPersonRecording() }
+        Trace.log("人物の映像：その場で撮る画面を開いた")
+    }
+
+    /// 赤いボタン：撮り始める／止める
+    func togglePersonRecording() {
+        switch personRecorder.state {
+        case .idle:
+            Task {
+                do {
+                    try await personRecorder.start(stage: stage)
+                    Haptics.tap()
+                } catch {
+                    notice = ErrorText.of(error)
+                }
+            }
+        case .recording:
+            stopPersonRecording()
+        case .finishing:
+            break
+        }
+    }
+
+    func stopPersonRecording() {
+        guard personRecorder.state == .recording else { return }
+        Task {
+            do {
+                let url = try await personRecorder.stop()
+                Haptics.success()
+                await cutPerson(from: url)
+            } catch {
+                notice = (error as? LocalizedError)?.errorDescription ?? ErrorText.of(error)
+            }
+        }
+    }
+
+    func cancelPersonCapture() {
+        personRecorder.cancel()
+        personCutProgress = nil
+        capturingPerson = false
+    }
+
+    /// 記録した動画から人だけを切り抜く（写真アプリの動画と同じ仕組み。iPhone の中だけ）
+    private func cutPerson(from url: URL) async {
+        personCutProgress = 0
+        defer {
+            personCutProgress = nil
+            try? FileManager.default.removeItem(at: url)
+        }
+        do {
+            let result = try await PersonCutout.make(from: url) { [weak self] value in
+                Task { @MainActor in self?.personCutProgress = value }
+            }
+            setArtPerson(result)
+            capturingPerson = false
+            Trace.log(String(format: "人物の映像：その場で撮った %.1f 秒を切り抜きました", result.duration))
+        } catch {
+            Trace.log("人物の映像：その場で撮ったものを切り抜けませんでした：\(error.localizedDescription)")
+            notice = (error as? LocalizedError)?.errorDescription ?? "人を切り抜けませんでした。人の全身か上半身が映るようにして、撮り直してください。"
+        }
+    }
+
     /// 声の玉の声を決める（前に録ったものは消す）
     func setArtVoice(_ file: URL, duration: Double) {
         if let old = draft.voiceFile, old != file { try? FileManager.default.removeItem(at: old) }

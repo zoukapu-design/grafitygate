@@ -69,6 +69,22 @@ final class ARStage: NSObject, ObservableObject {
         }
     }
 
+    /// その場の記録（人物の映像）が、AR の絵と声を受け取る口。記録しているあいだだけ入る
+    var frameTap: ((ARFrame) -> Void)?
+    var audioTap: ((CMSampleBuffer) -> Void)?
+
+    /// マイクの声も ARKit から受け取るか（人物の映像を記録しているあいだだけ）。追跡は続けたまま切り替える
+    func setAudioCapture(_ on: Bool) {
+        guard isRunning, let current = arView.session.configuration as? ARWorldTrackingConfiguration,
+              current.providesAudioData != on,
+              let config = current.copy() as? ARWorldTrackingConfiguration else { return }
+        config.providesAudioData = on
+        // もう場所は分かっている。場所の記憶を付けたまま動かし直すと、探し直して扉がずれることがある
+        config.initialWorldMap = nil
+        arView.session.run(config)
+        Trace.log("AR：マイクの声を\(on ? "受け取り始めました" : "受け取るのをやめました")")
+    }
+
     // MARK: 始める・止める
 
     func run(initialMap: ARWorldMap? = nil, reset: Bool = false) {
@@ -342,6 +358,19 @@ extension ARStage: ARSessionDelegate {
         let time = frame.timestamp
         MainActor.assumeIsolated {
             self.frameUpdated(position: position, time: time, tracking: tracking, mapping: mapping, light: light)
+            // その場の記録（人物の映像）。ここで使い終えて、ARKit の絵はすぐ返す
+            self.frameTap?(frame)
+        }
+    }
+
+    nonisolated func session(_ session: ARSession, didOutputAudioSampleBuffer audioSampleBuffer: CMSampleBuffer) {
+        // 声は、AR の絵とは別の列から届くことがあるので、メインの列へ移してから渡す
+        if Thread.isMainThread {
+            MainActor.assumeIsolated { self.audioTap?(audioSampleBuffer) }
+        } else {
+            DispatchQueue.main.async { [weak self] in
+                MainActor.assumeIsolated { self?.audioTap?(audioSampleBuffer) }
+            }
         }
     }
 

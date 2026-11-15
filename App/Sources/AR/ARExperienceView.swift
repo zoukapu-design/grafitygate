@@ -219,7 +219,9 @@ private struct ExperienceCard: View {
     }
 
     @ViewBuilder private var content: some View {
-        if model.adjustingDoor {
+        if model.capturingPerson {
+            PersonCaptureCard(model: model)
+        } else if model.adjustingDoor {
             adjustCard
         } else if model.phase == .doorOpen, let step = model.art {
             ArtCard(model: model, step: step)
@@ -952,10 +954,21 @@ private struct ArtCard: View {
             .frame(width: 64, height: 88)
             .clipShape(RoundedRectangle(cornerRadius: 12))
             VStack(alignment: .leading, spacing: 6) {
+                // いちばん大きいのは「この場で撮る」：いまカメラに映っている人を数秒撮って、そのまま残す
+                Button {
+                    model.beginPersonCapture()
+                } label: {
+                    Label(model.draft.person == nil ? "この場で撮る" : "この場で撮り直す", systemImage: "record.circle")
+                        .font(.subheadline.weight(.bold))
+                        .frame(maxWidth: .infinity, minHeight: 40)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Theme.warm)
+                .disabled(personProgress != nil)
                 PhotosPicker(selection: $personItem, matching: .videos) {
-                    Label(model.draft.person == nil ? "人が写った動画を選ぶ" : "動画を選び直す", systemImage: "film")
-                        .font(.subheadline.weight(.semibold))
-                        .frame(maxWidth: .infinity, minHeight: 36)
+                    Label("写真アプリの動画から", systemImage: "film")
+                        .font(.caption.weight(.semibold))
+                        .frame(maxWidth: .infinity, minHeight: 30)
                 }
                 .buttonStyle(.bordered)
                 .tint(Theme.accent)
@@ -1264,6 +1277,76 @@ private struct DoorSizePicker: View {
             Text(String(format: "%.0f%%", model.doorScale * 100))
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(Theme.textSecondary)
+        }
+    }
+}
+
+
+/// その場で人を撮る：映したい人にカメラを向けて、赤いボタンで撮り始める・止める（10 秒まで）。止めると人を切り抜く
+private struct PersonCaptureCard: View {
+    @ObservedObject var model: ARExperienceModel
+    @ObservedObject var recorder: ARPersonRecorder
+
+    init(model: ARExperienceModel) {
+        _model = ObservedObject(wrappedValue: model)
+        _recorder = ObservedObject(wrappedValue: model.personRecorder)
+    }
+
+    private var recording: Bool { recorder.state == .recording }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if let progress = model.personCutProgress {
+                Title("人を切り抜いています")
+                ProgressView(value: progress).tint(Theme.accent)
+                Caption("\(Int(progress * 100))%（iPhone の中だけで行います。背景は残りません）")
+            } else {
+                HStack {
+                    Title(recording ? "撮っています" : "その場で人を撮る")
+                    Spacer()
+                    if recording {
+                        HStack(spacing: 6) {
+                            Circle().fill(Color.red).frame(width: 8, height: 8)
+                            Text(String(format: "%.1f / %.0f 秒", recorder.elapsed, ARPersonRecorder.limit))
+                                .font(.caption.monospacedDigit().weight(.semibold))
+                        }
+                        .padding(.horizontal, 10).padding(.vertical, 5)
+                        .background(Color.red.opacity(0.12), in: Capsule())
+                        .foregroundStyle(Color.red)
+                    }
+                }
+                Caption(recording
+                        ? "止めるときは、もう一度押します。10 秒で自動で止まります。"
+                        : "映したい人の全身か上半身が入るようにカメラを向けて、赤いボタンで撮り始めます。声も一緒に残ります（明るい所・1 人だけが切り抜きやすいです）。")
+                if recording {
+                    ProgressView(value: min(recorder.elapsed, ARPersonRecorder.limit), total: ARPersonRecorder.limit)
+                        .tint(.red)
+                }
+                HStack {
+                    Spacer()
+                    Button {
+                        model.togglePersonRecording()
+                    } label: {
+                        ZStack {
+                            Circle().stroke(Color.red.opacity(0.35), lineWidth: 4).frame(width: 74, height: 74)
+                            RoundedRectangle(cornerRadius: recording ? 8 : 30, style: .continuous)
+                                .fill(Color.red)
+                                .frame(width: recording ? 30 : 60, height: recording ? 30 : 60)
+                                .animation(.spring(response: 0.3, dampingFraction: 0.7), value: recording)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(recorder.state == .finishing)
+                    .accessibilityLabel(recording ? "止める" : "撮り始める")
+                    Spacer()
+                }
+                if !recording {
+                    Button("やめる") { model.cancelPersonCapture() }
+                        .font(.subheadline)
+                        .foregroundStyle(Theme.textSecondary)
+                        .disabled(recorder.state == .finishing)
+                }
+            }
         }
     }
 }

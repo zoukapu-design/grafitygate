@@ -120,6 +120,11 @@ final class ARExperienceModel: ObservableObject {
     // AR の作品（扉が開いたあと）
     @Published var art: ArtStep?
     @Published var draft = ArtDraft()
+    /// その場で人を撮る（人物の映像）
+    let personRecorder = ARPersonRecorder()
+    @Published var capturingPerson = false
+    /// 撮ったあと、人を切り抜いているあいだの進み具合（0〜1）
+    @Published var personCutProgress: Double?
     @Published var previewInRange = true
     @Published var artCaption: String?
     @Published var artworkCount = 0
@@ -227,6 +232,8 @@ final class ARExperienceModel: ObservableObject {
     }
 
     func stop() {
+        personRecorder.cancel()
+        capturingPerson = false
         ChimePlayer.shared.stop()
         stopFindingRequested = true
         mappingTask?.cancel()
