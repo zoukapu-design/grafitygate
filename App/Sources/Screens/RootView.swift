@@ -5,6 +5,10 @@ struct GateRoute: Hashable, Identifiable {
     let id: UUID
 }
 
+struct TrailRoute: Hashable, Identifiable {
+    let id: UUID
+}
+
 /// 下のタブは 4 つ：ホーム／地図／撮る／わたし（設計書「画面の構成」）
 struct RootView: View {
     @EnvironmentObject private var session: SessionModel
@@ -47,6 +51,19 @@ struct RootView: View {
                 .environmentObject(session)
                 .environmentObject(location)
                 .environmentObject(nav)
+        }
+        .sheet(item: $nav.trailLink) { route in
+            NavigationStack {
+                TrailDetailView(trailID: route.id, title: "TRAIL")
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("閉じる") { nav.trailLink = nil }
+                        }
+                    }
+            }
+            .environmentObject(session)
+            .environmentObject(location)
+            .environmentObject(nav)
         }
         .task(id: session.state) {
             if session.state == .signedIn { inbox.start(session: session) }

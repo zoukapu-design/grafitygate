@@ -302,7 +302,7 @@ alter table public.gf_reports drop constraint if exists gf_reports_target_kind_c
 -- （何度実行しても大丈夫なように、あとの段で足した種類もここに並べておく）
 alter table public.gf_reports add constraint gf_reports_target_kind_check
   check (target_kind in ('gate', 'graffiti', 'artwork', 'thread', 'reply', 'memory', 'memory_item', 'letter', 'user',
-                         'dm', 'trail', 'snapshot'));
+                         'dm', 'trail', 'snapshot', 'card_comment'));
 
 create or replace function public.gf_report_dm(p_id uuid, p_reason text, p_note text) returns void
 language plpgsql security definer set search_path = public as $$

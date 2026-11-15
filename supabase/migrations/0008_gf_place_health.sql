@@ -25,11 +25,11 @@ alter table public.gf_relocalize_log enable row level security;
 -- 表は直接読ませない（作った本人には gf_place_map_health でまとめて返す）
 
 -- お知らせの種類に「場所の記憶を撮り直す」を足す
--- お知らせの種類の「最後の一覧」（0017 の card_link もふくむ。あとの段で足したら、ここにも足す）
+-- お知らせの種類の「最後の一覧」（0017 の card_link・0018 の card_comment もふくむ。あとの段で足したら、ここにも足す）
 alter table public.gf_notifications drop constraint if exists gf_notifications_kind_check;
 alter table public.gf_notifications add constraint gf_notifications_kind_check
   check (kind in ('gate_graffiti', 'gate_artwork', 'board_thread', 'board_reply', 'letter', 'letter_opened',
-                  'memory_invite', 'memory_photo', 'like', 'place_map_stale', 'card_link'));
+                  'memory_invite', 'memory_photo', 'like', 'place_map_stale', 'card_link', 'card_comment'));
 
 -- 探した結果を送る（その入場で 1 回。送り直したら上書き）
 create or replace function public.gf_report_relocalize(p_visit uuid, p_found boolean, p_seconds real) returns void

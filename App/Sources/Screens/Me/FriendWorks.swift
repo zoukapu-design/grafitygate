@@ -15,12 +15,14 @@ struct FriendWorks: View {
     @State private var gates: [UserGate] = []
     @State private var cards: [AtlasCard] = []
     @State private var visited: [FriendAtlasGate] = []
+    @State private var trails: [TrailSummary] = []
     @State private var loaded = false
     @State private var unsupported = false
 
     enum Tab: String, CaseIterable, Identifiable {
-        case gates = "作った GATE"
+        case gates = "GATE"
         case cards = "グラフィティ"
+        case trails = "TRAIL"
         case visited = "訪れた"
         var id: String { rawValue }
     }
@@ -35,10 +37,35 @@ struct FriendWorks: View {
             switch tab {
             case .gates: gatesView
             case .cards: cardsView
+            case .trails: trailsView
             case .visited: visitedView
             }
         }
         .task(id: userID) { await load() }
+    }
+
+    // MARK: 作った TRAIL（見てよいものだけ。地点の中身は現地で）
+
+    @ViewBuilder private var trailsView: some View {
+        if !loaded {
+            ProgressView().frame(maxWidth: .infinity).padding(.vertical, 20)
+        } else if trails.isEmpty {
+            Text(isMe ? "まだ TRAIL を作っていません。扉を開けた GATE が 2 つ以上あれば、TRAIL を作れます。"
+                      : "\(name)さんが見せている TRAIL はまだありません。")
+                .font(.subheadline).foregroundStyle(Theme.textSecondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            Text("GATE をつないだ「思い出を歩く道」。順番に現地で扉を開けると進みます。")
+                .font(.caption).foregroundStyle(Theme.textSecondary)
+            ForEach(trails) { trail in
+                NavigationLink {
+                    TrailDetailView(trailID: trail.id, title: trail.title)
+                } label: {
+                    TrailCard(trail: trail)
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 
     // MARK: 作った GATE（地図と一覧）
@@ -176,6 +203,8 @@ struct FriendWorks: View {
             cards = (try? await api.userCardAtlas(userID)) ?? []
             visited = isMe ? [] : ((try? await api.friendAtlas(userID)) ?? [])
         }
+        // TRAIL は全員に公開したものなら友達でなくても見える（判定はサーバー）
+        trails = (try? await api.userTrails(userID)) ?? []
         loaded = true
     }
 }

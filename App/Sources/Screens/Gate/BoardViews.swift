@@ -109,6 +109,9 @@ private struct ThreadRow: View {
                             .accessibilityLabel("未読")
                     }
                 }
+                if thread.resolved == true {
+                    ResolvedBadge()
+                }
                 if !thread.body.isEmpty {
                     Text(thread.body).font(.caption).foregroundStyle(Theme.textSecondary).lineLimit(2)
                 }
@@ -235,6 +238,11 @@ struct ThreadView: View {
 
     private var isGateOwner: Bool { context.ownerID == session.userID }
     private var isInvestigation: Bool { thread.boardTopic == .investigation }
+    /// 「解決しました」にできるか：質問・調べるの話題で、立てた本人か GATE を作った人（0018 のサーバーだけ）
+    private var canResolve: Bool {
+        thread.resolved != nil && (thread.boardTopic == .question || isInvestigation)
+            && (thread.author == session.userID || isGateOwner)
+    }
     private var shownReplies: [BoardReply] {
         guard let filter else { return replies }
         return replies.filter { $0.evidence == filter }
@@ -244,9 +252,12 @@ struct ThreadView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Label(thread.boardTopic.label, systemImage: thread.boardTopic.symbol)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(thread.boardTopic == .notice ? Theme.warm : Theme.accent)
+                    HStack(spacing: 8) {
+                        Label(thread.boardTopic.label, systemImage: thread.boardTopic.symbol)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(thread.boardTopic == .notice ? Theme.warm : Theme.accent)
+                        if thread.resolved == true { ResolvedBadge() }
+                    }
                     Text(thread.title).font(.title3.weight(.semibold)).foregroundStyle(Theme.text)
                     if !thread.body.isEmpty {
                         Text(thread.body).font(.body).foregroundStyle(Theme.text)
@@ -318,6 +329,14 @@ struct ThreadView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
+                    if canResolve {
+                        Button {
+                            Task { await toggleResolved() }
+                        } label: {
+                            Label(thread.resolved == true ? "「解決しました」を外す" : "解決しました",
+                                  systemImage: thread.resolved == true ? "circle" : "checkmark.circle")
+                        }
+                    }
                     if isGateOwner {
                         Button {
                             Task { await togglePin() }
@@ -450,6 +469,19 @@ struct ThreadView: View {
             source = ""
             Haptics.tap()
             await load()
+        } catch {
+            message = ErrorText.of(error)
+        }
+    }
+
+    private func toggleResolved() async {
+        guard let api = session.api else { return }
+        let on = !(thread.resolved ?? false)
+        do {
+            try await api.resolveThread(thread.id, on: on)
+            thread.resolved = on
+            Haptics.success()
+            onChanged?()
         } catch {
             message = ErrorText.of(error)
         }
@@ -651,5 +683,17 @@ struct BoardEditSheet: View {
         } catch {
             message = ErrorText.of(error)
         }
+    }
+}
+
+
+/// 「解決しました」の札
+struct ResolvedBadge: View {
+    var body: some View {
+        Label("解決しました", systemImage: "checkmark.circle.fill")
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(Theme.accent)
+            .padding(.horizontal, 8).padding(.vertical, 3)
+            .background(Theme.accentLight, in: Capsule())
     }
 }

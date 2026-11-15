@@ -40,6 +40,11 @@ extension GateAPI {
     /// 話題の一覧（直した時刻つき。0014 を入れる前のサーバーでは、直した時刻なしで読む）
     func boardThreads(in gate: UUID) async throws -> [BoardThread] {
         do {
+            return try await client.rpc("gf_board_list3", params: InsideGateParam(p_gate: gate)).execute().value
+        } catch let error where ErrorText.isMissingFunction(error) {
+            // 0018 の前：「解決しました」なし
+        }
+        do {
             return try await client.rpc("gf_board_list2", params: InsideGateParam(p_gate: gate)).execute().value
         } catch let error where ErrorText.isMissingFunction(error) {
             return try await client.rpc("gf_board_list", params: InsideGateParam(p_gate: gate)).execute().value

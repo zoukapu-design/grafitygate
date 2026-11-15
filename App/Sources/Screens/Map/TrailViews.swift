@@ -5,10 +5,16 @@ import SwiftUI
 /// TRAIL の一覧：歩いているもの・自分の・友達の。右上から新しく作れる。
 struct TrailListView: View {
     @EnvironmentObject private var session: SessionModel
+    @EnvironmentObject private var location: LocationModel
     @State private var trails: [TrailSummary] = []
     @State private var loaded = false
     @State private var error: String?
     @State private var showComposer = false
+    /// 名前で探す・近くの TRAIL（0018 のサーバーだけ）
+    @State private var query = ""
+    @State private var found: [TrailSummary]?
+    @State private var nearby: [TrailSummary] = []
+    @State private var searching = false
 
     var body: some View {
         ScrollView {
@@ -21,8 +27,20 @@ struct TrailListView: View {
                               message: "扉を開けた GATE が 2 つ以上あれば、右上から作れます。友達の TRAIL もここに出ます。",
                               systemImage: "point.topleft.down.to.point.bottomright.curvepath")
                 }
+                if let found {
+                    Text(found.isEmpty ? "「\(query)」の TRAIL は見つかりませんでした" : "見つかった TRAIL")
+                        .font(.headline).foregroundStyle(Theme.text)
+                    ForEach(found) { trail in trailLink(trail) }
+                }
                 let walking = trails.filter(\.inProgress)
                 let others = trails.filter { !$0.inProgress }
+                let near = nearby.filter { n in !trails.contains { $0.id == n.id } }
+                if found == nil && !near.isEmpty {
+                    Text("近くの TRAIL").font(.headline).foregroundStyle(Theme.text)
+                    Text("いまいる所の 5km 以内に地点がある、だれでも・友達が歩ける TRAIL です。")
+                        .font(.caption).foregroundStyle(Theme.textSecondary)
+                    ForEach(near) { trail in trailLink(trail) }
+                }
                 if !walking.isEmpty {
                     Text("歩いている TRAIL").font(.headline).foregroundStyle(Theme.text)
                     ForEach(walking) { trail in trailLink(trail) }
@@ -36,6 +54,11 @@ struct TrailListView: View {
         }
         .background(Theme.background.ignoresSafeArea())
         .navigationTitle("TRAIL")
+        .searchable(text: $query, prompt: "TRAIL を名前で探す")
+        .onSubmit(of: .search) { Task { await search() } }
+        .onChange(of: query) { _, value in
+            if value.trimmingCharacters(in: .whitespaces).isEmpty { found = nil }
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
@@ -71,6 +94,94 @@ struct TrailListView: View {
             self.error = ErrorText.of(error)
         }
         loaded = true
+        if let here = location.location?.coordinate {
+            nearby = (try? await api.searchTrails("", near: (here.latitude, here.longitude))) ?? []
+        }
+    }
+
+    private func search() async {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let api = session.api, !q.isEmpty, !searching else { return }
+        searching = true
+        defer { searching = false }
+        do {
+            let here = location.location?.coordinate
+            found = try await api.searchTrails(q, near: here.map { ($0.latitude, $0.longitude) })
+            error = nil
+        } catch {
+            self.error = ErrorText.isMissingFunction(error) ? "名前で探すのは、サーバーの準備（setup_all.sql の貼り直し）のあとで使えます。" : ErrorText.of(error)
+        }
+    }
+}
+
+/// TRAIL の名前・説明・見せる範囲を直す（作った本人だけ。地点の並びは、歩いている人のために変えない）
+struct TrailEditSheet: View {
+    let trail: TrailSummary
+    let onSaved: () -> Void
+
+    @EnvironmentObject private var session: SessionModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var title: String
+    @State private var note: String
+    @State private var visibility: Visibility
+    @State private var saving = false
+    @State private var message: String?
+
+    init(trail: TrailSummary, onSaved: @escaping () -> Void) {
+        self.trail = trail
+        self.onSaved = onSaved
+        _title = State(initialValue: trail.title)
+        _note = State(initialValue: trail.note)
+        _visibility = State(initialValue: Visibility(rawValue: trail.visibility) ?? .friends)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("名前") {
+                    TextField("TRAIL の名前", text: $title)
+                        .onChange(of: title) { _, v in if v.count > 60 { title = String(v.prefix(60)) } }
+                }
+                Section("説明") {
+                    TextField("どんな道か（なくてもよい）", text: $note, axis: .vertical)
+                        .lineLimit(3...6)
+                        .onChange(of: note) { _, v in if v.count > 500 { note = String(v.prefix(500)) } }
+                }
+                Section {
+                    Picker("見せる範囲", selection: $visibility) {
+                        ForEach(Visibility.allCases) { v in Text(v.label).tag(v) }
+                    }
+                } footer: {
+                    Text("地点の並びは、歩いている人の進み具合が崩れないよう、あとから変えられません。")
+                }
+                if let message {
+                    Section { NoticeText(text: message) }
+                }
+            }
+            .navigationTitle("TRAIL を直す")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("やめる") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("保存") { Task { await save() } }
+                        .disabled(saving || title.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+        }
+    }
+
+    private func save() async {
+        guard let api = session.api else { return }
+        saving = true
+        defer { saving = false }
+        do {
+            try await api.updateTrail(trail.id, title: title, note: note, visibility: visibility)
+            Haptics.success()
+            onSaved()
+            dismiss()
+        } catch {
+            message = ErrorText.isMissingFunction(error) ? "直すのは、サーバーの準備（setup_all.sql の貼り直し）のあとで使えます。" : ErrorText.of(error)
+        }
     }
 }
 
@@ -122,6 +233,9 @@ struct TrailDetailView: View {
     @State private var error: String?
     @State private var report: ReportItem?
     @State private var confirmDelete = false
+    @State private var editing = false
+    /// 見られない（消された・公開範囲が変わった）
+    @State private var unavailable = false
 
     init(trailID: UUID, title: String) {
         self.trailID = trailID
@@ -155,6 +269,11 @@ struct TrailDetailView: View {
                     }
                     progressCard(summary)
                 }
+                if unavailable {
+                    EmptyNote(title: "この TRAIL は見られません",
+                              message: "消されたか、作った人が見せる範囲を変えました。",
+                              systemImage: "eye.slash")
+                }
                 if let error { NoticeText(text: error) }
                 Text("地点").font(.headline).foregroundStyle(Theme.text)
                 ForEach(stops) { stop in
@@ -164,13 +283,26 @@ struct TrailDetailView: View {
             .padding(16)
         }
         .background(Theme.background.ignoresSafeArea())
-        .navigationTitle(title)
+        .navigationTitle(summary?.title ?? title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if let summary {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
+                        if summary.visibility != Visibility.private.rawValue || summary.owner == session.userID {
+                            ShareLink(item: AppNavigator.trailURL(summary.id),
+                                      message: Text(AppNavigator.trailShareText(title: summary.title,
+                                                                                stops: summary.stop_count,
+                                                                                id: summary.id))) {
+                                Label("TRAIL を送る", systemImage: "square.and.arrow.up")
+                            }
+                        }
                         if summary.owner == session.userID {
+                            Button {
+                                editing = true
+                            } label: {
+                                Label("名前・説明・見せる範囲を直す", systemImage: "pencil")
+                            }
                             Button(role: .destructive) {
                                 confirmDelete = true
                             } label: {
@@ -203,6 +335,12 @@ struct TrailDetailView: View {
             Text("歩いている人の進み具合も消えます。GATE そのものは消えません。")
         }
         .sheet(item: $report) { item in ReportSheet(item: item) }
+        .sheet(isPresented: $editing) {
+            if let summary {
+                TrailEditSheet(trail: summary) { Task { await load() } }
+                    .environmentObject(session)
+            }
+        }
         .task { await load() }
         .refreshable { await load() }
     }
@@ -314,12 +452,19 @@ struct TrailDetailView: View {
         guard let api = session.api else { return }
         do {
             stops = try await api.trailStops(trailID)
-            var found = try await api.trails().first { $0.id == trailID }
-            if found == nil, let gate = stops.compactMap(\.gate_id).first {
-                // ふだんの一覧に出ない公開の TRAIL（GATE の画面から開いたもの）
-                found = try await api.trails(including: gate).first { $0.id == trailID }
+            var found: TrailSummary?
+            do {
+                // 0018：リンク・友達のプロフィール・探した結果から開いても、見てよい TRAIL なら出る
+                found = try await api.trail(trailID)
+            } catch let error where ErrorText.isMissingFunction(error) {
+                found = try await api.trails().first { $0.id == trailID }
+                if found == nil, let gate = stops.compactMap(\.gate_id).first {
+                    // ふだんの一覧に出ない公開の TRAIL（GATE の画面から開いたもの）
+                    found = try await api.trails(including: gate).first { $0.id == trailID }
+                }
             }
             summary = found
+            unavailable = found == nil
             error = nil
         } catch {
             self.error = ErrorText.of(error)

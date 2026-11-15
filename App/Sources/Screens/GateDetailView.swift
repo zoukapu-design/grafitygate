@@ -456,6 +456,9 @@ struct GraffitiSection: View {
     /// この GATE で、自分が関わる「来たよ」
     @State private var links: [CardLinkMark] = []
     @State private var draftInAtlas = true
+    /// カードごとの返信の数・お気に入り（nil＝サーバーがまだ 0018 の前なので出さない）
+    @State private var extras: [UUID: CardExtra]?
+    @State private var commenting: Graffiti?
 
     init(context: GateContext, refreshToken: Int, onReport: @escaping (ReportItem) -> Void) {
         self.context = context
@@ -623,8 +626,19 @@ struct GraffitiSection: View {
                              onCardLink: canLink(to: item) ? { linking = snapshot(item) } : nil,
                              linkNote: linkNote(for: item),
                              inAtlas: isMine && item.photo_path != nil && !item.local_only ? item.in_atlas : nil,
-                             onToggleAtlas: { Task { await toggleAtlas(item) } })
+                             onToggleAtlas: { Task { await toggleAtlas(item) } },
+                             commentCount: extras?[item.id]?.comments ?? 0,
+                             onComments: extras == nil ? nil : { commenting = item },
+                             saved: extras == nil ? nil : (extras?[item.id]?.saved ?? false),
+                             onToggleSave: { Task { await toggleSave(item) } })
             }
+        }
+        .sheet(item: $commenting) { card in
+            CardCommentsSheet(card: card, authorName: names[card.author] ?? "",
+                              canWrite: context.isInside || card.author == session.userID) { count in
+                extras?[card.id, default: CardExtra(graffiti_id: card.id, comments: 0, saved: false)].comments = count
+            }
+            .environmentObject(session)
         }
         .sheet(item: $linking) { card in
             CardLinkComposer(friendCard: card, myCards: myCards.map(snapshot)) {
@@ -726,9 +740,27 @@ struct GraffitiSection: View {
             if let me = session.userID {
                 likes = (try? await api.likes(for: graffiti.map(\.id), me: me)) ?? [:]
             }
+            if let loaded = try? await api.cardExtras(in: context.gateID) {
+                extras = loaded
+            }
             await loadLinks()
             error = nil
         } catch {
+            self.error = ErrorText.of(error)
+        }
+    }
+
+    /// お気に入りにする・外す（先に見た目を変え、だめなら戻す）
+    private func toggleSave(_ item: Graffiti) async {
+        guard let api = session.api, extras != nil else { return }
+        let was = extras?[item.id]?.saved ?? false
+        extras?[item.id, default: CardExtra(graffiti_id: item.id, comments: 0, saved: false)].saved = !was
+        Haptics.tap()
+        do {
+            try await api.saveCard(item.id, on: !was)
+            Trace.log("カード：お気に入りを\(was ? "外した" : "付けた")")
+        } catch {
+            extras?[item.id]?.saved = was
             self.error = ErrorText.of(error)
         }
     }
@@ -816,15 +848,25 @@ struct GraffitiCard: View {
     /// 友達の図鑑に載せているか（自分の写真つきカードだけ。nil なら出さない）
     let inAtlas: Bool?
     let onToggleAtlas: () -> Void
+    /// 返信の数と、返信を開く（nil なら出さない＝サーバーが 0018 の前）
+    let commentCount: Int
+    let onComments: (() -> Void)?
+    /// お気に入りか（nil なら出さない）
+    let saved: Bool?
+    let onToggleSave: () -> Void
 
     @State private var confirmDelete = false
     @State private var viewer: PhotoViewerItem?
+    /// 裏返しているか（裏はくわしいこと：書いた人・日時・公開範囲など）
+    @State private var flipped = false
     @EnvironmentObject private var session: SessionModel
 
     init(item: Graffiti, author: String, isMine: Bool, likeCount: Int, liked: Bool,
          onLike: @escaping () -> Void, onDelete: @escaping () -> Void, onReport: @escaping () -> Void,
          onShare: (() -> Void)? = nil, onCompare: (() -> Void)? = nil, onCardLink: (() -> Void)? = nil,
-         linkNote: String? = nil, inAtlas: Bool? = nil, onToggleAtlas: @escaping () -> Void = {}) {
+         linkNote: String? = nil, inAtlas: Bool? = nil, onToggleAtlas: @escaping () -> Void = {},
+         commentCount: Int = 0, onComments: (() -> Void)? = nil,
+         saved: Bool? = nil, onToggleSave: @escaping () -> Void = {}) {
         self.item = item
         self.author = author
         self.isMine = isMine
@@ -839,9 +881,45 @@ struct GraffitiCard: View {
         self.linkNote = linkNote
         self.inAtlas = inAtlas
         self.onToggleAtlas = onToggleAtlas
+        self.commentCount = commentCount
+        self.onComments = onComments
+        self.saved = saved
+        self.onToggleSave = onToggleSave
     }
 
     var body: some View {
+        ZStack {
+            front
+                .opacity(flipped ? 0 : 1)
+                .accessibilityHidden(flipped)
+            back
+                .opacity(flipped ? 1 : 0)
+                .rotation3DEffect(.degrees(180), axis: (x: 0, y: 1, z: 0))
+                .accessibilityHidden(!flipped)
+        }
+        .rotation3DEffect(.degrees(flipped ? 180 : 0), axis: (x: 0, y: 1, z: 0), perspective: 0.45)
+        .background(Theme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radiusCard))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radiusCard).stroke(Theme.line))
+        .fullScreenCover(item: $viewer) { item in
+            PhotoViewer(path: item.path, caption: item.caption)
+                .environmentObject(session)
+        }
+        .confirmationDialog("この記憶を消しますか？", isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("消す", role: .destructive, action: onDelete)
+        } message: {
+            Text("友達の新着や GATE からも見えなくなります。")
+        }
+    }
+
+    private func flip() {
+        Haptics.soft()
+        withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) { flipped.toggle() }
+    }
+
+    // MARK: 表（写真とひとこと）
+
+    private var front: some View {
         VStack(alignment: .leading, spacing: 0) {
             if let path = item.photo_path {
                 Button {
@@ -857,22 +935,17 @@ struct GraffitiCard: View {
             }
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 8) {
-                    if isMine {
-                        PersonBadge(name: "あなた", size: 28)
-                        Text("あなた").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
-                    } else {
-                        NavigationLink {
-                            ProfileView(userID: item.author)
-                        } label: {
-                            HStack(spacing: 8) {
-                                PersonBadge(name: author.isEmpty ? "?" : author, size: 28)
-                                Text(author.isEmpty ? "だれか" : author)
-                                    .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
-                            }
-                        }
-                    }
+                    authorLabel
                     Spacer()
                     Text(ServerDate.relative(item.created_at)).font(.caption).foregroundStyle(Theme.textSecondary)
+                    Button(action: flip) {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Theme.textSecondary)
+                            .frame(width: 30, height: 26)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("カードの裏を見る")
                 }
                 if !item.body.isEmpty {
                     Text(item.body).font(.body).foregroundStyle(Theme.text)
@@ -884,102 +957,173 @@ struct GraffitiCard: View {
                         .padding(.horizontal, 10).padding(.vertical, 4)
                         .background(Theme.warm.opacity(0.12), in: Capsule())
                 }
-                if inAtlas == true {
-                    Label("友達の図鑑に載せています", systemImage: "books.vertical.fill")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(Theme.accent)
-                }
-                HStack(spacing: 12) {
-                    Button(action: onLike) {
-                        Label("\(likeCount)", systemImage: liked ? "heart.fill" : "heart")
-                            .foregroundStyle(liked ? Theme.alert : Theme.textSecondary)
-                            .symbolEffect(.bounce, value: liked)
-                            .contentTransition(.numericText())
-                            .animation(.snappy, value: likeCount)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(liked ? "いいねをやめる" : "いいね")
-                    Label(Visibility.label(of: item.visibility), systemImage: "eye")
-                    if item.local_only {
-                        Label("現地だけ", systemImage: "mappin.and.ellipse")
-                    }
-                    Spacer()
-                    if let onCardLink {
-                        Button(action: onCardLink) {
-                            Label("来たよ", systemImage: "hand.wave")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(Theme.warm)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("自分のカードを添えて来たよを送る")
-                    }
-                    if let onCompare {
-                        Button(action: onCompare) {
-                            Label("見比べる", systemImage: "rectangle.split.2x1")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(Theme.accent)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("自分のカードと見比べる")
-                    }
-                    if let onShare {
-                        Button(action: onShare) {
-                            Image(systemName: "square.and.arrow.up")
-                                .foregroundStyle(Theme.accent)
-                                .frame(width: 32, height: 24)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("カードを共有")
-                    }
-                    Menu {
-                        if isMine {
-                            if let onShare {
-                                Button(action: onShare) { Label("カードを共有", systemImage: "square.and.arrow.up") }
-                            }
-                            if let inAtlas {
-                                Button(action: onToggleAtlas) {
-                                    Label(inAtlas ? "友達の図鑑から外す" : "友達の図鑑に載せる",
-                                          systemImage: inAtlas ? "books.vertical" : "books.vertical.fill")
-                                }
-                            }
-                            Button("消す", role: .destructive) { confirmDelete = true }
-                        } else {
-                            if let onCardLink {
-                                Button(action: onCardLink) {
-                                    Label("自分のカードを添えて来たよを送る", systemImage: "hand.wave")
-                                }
-                            }
-                            if let onCompare {
-                                Button(action: onCompare) {
-                                    Label("自分のカードと見比べる", systemImage: "rectangle.split.2x1")
-                                }
-                            }
-                            Button(action: onReport) {
-                                Label("通報する", systemImage: "exclamationmark.bubble")
-                            }
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis")
-                            .frame(width: 32, height: 24)
-                    }
-                    .accessibilityLabel("そのほか")
-                }
-                .font(.caption)
-                .foregroundStyle(Theme.textSecondary)
+                actionRow
             }
             .padding(16)
         }
-        .background(Theme.surface)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.radiusCard))
-        .overlay(RoundedRectangle(cornerRadius: Theme.radiusCard).stroke(Theme.line))
-        .fullScreenCover(item: $viewer) { item in
-            PhotoViewer(path: item.path, caption: item.caption)
-                .environmentObject(session)
+    }
+
+    @ViewBuilder private var authorLabel: some View {
+        if isMine {
+            PersonBadge(name: "あなた", size: 28)
+            Text("あなた").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
+        } else {
+            NavigationLink {
+                ProfileView(userID: item.author)
+            } label: {
+                HStack(spacing: 8) {
+                    PersonBadge(name: author.isEmpty ? "?" : author, size: 28)
+                    Text(author.isEmpty ? "だれか" : author)
+                        .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
+                }
+            }
         }
-        .confirmationDialog("この記憶を消しますか？", isPresented: $confirmDelete, titleVisibility: .visible) {
-            Button("消す", role: .destructive, action: onDelete)
-        } message: {
-            Text("友達の新着や GATE からも見えなくなります。")
+    }
+
+    private var actionRow: some View {
+        HStack(spacing: 14) {
+            Button(action: onLike) {
+                Label("\(likeCount)", systemImage: liked ? "heart.fill" : "heart")
+                    .foregroundStyle(liked ? Theme.alert : Theme.textSecondary)
+                    .symbolEffect(.bounce, value: liked)
+                    .contentTransition(.numericText())
+                    .animation(.snappy, value: likeCount)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(liked ? "いいねをやめる" : "いいね")
+            if let onComments {
+                Button(action: onComments) {
+                    Label("\(commentCount)", systemImage: commentCount > 0 ? "bubble.left.fill" : "bubble.left")
+                        .foregroundStyle(commentCount > 0 ? Theme.accent : Theme.textSecondary)
+                        .contentTransition(.numericText())
+                        .animation(.snappy, value: commentCount)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("返信 \(commentCount) 件")
+            }
+            Spacer()
+            if let onCardLink {
+                Button(action: onCardLink) {
+                    Label("来たよ", systemImage: "hand.wave")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.warm)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("自分のカードを添えて来たよを送る")
+            }
+            if let onCompare {
+                Button(action: onCompare) {
+                    Label("見比べる", systemImage: "rectangle.split.2x1")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.accent)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("自分のカードと見比べる")
+            }
+            if let saved {
+                Button(action: onToggleSave) {
+                    Image(systemName: saved ? "bookmark.fill" : "bookmark")
+                        .foregroundStyle(saved ? Theme.warm : Theme.textSecondary)
+                        .symbolEffect(.bounce, value: saved)
+                        .frame(width: 28, height: 24)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(saved ? "お気に入りから外す" : "お気に入りにする")
+            }
+            Menu {
+                if isMine {
+                    if let onShare {
+                        Button(action: onShare) { Label("カードを共有", systemImage: "square.and.arrow.up") }
+                    }
+                    if let inAtlas {
+                        Button(action: onToggleAtlas) {
+                            Label(inAtlas ? "友達の図鑑から外す" : "友達の図鑑に載せる",
+                                  systemImage: inAtlas ? "books.vertical" : "books.vertical.fill")
+                        }
+                    }
+                    Button { flip() } label: { Label("カードの裏を見る", systemImage: "arrow.triangle.2.circlepath") }
+                    Button("消す", role: .destructive) { confirmDelete = true }
+                } else {
+                    if let onCardLink {
+                        Button(action: onCardLink) {
+                            Label("自分のカードを添えて来たよを送る", systemImage: "hand.wave")
+                        }
+                    }
+                    if let onCompare {
+                        Button(action: onCompare) {
+                            Label("自分のカードと見比べる", systemImage: "rectangle.split.2x1")
+                        }
+                    }
+                    Button { flip() } label: { Label("カードの裏を見る", systemImage: "arrow.triangle.2.circlepath") }
+                    Button(action: onReport) {
+                        Label("通報する", systemImage: "exclamationmark.bubble")
+                    }
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .frame(width: 32, height: 24)
+            }
+            .accessibilityLabel("そのほか")
+        }
+        .font(.caption)
+        .foregroundStyle(Theme.textSecondary)
+    }
+
+    // MARK: 裏（くわしいこと）
+
+    private var back: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text("カードの裏")
+                    .font(.caption.weight(.bold))
+                    .tracking(1.2)
+                    .foregroundStyle(Theme.accent)
+                Spacer()
+                Button(action: flip) {
+                    Label("表にもどす", systemImage: "arrow.triangle.2.circlepath")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.accent)
+                }
+                .buttonStyle(.plain)
+            }
+            backRow("person.fill", "書いた人", isMine ? "あなた" : (author.isEmpty ? "だれか" : author))
+            backRow("calendar", "残した日", GateDates.fullText(item.created_at))
+            backRow("eye", "見える人", Visibility.label(of: item.visibility))
+            backRow(item.local_only ? "mappin.and.ellipse" : "sparkles", "どこで見られるか",
+                    item.local_only ? "この GATE の中だけ" : "GATE の中と、友達の新着（24 時間）")
+            if let inAtlas {
+                backRow("books.vertical", "友達の図鑑", inAtlas ? "載せています（写真・場所・日付だけ）" : "載せていません")
+            }
+            HStack(spacing: 14) {
+                Label("いいね \(likeCount)", systemImage: "heart")
+                if onComments != nil { Label("返信 \(commentCount)", systemImage: "bubble.left") }
+                if saved == true { Label("お気に入り", systemImage: "bookmark.fill").foregroundStyle(Theme.warm) }
+            }
+            .font(.caption)
+            .foregroundStyle(Theme.textSecondary)
+            Spacer(minLength: 0)
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(
+            LinearGradient(colors: [Theme.accentLight.opacity(0.55), Theme.surface], startPoint: .top, endPoint: .bottom)
+        )
+    }
+
+    private func backRow(_ symbol: String, _ title: String, _ value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Image(systemName: symbol)
+                .font(.caption)
+                .foregroundStyle(Theme.accent)
+                .frame(width: 18)
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(Theme.textSecondary)
+                .frame(width: 96, alignment: .leading)
+            Text(value)
+                .font(.subheadline)
+                .foregroundStyle(Theme.text)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }

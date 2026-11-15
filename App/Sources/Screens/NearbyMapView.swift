@@ -17,6 +17,10 @@ struct NearbyMapView: View {
     @State private var routeFrom: CLLocation?
     @State private var selected: UUID?
     @State private var loaded = false
+    /// 「探す」
+    @State private var showSearch = false
+    /// 探して選んだ場所（地図に印を出し、歩いて行く道を開ける）
+    @State private var place: MKMapItem?
 
     var body: some View {
         NavigationStack {
@@ -34,6 +38,11 @@ struct NearbyMapView: View {
                             MapPolyline(route.polyline)
                                 .stroke(Theme.warm, style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round,
                                                                        dash: target?.fine == true ? [] : [2, 10]))
+                        }
+                        if let place {
+                            Marker(place.name ?? "探した場所", systemImage: "mappin",
+                                   coordinate: MapSearchSheet.coordinate(of: place))
+                                .tint(Theme.accent)
                         }
                         if let target {
                             Annotation("次：\(target.stop.title)", coordinate: target.coordinate) {
@@ -75,7 +84,29 @@ struct NearbyMapView: View {
                 await refresh(force: true)
                 await loadWalking()
             }
+            .sheet(isPresented: $showSearch) {
+                MapSearchSheet { item in
+                    place = item
+                    withAnimation(.easeInOut(duration: 0.6)) {
+                        position = .region(MKCoordinateRegion(center: MapSearchSheet.coordinate(of: item),
+                                                              latitudinalMeters: 700, longitudinalMeters: 700))
+                    }
+                }
+                .environmentObject(session)
+                .environmentObject(location)
+                .environmentObject(nav)
+            }
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        showSearch = true
+                    } label: {
+                        Label("探す", systemImage: "magnifyingglass")
+                            .labelStyle(.titleAndIcon)
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .accessibilityLabel("GATE や場所を名前で探す")
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     NavigationLink {
                         TrailListView()
@@ -91,6 +122,9 @@ struct NearbyMapView: View {
 
     private var nearbyList: some View {
         VStack(alignment: .leading, spacing: 8) {
+            if let place {
+                placeCard(place)
+            }
             if let target {
                 NavigationLink {
                     TrailDetailView(trailID: target.trail.id, title: target.trail.title)
@@ -168,6 +202,43 @@ struct NearbyMapView: View {
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.background)
+    }
+
+    /// 探して選んだ場所：名前と、歩いて行く道。GATE が見つかるのは、いまいる所の 100m 以内のまま
+    private func placeCard(_ item: MKMapItem) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "mappin.circle.fill").font(.title3).foregroundStyle(Theme.accent)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.name ?? "探した場所").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text).lineLimit(1)
+                Text("GATE が見つかるのは、着いてからその場の 100m 以内です")
+                    .font(.caption2).foregroundStyle(Theme.textSecondary)
+            }
+            Spacer(minLength: 0)
+            Button {
+                item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeWalking])
+            } label: {
+                Label("歩いて行く", systemImage: "figure.walk")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10).padding(.vertical, 7)
+                    .background(Theme.accent, in: Capsule())
+            }
+            .buttonStyle(.plain)
+            Button {
+                withAnimation {
+                    place = nil
+                    position = .userLocation(fallback: .automatic)
+                }
+            } label: {
+                Image(systemName: "xmark").font(.caption.weight(.bold)).foregroundStyle(Theme.textSecondary)
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("探した場所を消す")
+        }
+        .padding(12)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Theme.accent.opacity(0.4)))
     }
 
     /// 歩いている TRAIL があれば、次の地点を地図に出す

@@ -381,6 +381,8 @@ struct BoardThread: Decodable, Identifiable, Hashable {
     let unread: Bool
     /// 書いた人が直した時刻（直していなければ無い。0014 の前のサーバーでも無い）
     var edited_at: String?
+    /// 「解決しました」（質問・調べる。0018 の前のサーバーでは無い）
+    var resolved: Bool?
 
     var boardTopic: BoardTopic { BoardTopic(rawValue: topic) ?? .other }
 }
@@ -636,7 +638,7 @@ enum ReportReason: String, CaseIterable, Identifiable {
 
 /// 通報できるもの（サーバーの gf_reports.target_kind と同じ）
 enum ReportTarget: String {
-    case gate, graffiti, artwork, thread, reply, memory, memory_item, letter, user, dm, trail, snapshot
+    case gate, graffiti, artwork, thread, reply, memory, memory_item, letter, user, dm, trail, snapshot, card_comment
 }
 
 // MARK: - TRAIL と今と昔
@@ -723,6 +725,7 @@ struct NotificationItem: Decodable, Identifiable, Hashable {
         case "memory_photo": return "\(who)が思い出に写真を足しました（\(gate)）"
         case "like": return "\(who)があなたの記憶にいいねしました（\(gate)）"
         case "card_link": return "\(who)があなたのカードに「来たよ」を送りました（\(gate)）"
+        case "card_comment": return "\(who)がカードに返信しました（\(gate)。読めるのは GATE の中です）"
         case "follow": return "\(who)があなたをフォローしました"
         default: return "\(who)からのお知らせ"
         }
@@ -737,6 +740,7 @@ struct NotificationItem: Decodable, Identifiable, Hashable {
         case "memory_invite", "memory_photo": return "photo.stack"
         case "like": return "heart"
         case "card_link": return "hand.wave"
+        case "card_comment": return "bubble.left"
         case "follow": return "person.badge.plus"
         case "place_map_stale": return "arrow.triangle.2.circlepath.camera"
         default: return "bell"

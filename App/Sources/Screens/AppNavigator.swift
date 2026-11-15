@@ -17,6 +17,8 @@ final class AppNavigator: ObservableObject {
     @Published var friendInvite: FriendInvite?
     /// リンクで届いた GATE（見てよいかはサーバーが決める）
     @Published var gateLink: GateRoute?
+    /// リンクで届いた TRAIL（見てよいかはサーバーが決める）
+    @Published var trailLink: TrailRoute?
 
     /// アプリを開くリンクの頭（`grafitygate://friend/<ID>`）
     nonisolated static let scheme = "grafitygate"
@@ -29,6 +31,16 @@ final class AppNavigator: ObservableObject {
     /// GATE を友達に送るリンク
     nonisolated static func gateURL(_ id: UUID) -> URL {
         URL(string: "\(scheme)://gate/\(id.uuidString.lowercased())") ?? URL(string: "\(scheme)://")!
+    }
+
+    /// TRAIL を友達に送るリンク
+    nonisolated static func trailURL(_ id: UUID) -> URL {
+        URL(string: "\(scheme)://trail/\(id.uuidString.lowercased())") ?? URL(string: "\(scheme)://")!
+    }
+
+    /// TRAIL を送るときの文（地点の中身は、現地で扉を開けた人だけ）
+    nonisolated static func trailShareText(title: String, stops: Int, id: UUID) -> String {
+        "Grafity Gate の TRAIL「\(title)」（\(stops) か所）\n順番に現地で扉を開けて歩く、思い出の道です。\n\(trailURL(id).absoluteString)"
     }
 
     /// GATE を送るときの文（現地でしか中は見られないことも書く）
@@ -56,6 +68,13 @@ final class AppNavigator: ObservableObject {
             Trace.log("GATE のリンクで開きました")
             friendInvite = nil
             gateLink = GateRoute(id: id)
+            return
+        }
+        if url.scheme?.lowercased() == Self.scheme, url.host?.lowercased() == "trail",
+           let raw = url.pathComponents.filter({ $0 != "/" }).first, let id = UUID(uuidString: raw) {
+            Trace.log("TRAIL のリンクで開きました")
+            friendInvite = nil
+            trailLink = TrailRoute(id: id)
             return
         }
         guard let handle = Self.handle(from: url.absoluteString) else {
