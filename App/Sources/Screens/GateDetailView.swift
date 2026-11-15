@@ -32,6 +32,9 @@ struct GateContext: Equatable {
     let visit: UUID?
     let visitExpires: Date?
 
+    /// 作った人か、一緒に管理する人（掲示板のピン留め・消す・解決しました）
+    var canManage = false
+
     var isInside: Bool { visit != nil && (visitExpires ?? .distantPast) > Date() }
 }
 
@@ -50,6 +53,11 @@ struct GateDetailView: View {
     @State private var showAddLooks = false
     @State private var tab: GateTab = .graffiti
     @State private var saved = false
+    /// 一緒に管理する人（作った人のほか）
+    @State private var managers: [GateManager] = []
+    @State private var editingGate = false
+    @State private var showManagers = false
+    @State private var confirmClose = false
     @State private var report: ReportItem?
     @State private var refreshToken = 0
     @State private var actionMessage: String?
@@ -70,6 +78,9 @@ struct GateDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 if let summary {
+                    if summary.status == "closed" && isOwner(summary) {
+                        closedBanner(summary)
+                    }
                     header(summary)
                     if !trails.isEmpty {
                         trailStrip
@@ -126,6 +137,21 @@ struct GateDetailView: View {
         .sheet(item: $report) { item in
             ReportSheet(item: item)
         }
+        .sheet(isPresented: $editingGate) {
+            if let summary {
+                GateEditSheet(summary: summary, isOwner: isOwner(summary)) { Task { await reload() } }
+                    .environmentObject(session)
+            }
+        }
+        .sheet(isPresented: $showManagers) {
+            GateManagersSheet(gateID: gateID, title: summary?.title ?? "") { Task { await reload() } }
+                .environmentObject(session)
+        }
+        .confirmationDialog("この GATE を閉じますか？", isPresented: $confirmClose, titleVisibility: .visible) {
+            Button("閉じる", role: .destructive) { Task { await setOpen(false) } }
+        } message: {
+            Text("ほかの人は見つけられず、入れなくなります。中の記憶は消えず、あとで開け直せます。")
+        }
         .sheet(isPresented: $showVisits) {
             MyVisitsSheet(gateID: gateID, title: summary?.title ?? "")
                 .environmentObject(session)
@@ -136,13 +162,71 @@ struct GateDetailView: View {
         let active = (s.visitExpiresAt ?? .distantPast) > now
         return GateContext(gateID: s.id, title: s.title, ownerID: s.owner, ownerName: s.owner_name,
                            coverPath: s.cover_path, createdAt: s.created_at,
-                           visit: active ? s.my_visit : nil, visitExpires: active ? s.visitExpiresAt : nil)
+                           visit: active ? s.my_visit : nil, visitExpires: active ? s.visitExpiresAt : nil,
+                           canManage: canManage(s))
+    }
+
+    private func isOwner(_ s: GateSummary) -> Bool { s.owner == session.userID }
+
+    /// 作った人か、一緒に管理する人
+    private func canManage(_ s: GateSummary) -> Bool {
+        isOwner(s) || managers.contains { $0.user_id == session.userID }
+    }
+
+    /// 閉じた GATE（作った人にだけ見えている）
+    private func closedBanner(_ s: GateSummary) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "door.left.hand.closed")
+                .font(.title3)
+                .foregroundStyle(Theme.warm)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("この GATE は閉じています").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
+                Text("いまは、あなたにだけ見えています。ほかの人は見つけられず、入れません。中の記憶は消えていません。")
+                    .font(.caption).foregroundStyle(Theme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button {
+                    Task { await setOpen(true) }
+                } label: {
+                    Label("開け直す", systemImage: "door.left.hand.open")
+                        .font(.subheadline.weight(.semibold))
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Theme.accent)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.warm.opacity(0.1), in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Theme.warm.opacity(0.35)))
+    }
+
+    private func setOpen(_ open: Bool) async {
+        guard let api = session.api else { return }
+        do {
+            try await api.setGateOpen(gateID, open: open)
+            Haptics.success()
+            Trace.log("GATE を\(open ? "開け直した" : "閉じた")")
+            await reload()
+        } catch {
+            actionMessage = ErrorText.isMissingFunction(error)
+                ? "閉じる・開け直すは、サーバーの準備（setup_all.sql の貼り直し）のあとで使えます。" : ErrorText.of(error)
+        }
+    }
+
+    private func leaveManagers() async {
+        guard let api = session.api, let me = session.userID else { return }
+        do {
+            try await api.removeGateManager(gateID, user: me)
+            await reload()
+        } catch {
+            actionMessage = ErrorText.of(error)
+        }
     }
 
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
         if let summary {
             ToolbarItemGroup(placement: .topBarTrailing) {
-                if summary.status == "published", summary.visibility != "private" {
+                if summary.status == "open", summary.visibility != "private" {
                     ShareLink(item: AppNavigator.gateShareText(title: summary.title, id: summary.id)) {
                         Image(systemName: "square.and.arrow.up")
                     }
@@ -154,19 +238,52 @@ struct GateDetailView: View {
                     Image(systemName: saved ? "bookmark.fill" : "bookmark")
                 }
                 .accessibilityLabel(saved ? "保存をやめる" : "保存する")
-                if summary.owner != session.userID {
-                    Menu {
+                Menu {
+                    if canManage(summary) {
+                        Button {
+                            editingGate = true
+                        } label: {
+                            Label("GATE を直す（名前・紹介・表紙）", systemImage: "pencil")
+                        }
+                    }
+                    if isOwner(summary) {
+                        Button {
+                            showManagers = true
+                        } label: {
+                            Label("一緒に管理する人", systemImage: "person.2.badge.gearshape")
+                        }
+                        if summary.status == "open" {
+                            Button(role: .destructive) {
+                                confirmClose = true
+                            } label: {
+                                Label("GATE を閉じる", systemImage: "door.left.hand.closed")
+                            }
+                        } else {
+                            Button {
+                                Task { await setOpen(true) }
+                            } label: {
+                                Label("GATE を開け直す", systemImage: "door.left.hand.open")
+                            }
+                        }
+                    } else {
+                        if canManage(summary) {
+                            Button(role: .destructive) {
+                                Task { await leaveManagers() }
+                            } label: {
+                                Label("管理から抜ける", systemImage: "rectangle.portrait.and.arrow.right")
+                            }
+                        }
                         Button {
                             report = ReportItem(id: summary.id, target: .gate, userID: summary.owner,
                                                 userName: summary.owner_name, label: summary.title)
                         } label: {
                             Label("この GATE を通報する", systemImage: "exclamationmark.bubble")
                         }
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
                     }
-                    .accessibilityLabel("そのほか")
+                } label: {
+                    Image(systemName: "ellipsis.circle")
                 }
+                .accessibilityLabel("そのほか")
             }
         }
     }
@@ -208,6 +325,13 @@ struct GateDetailView: View {
                             }
                             .foregroundStyle(.white.opacity(0.92))
                         }
+                    }
+                    if !managers.isEmpty {
+                        Label("一緒に管理：" + managers.map { $0.user_id == session.userID ? "あなた" : $0.display_name }
+                            .joined(separator: "・"), systemImage: "person.2.fill")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.85))
+                            .lineLimit(1)
                     }
                 }
                 .padding(16)
@@ -416,6 +540,7 @@ struct GateDetailView: View {
             }
             trails = (try? await api.trails(including: gateID)) ?? []
             stats = try? await api.gateStats(gateID)
+            managers = (try? await api.gateManagers(gateID)) ?? []
             health = summary?.owner == session.userID ? (try? await api.placeMapHealth(gateID)) ?? nil : nil
             if summary?.owner == session.userID {
                 exactPlace = (try? await api.myGate(gateID))?.coordinate
@@ -473,6 +598,8 @@ struct GraffitiSection: View {
     /// カードごとの返信の数・お気に入り（nil＝サーバーがまだ 0018 の前なので出さない）
     @State private var extras: [UUID: CardExtra]?
     @State private var commenting: Graffiti?
+    @State private var editingCard: Graffiti?
+    @State private var cardQuery = ""
 
     init(context: GateContext, refreshToken: Int, onReport: @escaping (ReportItem) -> Void) {
         self.context = context
@@ -540,6 +667,7 @@ struct GraffitiSection: View {
         case newest = "新しい順"
         case oldest = "古い順"
         case friends = "友達だけ"
+        case mine = "自分の"
         case season = "季節で"
         var id: String { rawValue }
     }
@@ -566,9 +694,20 @@ struct GraffitiSection: View {
         case .friends:
             return list.filter { friendIDs.contains($0.author) || $0.author == session.userID }
                 .sorted { $0.created_at > $1.created_at }
+        case .mine:
+            return list.filter { $0.author == session.userID }.sorted { $0.created_at > $1.created_at }
         case .season:
             return list.filter { ServerDate.parse($0.created_at).map(Season.of) == season }
                 .sorted { $0.created_at > $1.created_at }
+        }
+    }
+
+    /// ことば・書いた人の名前で探す（GATE の中の一覧から）
+    private func searched(_ list: [Graffiti]) -> [Graffiti] {
+        let q = cardQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else { return list }
+        return list.filter {
+            $0.body.localizedCaseInsensitiveContains(q) || (names[$0.author] ?? "").localizedCaseInsensitiveContains(q)
         }
     }
 
@@ -611,7 +750,21 @@ struct GraffitiSection: View {
             if context.isInside && graffiti.count > 2 {
                 orderBar
             }
-            let shown = context.isInside ? arranged(graffiti) : graffiti.filter { $0.author == session.userID }
+            if context.isInside && graffiti.count > 5 {
+                HStack {
+                    Image(systemName: "magnifyingglass").foregroundStyle(Theme.textSecondary)
+                    TextField("ことば・名前で探す", text: $cardQuery)
+                    if !cardQuery.isEmpty {
+                        Button { cardQuery = "" } label: {
+                            Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.textSecondary)
+                        }
+                        .accessibilityLabel("消す")
+                    }
+                }
+                .padding(10)
+                .background(Theme.surfaceElevated, in: RoundedRectangle(cornerRadius: 12))
+            }
+            let shown = context.isInside ? searched(arranged(graffiti)) : graffiti.filter { $0.author == session.userID }
             if !context.isInside && !shown.isEmpty {
                 Text("ここに残した自分の記憶").font(.headline).foregroundStyle(Theme.text)
             }
@@ -644,8 +797,13 @@ struct GraffitiSection: View {
                              commentCount: extras?[item.id]?.comments ?? 0,
                              onComments: extras == nil ? nil : { commenting = item },
                              saved: extras == nil ? nil : (extras?[item.id]?.saved ?? false),
-                             onToggleSave: { Task { await toggleSave(item) } })
+                             onToggleSave: { Task { await toggleSave(item) } },
+                             onEdit: isMine ? { editingCard = item } : nil)
             }
+        }
+        .sheet(item: $editingCard) { card in
+            GraffitiEditSheet(item: card) { Task { await load() } }
+                .environmentObject(session)
         }
         .sheet(item: $commenting) { card in
             CardCommentsSheet(card: card, authorName: names[card.author] ?? "",
@@ -868,6 +1026,8 @@ struct GraffitiCard: View {
     /// お気に入りか（nil なら出さない）
     let saved: Bool?
     let onToggleSave: () -> Void
+    /// 自分のカードを直す（自分のカードだけ）
+    let onEdit: (() -> Void)?
 
     @State private var confirmDelete = false
     @State private var viewer: PhotoViewerItem?
@@ -880,7 +1040,7 @@ struct GraffitiCard: View {
          onShare: (() -> Void)? = nil, onCompare: (() -> Void)? = nil, onCardLink: (() -> Void)? = nil,
          linkNote: String? = nil, inAtlas: Bool? = nil, onToggleAtlas: @escaping () -> Void = {},
          commentCount: Int = 0, onComments: (() -> Void)? = nil,
-         saved: Bool? = nil, onToggleSave: @escaping () -> Void = {}) {
+         saved: Bool? = nil, onToggleSave: @escaping () -> Void = {}, onEdit: (() -> Void)? = nil) {
         self.item = item
         self.author = author
         self.isMine = isMine
@@ -899,6 +1059,7 @@ struct GraffitiCard: View {
         self.onComments = onComments
         self.saved = saved
         self.onToggleSave = onToggleSave
+        self.onEdit = onEdit
     }
 
     var body: some View {
@@ -963,6 +1124,9 @@ struct GraffitiCard: View {
                 }
                 if !item.body.isEmpty {
                     Text(item.body).font(.body).foregroundStyle(Theme.text)
+                }
+                if item.edited_at != nil {
+                    Text("直しました").font(.caption2).foregroundStyle(Theme.textSecondary)
                 }
                 if let linkNote {
                     Label(linkNote, systemImage: "hand.wave.fill")
@@ -1046,6 +1210,9 @@ struct GraffitiCard: View {
             }
             Menu {
                 if isMine {
+                    if let onEdit {
+                        Button(action: onEdit) { Label("直す（ひとこと・見せる範囲）", systemImage: "pencil") }
+                    }
                     if let onShare {
                         Button(action: onShare) { Label("カードを共有", systemImage: "square.and.arrow.up") }
                     }
@@ -1102,6 +1269,9 @@ struct GraffitiCard: View {
             }
             backRow("person.fill", "書いた人", isMine ? "あなた" : (author.isEmpty ? "だれか" : author))
             backRow("calendar", "残した日", GateDates.fullText(item.created_at))
+            if let edited = item.edited_at {
+                backRow("pencil", "直した日", GateDates.fullText(edited))
+            }
             backRow("eye", "見える人", Visibility.label(of: item.visibility))
             backRow(item.local_only ? "mappin.and.ellipse" : "sparkles", "どこで見られるか",
                     item.local_only ? "この GATE の中だけ" : "GATE の中と、友達の新着（24 時間）")

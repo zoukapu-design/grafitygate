@@ -100,7 +100,8 @@ create trigger gf_terms_guard before insert on public.gf_card_links for each row
 alter table public.gf_notifications drop constraint if exists gf_notifications_kind_check;
 alter table public.gf_notifications add constraint gf_notifications_kind_check
   check (kind in ('gate_graffiti', 'gate_artwork', 'board_thread', 'board_reply', 'letter', 'letter_opened',
-                  'memory_invite', 'memory_photo', 'like', 'place_map_stale', 'card_link', 'card_comment'));
+                  'memory_invite', 'memory_photo', 'like', 'place_map_stale', 'card_link', 'card_comment',
+                  'gate_manager'));
 
 -- 送る：自分がこの GATE で残したカードを、友達のカードに添えて
 create or replace function public.gf_send_card_link(p_from uuid, p_to uuid, p_body text) returns uuid

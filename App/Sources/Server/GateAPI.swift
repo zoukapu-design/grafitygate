@@ -124,6 +124,16 @@ struct GateAPI {
     func graffiti(in gate: UUID) async throws -> [Graffiti] {
         do {
             return try await client.from("gf_graffiti")
+                .select("id,gate_id,author,body,photo_path,visibility,local_only,created_at,in_atlas,edited_at")
+                .eq("gate_id", value: gate.uuidString)
+                .order("created_at", ascending: false)
+                .limit(200)
+                .execute().value
+        } catch let error where ErrorText.isMissingColumn(error) {
+            // 0019 の前のサーバー（直した時刻の欄が無い）
+        }
+        do {
+            return try await client.from("gf_graffiti")
                 .select("id,gate_id,author,body,photo_path,visibility,local_only,created_at,in_atlas")
                 .eq("gate_id", value: gate.uuidString)
                 .order("created_at", ascending: false)

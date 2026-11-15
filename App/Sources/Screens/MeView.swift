@@ -15,6 +15,8 @@ struct MeView: View {
     @State private var loaded = false
     /// あの日（1 年前・1 か月前・1 週間前の今ごろの、自分の GATE とカード）
     @State private var onThisDay: OnThisDay.Pick?
+    /// 友達と一緒に管理している GATE
+    @State private var managed: [ManagedGate] = []
     @State private var savedCardCount: Int?
 
     var body: some View {
@@ -33,6 +35,9 @@ struct MeView: View {
                             OnThisDayCard(pick: onThisDay)
                         }
                         myGatesSection
+                        if !managed.isEmpty {
+                            managedSection
+                        }
                         lookBackSection
                         if let message {
                             NoticeText(text: message.text, isError: message.isError)
@@ -117,6 +122,45 @@ struct MeView: View {
         }
     }
 
+    /// 一緒に管理している GATE（友達が作った GATE を、名前・表紙・掲示板の管理で手伝う）
+    private var managedSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("一緒に管理している GATE").font(.title3.weight(.bold)).foregroundStyle(Theme.text)
+                Text("\(managed.count)").font(.subheadline.weight(.bold)).foregroundStyle(Theme.accent)
+            }
+            ForEach(managed) { gate in
+                NavigationLink {
+                    GateDetailView(gateID: gate.id)
+                } label: {
+                    HStack(spacing: 12) {
+                        ZStack {
+                            Theme.surfaceElevated
+                            if let cover = gate.cover_path {
+                                RemotePhoto(path: cover)
+                            } else {
+                                GateMark(size: 30, glowing: false)
+                            }
+                        }
+                        .frame(width: 52, height: 52)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(gate.title).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text).lineLimit(1)
+                            Text("\(gate.owner_name)さんの GATE・\(GateDates.shortText(gate.added_at)) から")
+                                .font(.caption).foregroundStyle(Theme.textSecondary).lineLimit(1)
+                        }
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right").font(.caption).foregroundStyle(Theme.textSecondary)
+                    }
+                    .padding(12)
+                    .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16))
+                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(Theme.line))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
     /// 見返す：図鑑・思い出・手紙・保存・TRAIL・友達
     private var lookBackSection: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -157,6 +201,7 @@ struct MeView: View {
         savedCardCount = try? await api.mySavedCards().count
         let myCards = (try? await api.userCardAtlas(me)) ?? []
         onThisDay = OnThisDay.pick(gates: gates, cards: myCards)
+        managed = (try? await api.myManagedGates()) ?? []
         unopenedLetters = (try? await api.letters())?.filter { !$0.sent && !$0.isOpened }.count ?? 0
         loaded = true
     }

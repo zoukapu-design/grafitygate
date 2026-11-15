@@ -304,12 +304,21 @@ extension GateAPI {
         try await client.rpc("gf_dm_threads").execute().value
     }
 
+    /// メッセージ（写真つき。0019 の前のサーバーでは文だけ）
     func dmMessages(with other: UUID) async throws -> [DMMessage] {
-        try await client.rpc("gf_dm_messages_with", params: OtherParam(p_other: other)).execute().value
+        do {
+            return try await client.rpc("gf_dm_messages_with2", params: OtherParam(p_other: other)).execute().value
+        } catch let error where ErrorText.isMissingFunction(error) {
+            return try await client.rpc("gf_dm_messages_with", params: OtherParam(p_other: other)).execute().value
+        }
     }
 
-    func sendDM(to other: UUID, body: String) async throws -> UUID {
-        try await client.rpc("gf_dm_send", params: DMSendParams(p_to: other, p_body: body)).execute().value
+    func sendDM(to other: UUID, body: String, photoPath: String? = nil) async throws -> UUID {
+        if let photoPath {
+            return try await client.rpc("gf_dm_send2", params: DMSendPhotoParams(p_to: other, p_body: body,
+                                                                                 p_photo_path: photoPath)).execute().value
+        }
+        return try await client.rpc("gf_dm_send", params: DMSendParams(p_to: other, p_body: body)).execute().value
     }
 
     func deleteDM(_ id: UUID) async throws {
@@ -611,4 +620,10 @@ private struct ReportParams: Encodable {
         try c.encode(p_reason, forKey: .p_reason)
         try c.encode(p_note, forKey: .p_note)               // nil は null
     }
+}
+
+private struct DMSendPhotoParams: Encodable {
+    let p_to: UUID
+    let p_body: String
+    let p_photo_path: String
 }

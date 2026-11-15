@@ -9,11 +9,12 @@ insert into public.gf_settings (key, value, note) values
   ('trail_search_radius_m', 5000, '近くの TRAIL を探す広さ（m）')
 on conflict (key) do nothing;
 
--- ============ お知らせの種類の「最後の一覧」（0008・0017 と同じ。足したら 3 か所とも直す） ============
+-- ============ お知らせの種類の「最後の一覧」（0008・0017・0019 と同じ。足したら 4 か所とも直す） ============
 alter table public.gf_notifications drop constraint if exists gf_notifications_kind_check;
 alter table public.gf_notifications add constraint gf_notifications_kind_check
   check (kind in ('gate_graffiti', 'gate_artwork', 'board_thread', 'board_reply', 'letter', 'letter_opened',
-                  'memory_invite', 'memory_photo', 'like', 'place_map_stale', 'card_link', 'card_comment'));
+                  'memory_invite', 'memory_photo', 'like', 'place_map_stale', 'card_link', 'card_comment',
+                  'gate_manager'));
 
 -- ============ お知らせの設定（種類ごとに止める。止めた種類は作らない） ============
 create table if not exists public.gf_notify_prefs (

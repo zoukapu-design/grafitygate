@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 
 /// お知らせ：自分の GATE に残されたもの・返信・手紙・思い出・いいね・フォロー。現地だけの中身は出さない。
@@ -147,7 +148,7 @@ struct MessagesView: View {
                                 Spacer()
                                 Text(ServerDate.relative(thread.last_at)).font(.caption2).foregroundStyle(Theme.textSecondary)
                             }
-                            Text((thread.last_from_me ? "あなた：" : "") + thread.last_body)
+                            Text((thread.last_from_me ? "あなた：" : "") + (thread.last_body.isEmpty ? "📷 写真" : thread.last_body))
                                 .font(.caption).foregroundStyle(Theme.textSecondary).lineLimit(1)
                         }
                         if thread.unread > 0 {
@@ -232,6 +233,10 @@ struct ChatView: View {
     @State private var error: String?
     @State private var report: ReportItem?
     @State private var lastRelationCheck = Date.distantPast
+    /// 添える写真（写真アプリから。送る前に縮めて JPEG にし直す＝位置などの付加情報は入らない）
+    @State private var photoItem: PhotosPickerItem?
+    @State private var photo: UIImage?
+    @State private var viewer: PhotoViewerItem?
     @FocusState private var typing: Bool
 
     init(other: UUID, name: String?) {
@@ -243,6 +248,7 @@ struct ChatView: View {
     struct PendingMessage: Identifiable, Equatable {
         let id = UUID()
         let body: String
+        var image: UIImage? = nil
         var failed = false
     }
 
@@ -319,6 +325,10 @@ struct ChatView: View {
         }
         .safeAreaInset(edge: .bottom) { composer }
         .sheet(item: $report) { item in ReportSheet(item: item) }
+        .fullScreenCover(item: $viewer) { item in
+            PhotoViewer(path: item.path, caption: item.caption)
+                .environmentObject(session)
+        }
         .task {
             await load(checkRelation: true)
             while !Task.isCancelled {
@@ -341,7 +351,46 @@ struct ChatView: View {
     }
 
     private var composer: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let photo {
+                ZStack(alignment: .topTrailing) {
+                    Image(uiImage: photo)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 84, height: 84)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    Button {
+                        self.photo = nil
+                        photoItem = nil
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.title3)
+                            .symbolRenderingMode(.palette)
+                            .foregroundStyle(.white, .black.opacity(0.6))
+                    }
+                    .offset(x: 6, y: -6)
+                    .accessibilityLabel("写真を外す")
+                }
+                .padding(.leading, 4)
+            }
+            composerRow
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(.bar)
+        .onChange(of: photoItem) { _, item in Task { await loadPhoto(item) } }
+    }
+
+    private var composerRow: some View {
         HStack(alignment: .bottom, spacing: 10) {
+            PhotosPicker(selection: $photoItem, matching: .images) {
+                Image(systemName: "photo")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(canSend ? Theme.accent : Theme.textSecondary)
+                    .frame(width: 36, height: 40)
+            }
+            .disabled(!canSend)
+            .accessibilityLabel("写真を添える")
             TextField(canSend ? "メッセージ" : "いまは送れません", text: $draft, axis: .vertical)
                 .lineLimit(1...5)
                 .focused($typing)
@@ -350,7 +399,7 @@ struct ChatView: View {
                 .overlay(RoundedRectangle(cornerRadius: 20).stroke(Theme.line))
                 .disabled(!canSend)
             Button {
-                send(draft)
+                send(draft, image: photo)
             } label: {
                 Image(systemName: "arrow.up")
                     .font(.system(size: 16, weight: .bold))
@@ -361,13 +410,19 @@ struct ChatView: View {
             .disabled(!canSendNow)
             .accessibilityLabel("送る")
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background(.bar)
     }
 
     private var canSendNow: Bool {
-        canSend && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        canSend && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || photo != nil)
+    }
+
+    private func loadPhoto(_ item: PhotosPickerItem?) async {
+        guard let item else { return }
+        if let data = try? await item.loadTransferable(type: Data.self), let image = UIImage(data: data) {
+            photo = image.downscaled(maxSide: 1600)
+        } else {
+            error = "写真を読めませんでした。別の写真を選んでください。"
+        }
     }
 
     private func startsNewDay(at index: Int) -> Bool {
@@ -394,15 +449,29 @@ struct ChatView: View {
         return HStack(alignment: .bottom, spacing: 6) {
             if mine { Spacer(minLength: 56) }
             VStack(alignment: mine ? .trailing : .leading, spacing: 3) {
-                Text(message.body)
-                    .font(.body)
-                    .foregroundStyle(mine ? .white : Theme.text)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 9)
-                    .background(mine ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(Theme.surface),
-                                in: bubbleShape(mine: mine, tail: last))
-                    .overlay(bubbleShape(mine: mine, tail: last).stroke(mine ? Color.clear : Theme.line))
-                    .textSelection(.enabled)
+                if let path = message.photo_path {
+                    Button {
+                        viewer = PhotoViewerItem(path: path, caption: message.body)
+                    } label: {
+                        RemotePhoto(path: path)
+                            .frame(width: 210, height: 210)
+                            .clipShape(RoundedRectangle(cornerRadius: 16))
+                            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Theme.line))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("写真を大きく見る")
+                }
+                if !message.body.isEmpty {
+                    Text(message.body)
+                        .font(.body)
+                        .foregroundStyle(mine ? .white : Theme.text)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 9)
+                        .background(mine ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(Theme.surface),
+                                    in: bubbleShape(mine: mine, tail: last))
+                        .overlay(bubbleShape(mine: mine, tail: last).stroke(mine ? Color.clear : Theme.line))
+                        .textSelection(.enabled)
+                }
                 if last, let date {
                     Text(ServerDate.clock(date) + (mine && message.read_at != nil ? "・既読" : ""))
                         .font(.caption2).foregroundStyle(Theme.textSecondary)
@@ -410,10 +479,12 @@ struct ChatView: View {
                 }
             }
             .contextMenu {
-                Button {
-                    UIPasteboard.general.string = message.body
-                } label: {
-                    Label("コピー", systemImage: "doc.on.doc")
+                if !message.body.isEmpty {
+                    Button {
+                        UIPasteboard.general.string = message.body
+                    } label: {
+                        Label("コピー", systemImage: "doc.on.doc")
+                    }
                 }
                 if mine {
                     Button(role: .destructive) {
@@ -439,18 +510,28 @@ struct ChatView: View {
         HStack(alignment: .bottom, spacing: 6) {
             Spacer(minLength: 56)
             VStack(alignment: .trailing, spacing: 3) {
-                Text(item.body)
-                    .font(.body)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 9)
-                    .background(Theme.accent.opacity(item.failed ? 0.35 : 0.6), in: bubbleShape(mine: true, tail: true))
+                if let image = item.image {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 210, height: 210)
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                        .opacity(item.failed ? 0.45 : 0.7)
+                }
+                if !item.body.isEmpty {
+                    Text(item.body)
+                        .font(.body)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 9)
+                        .background(Theme.accent.opacity(item.failed ? 0.35 : 0.6), in: bubbleShape(mine: true, tail: true))
+                }
                 if item.failed {
                     HStack(spacing: 12) {
                         Text("送れませんでした").foregroundStyle(Theme.alert)
                         Button("もう一度") {
                             pending.removeAll { $0.id == item.id }
-                            send(item.body)
+                            send(item.body, image: item.image)
                         }
                         Button("消す") { pending.removeAll { $0.id == item.id } }
                             .foregroundStyle(Theme.textSecondary)
@@ -494,20 +575,33 @@ struct ChatView: View {
         loaded = true
     }
 
-    private func send(_ raw: String) {
+    private func send(_ raw: String, image: UIImage? = nil) {
         let text = String(raw.trimmingCharacters(in: .whitespacesAndNewlines).prefix(1000))
-        guard !text.isEmpty, let api = session.api else { return }
-        let item = PendingMessage(body: text)
+        guard !text.isEmpty || image != nil, let api = session.api else { return }
+        let item = PendingMessage(body: text, image: image)
         pending.append(item)
         if raw == draft { draft = "" }
+        if image != nil {
+            photo = nil
+            photoItem = nil
+        }
         Task {
+            var uploaded: String?
             do {
-                _ = try await api.sendDM(to: other, body: text)
+                if let image, let media = session.media, let me = session.userID {
+                    uploaded = try await media.uploadPhoto(image, owner: me)
+                }
+                _ = try await api.sendDM(to: other, body: text, photoPath: uploaded)
+                if uploaded != nil { Trace.log("メッセージ：写真を送った") }
                 let latest = try? await api.dmMessages(with: other)
                 pending.removeAll { $0.id == item.id }
                 if let latest { messages = latest }
             } catch {
+                if let uploaded { await session.media?.removePhoto(path: uploaded) }
                 if let i = pending.firstIndex(where: { $0.id == item.id }) { pending[i].failed = true }
+                if ErrorText.isMissingFunction(error) {
+                    self.error = "写真を送るのは、サーバーの準備（setup_all.sql の貼り直し）のあとで使えます。"
+                }
                 Trace.log("メッセージ：送れなかった \(ErrorText.of(error))")
             }
         }
@@ -518,6 +612,7 @@ struct ChatView: View {
         do {
             try await api.deleteDM(message.id)
             messages.removeAll { $0.id == message.id }
+            if let path = message.photo_path { await session.media?.removePhoto(path: path) }
         } catch {
             self.error = ErrorText.of(error)
         }

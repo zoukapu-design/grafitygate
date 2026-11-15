@@ -236,7 +236,8 @@ struct ThreadView: View {
         _pinned = State(initialValue: thread.pinned)
     }
 
-    private var isGateOwner: Bool { context.ownerID == session.userID }
+    /// GATE を作った人か、一緒に管理する人
+    private var isGateOwner: Bool { context.canManage || context.ownerID == session.userID }
     private var isInvestigation: Bool { thread.boardTopic == .investigation }
     /// 「解決しました」にできるか：質問・調べるの話題で、立てた本人か GATE を作った人（0018 のサーバーだけ）
     private var canResolve: Bool {

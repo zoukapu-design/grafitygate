@@ -344,6 +344,8 @@ struct NotificationSettingsView: View {
               symbol: "envelope", kinds: ["letter", "letter_opened"]),
         NotifyGroup(id: "memories", title: "思い出", detail: "思い出の仲間に入った・写真が足されたとき",
               symbol: "photo.stack", kinds: ["memory_invite", "memory_photo"]),
+        NotifyGroup(id: "managers", title: "一緒に管理", detail: "友達があなたを GATE の「一緒に管理する人」に入れたとき",
+                    symbol: "person.2.badge.gearshape", kinds: ["gate_manager"]),
         NotifyGroup(id: "maps", title: "場所の記憶の撮り直し", detail: "あなたの GATE が、ほかの人の iPhone で見つかりにくくなったとき",
               symbol: "arrow.triangle.2.circlepath.camera", kinds: ["place_map_stale"]),
     ]

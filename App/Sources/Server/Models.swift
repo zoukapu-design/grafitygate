@@ -159,6 +159,8 @@ struct Graffiti: Decodable, Identifiable, Hashable {
     let created_at: String
     /// 友達の図鑑に載せているか（書いた本人が選ぶ。0017 の前のサーバーでは無い）
     var in_atlas: Bool? = nil
+    /// 書いた本人が文を直した時刻（直していなければ無い。0019 の前のサーバーでも無い）
+    var edited_at: String? = nil
 }
 
 /// 自分の GATE（表 gf_gates。自分のものだけ読める）
@@ -726,6 +728,7 @@ struct NotificationItem: Decodable, Identifiable, Hashable {
         case "like": return "\(who)があなたの記憶にいいねしました（\(gate)）"
         case "card_link": return "\(who)があなたのカードに「来たよ」を送りました（\(gate)）"
         case "card_comment": return "\(who)がカードに返信しました（\(gate)。読めるのは GATE の中です）"
+        case "gate_manager": return "\(who)があなたを\(gate)の「一緒に管理する人」に入れました"
         case "follow": return "\(who)があなたをフォローしました"
         default: return "\(who)からのお知らせ"
         }
@@ -741,6 +744,7 @@ struct NotificationItem: Decodable, Identifiable, Hashable {
         case "like": return "heart"
         case "card_link": return "hand.wave"
         case "card_comment": return "bubble.left"
+        case "gate_manager": return "person.2.badge.gearshape"
         case "follow": return "person.badge.plus"
         case "place_map_stale": return "arrow.triangle.2.circlepath.camera"
         default: return "bell"
@@ -781,6 +785,8 @@ struct DMMessage: Decodable, Identifiable, Hashable {
     let id: UUID
     let sender: UUID
     let body: String
+    /// 添えた写真（0019 の前のサーバーでは無い）
+    var photo_path: String? = nil
     let created_at: String
     let read_at: String?
 }
