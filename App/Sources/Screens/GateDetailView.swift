@@ -1178,7 +1178,15 @@ struct GraffitiCard: View {
         }
     }
 
+    /// 幅が足りないとき（小さい iPhone で友達のカード）は「来たよ」「見比べる」をしるしだけにする
     private var actionRow: some View {
+        ViewThatFits(in: .horizontal) {
+            actionRow(compact: false)
+            actionRow(compact: true)
+        }
+    }
+
+    private func actionRow(compact: Bool) -> some View {
         HStack(spacing: 14) {
             Button(action: onLike) {
                 Label("\(likeCount)", systemImage: liked ? "heart.fill" : "heart")
@@ -1203,8 +1211,11 @@ struct GraffitiCard: View {
             if let onCardLink {
                 Button(action: onCardLink) {
                     Label("来たよ", systemImage: "hand.wave")
+                        .labelStyle(CompactLabelStyle(compact: compact))
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(Theme.warm)
+                        .lineLimit(1)
+                        .fixedSize()
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("自分のカードを添えて来たよを送る")
@@ -1212,8 +1223,11 @@ struct GraffitiCard: View {
             if let onCompare {
                 Button(action: onCompare) {
                     Label("見比べる", systemImage: "rectangle.split.2x1")
+                        .labelStyle(CompactLabelStyle(compact: compact))
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(Theme.accent)
+                        .lineLimit(1)
+                        .fixedSize()
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("自分のカードと見比べる")
@@ -1331,6 +1345,24 @@ struct GraffitiCard: View {
                 .font(.subheadline)
                 .foregroundStyle(Theme.text)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+
+/// 幅が足りないときは、しるしだけにするラベル
+struct CompactLabelStyle: LabelStyle {
+    let compact: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        if compact {
+            configuration.icon
+                .frame(minWidth: 28, minHeight: 24)
+        } else {
+            HStack(spacing: 4) {
+                configuration.icon
+                configuration.title
+            }
         }
     }
 }

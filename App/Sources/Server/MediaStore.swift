@@ -218,19 +218,21 @@ struct RemotePhoto: View {
     }
 
     var body: some View {
-        ZStack {
-            placeholder
-            if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: contentMode)
-                    .transition(.opacity)
-            } else if failed {
-                Image(systemName: "photo")
-                    .foregroundStyle(Theme.textSecondary.opacity(0.5))
+        // 大きさは置き場所（下地の色）で決め、写真はその上に重ねて切り取る。
+        // 写真の大きさで決めると、埋める写真が枠より大きくなり、下の文字に重なったり画面が横にずれたりする
+        placeholder
+            .overlay {
+                if let image {
+                    Image(uiImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: contentMode)
+                        .transition(.opacity)
+                } else if failed {
+                    Image(systemName: "photo")
+                        .foregroundStyle(Theme.textSecondary.opacity(0.5))
+                }
             }
-        }
-        .clipped()
+            .clipped()
         .task(id: path) {
             if let cached = MediaStore.cachedPhoto(path: path) {
                 image = cached

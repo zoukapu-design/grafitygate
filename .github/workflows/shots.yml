@@ -94,8 +94,34 @@ jobs:
             for s in $SCREENS; do
               xcrun simctl launch --terminate-running-process "$UDID" "$BUNDLE" -GGDemoScreen "$s" \
                 -AppleLanguages "(ja)" -AppleLocale ja_JP > /dev/null
-              sleep 6
+              sleep 8
               xcrun simctl io "$UDID" screenshot "shots/$label-$s.png" > /dev/null
+              # アプリが落ちていないか（落ちていたら見本の画面に問題がある）
+              if ! xcrun simctl spawn "$UDID" launchctl list | grep -q "UIKitApplication:$BUNDLE"; then
+                echo "::warning title=見本::$label の $s でアプリが止まっていました"
+              fi
+            done
+            # 落ちた記録があれば、どこで落ちたかを出す
+            for f in $(ls -t ~/Library/Logs/DiagnosticReports/*GrafityGate* 2>/dev/null | head -3); do
+              python3 - "$f" <<'PY'
+          import json, sys
+          path = sys.argv[1]
+          text = open(path, errors="replace").read()
+          try:
+              head, body = text.split("\n", 1)
+              data = json.loads(body)
+              exc = data.get("exception", {})
+              thread = next((t for t in data.get("threads", []) if t.get("triggered")), {})
+              images = data.get("usedImages", [])
+              frames = []
+              for fr in thread.get("frames", [])[:14]:
+                  img = images[fr.get("imageIndex", 0)].get("name", "?") if images else "?"
+                  frames.append(f'{img} {fr.get("symbol", "")}')
+              msg = f'{exc.get("type")} {exc.get("signal")} {data.get("asi", "")}\n' + "\n".join(frames)
+          except Exception as e:
+              msg = text[:3000]
+          print("::warning title=落ちた記録::" + msg.replace("%", "%25").replace("\n", "%0A")[:3800])
+          PY
             done
             xcrun simctl shutdown "$UDID" || true
           done
