@@ -106,11 +106,16 @@ struct NearbyMapView: View {
                     .safeAreaPadding(.bottom, overlayHeight + geo.safeAreaInsets.bottom)
                     .ignoresSafeArea(edges: .bottom)
                 overlayCards
+                    // 中身の高さだけを使う（地図の上まで広がらないように）
+                    .fixedSize(horizontal: false, vertical: true)
                     .background(GeometryReader { p in
                         Color.clear.preference(key: OverlayHeightKey.self, value: p.size.height)
                     })
             }
-            .onPreferenceChange(OverlayHeightKey.self) { overlayHeight = $0 }
+            .onPreferenceChange(OverlayHeightKey.self) { h in
+                // 少しの違いでは変えない（地図の中身の位置が行ったり来たりしないように）
+                if abs(h - overlayHeight) > 2 { overlayHeight = h }
+            }
         }
     }
 
@@ -270,6 +275,8 @@ struct NearbyMapView: View {
                 .scrollTargetLayout()
                 .padding(.vertical, 6)
             }
+            // 高さは札の高さに決める（決めないと横に流す欄が縦にのび、地図の上まで広がっていた）
+            .frame(height: 168)
             .scrollTargetBehavior(.viewAligned)
             .safeAreaPadding(.horizontal, 16)
             .scrollPosition(id: $scrolledID)

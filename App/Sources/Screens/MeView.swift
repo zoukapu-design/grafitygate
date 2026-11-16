@@ -585,7 +585,7 @@ struct CollectionView: View {
                 }
             }
             if loaded && gates.isEmpty {
-                Text(kind == "visited" ? "まだありません。GATE の扉を開けると、ここに付きます。" : "まだありません。GATE の画面の右上で保存できます。")
+                Text(kind == "visited" ? "まだありません。GATE の扉を開けると、ここに付きます。" : "まだありません。グラフィティボードの右上で保存できます。")
                     .foregroundStyle(Theme.textSecondary)
             }
             if let message { NoticeText(text: message) }
