@@ -12,6 +12,7 @@ struct DemoGallery: View {
 
     static let screens = ["home", "gate", "gate-board", "gate-albums", "gate-letters", "gate-then", "trail",
                           "me", "map", "profile", "inbox", "messages",
+                          "friends", "visited", "saved-cards", "letters", "albums", "settings",
                           "cards", "nearby", "nearby-detail", "chat", "lookback", "goal", "board", "edit-card",
                           "edit-gate", "progress", "notifications", "onboarding"]
 
@@ -64,6 +65,18 @@ struct DemoGallery: View {
             NavigationStack { ProfileView(userID: DemoData.misaki) }
         case "inbox":
             NavigationStack { NotificationsView() }
+        case "friends":
+            NavigationStack { FriendsView() }
+        case "visited":
+            NavigationStack { CollectionView(kind: "visited") }
+        case "saved-cards":
+            NavigationStack { SavedCardsView() }
+        case "letters":
+            NavigationStack { MyLettersView() }
+        case "albums":
+            NavigationStack { MyMemoriesView() }
+        case "settings":
+            NavigationStack { MySettingsView() }
         case "messages":
             NavigationStack { MessagesView() }
         case "cards":

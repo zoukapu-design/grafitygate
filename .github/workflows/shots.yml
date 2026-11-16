@@ -69,7 +69,7 @@ jobs:
         env:
           SCREENS_IN: ${{ inputs.screens }}
         run: |
-          SCREENS="${SCREENS_IN:-home gate gate-board gate-albums gate-letters gate-then trail me map profile inbox messages cards nearby nearby-detail chat lookback goal board edit-card edit-gate progress notifications onboarding}"
+          SCREENS="${SCREENS_IN:-home gate gate-board gate-albums gate-letters gate-then trail me map profile inbox messages friends visited saved-cards letters albums settings cards nearby nearby-detail chat lookback goal board edit-card edit-gate progress notifications onboarding}"
           mkdir -p shots/logs
           pick() {
             xcrun simctl list devices available -j | python3 -c '
@@ -100,11 +100,15 @@ jobs:
               limit 60 xcrun simctl terminate "$UDID" "$BUNDLE" > /dev/null 2>&1 || true
               # アプリが出した文（落ちた理由・見本のサーバーへの問い合わせ）を、画面ごとに logs/ に残す
               LOG="$PWD/shots/logs/$label-$s.txt"
-              limit 60 xcrun simctl launch --stdout="$LOG" --stderr="$LOG" "$UDID" "$BUNDLE" -GGDemoScreen "$s" \
-                -AppleLanguages "(ja)" -AppleLocale ja_JP > /dev/null || echo "::warning title=見本::$label の $s を開けませんでした"
+              PID=$(limit 60 xcrun simctl launch --stdout="$LOG" --stderr="$LOG" "$UDID" "$BUNDLE" -GGDemoScreen "$s" \
+                -AppleLanguages "(ja)" -AppleLocale ja_JP | awk '{print $NF}') || echo "::warning title=見本::$label の $s を開けませんでした"
               sleep 12
               limit 60 xcrun simctl io "$UDID" screenshot "shots/$label-$s.png" > /dev/null || echo "::warning title=見本::$label の $s を撮れませんでした"
               ls -t ~/Library/Logs/DiagnosticReports 2>/dev/null | head -3 | sed 's/^/report: /' >> "$LOG" || true
+              # 画面が止まったまま（「止まっています」のあとに「動き出しました」が無い）なら、そのときの流れを 2 秒取っておく
+              if [ -n "$PID" ] && python3 -c 'import sys; t=open(sys.argv[1], errors="replace").read(); sys.exit(0 if t.rfind("画面が止まっています") > t.rfind("画面が動き出しました") else 1)' "$LOG"; then
+                limit 30 sample "$PID" 2 -file "shots/logs/$label-$s-sample.txt" > /dev/null 2>&1 || echo "sample failed" >> "$LOG"
+              fi
             done
             # 落ちた記録があれば、どこで落ちたかを出す
             for f in $(ls -t ~/Library/Logs/DiagnosticReports/*GrafityGate* 2>/dev/null | head -3); do

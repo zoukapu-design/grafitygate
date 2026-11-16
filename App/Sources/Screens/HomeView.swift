@@ -256,17 +256,10 @@ private struct FeedRow: View {
                     Text(card.body).font(.body).foregroundStyle(Theme.text)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                // 1 行に入らないとき（小さい iPhone・長い GATE の名前）は、2 行に分けて名前を切らない
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 8) {
-                        gateChip.fixedSize()
-                        Spacer(minLength: 0)
-                        compareButton
-                    }
-                    VStack(alignment: .leading, spacing: 8) {
-                        gateChip
-                        compareButton
-                    }
+                // GATE の名前と「あなたのカードと並べる」は行を分ける（小さい iPhone でも名前を切らない）
+                VStack(alignment: .leading, spacing: 8) {
+                    gateChip
+                    compareButton
                 }
             }
             .padding(16)
@@ -281,7 +274,8 @@ private struct FeedRow: View {
         Label(card.gate_title, systemImage: "door.left.hand.open")
             .font(.caption.weight(.semibold))
             .foregroundStyle(Theme.accent)
-            .lineLimit(1)
+            .lineLimit(2)
+            .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
             .background(Theme.accentLight, in: Capsule())
@@ -295,7 +289,6 @@ private struct FeedRow: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Theme.warm)
                     .lineLimit(1)
-                    .fixedSize()
             }
             .buttonStyle(.borderless)
         }
