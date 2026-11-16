@@ -83,6 +83,7 @@ jobs:
                       print(d["udid"]); sys.exit(0)
           ' "$1"
           }
+          START=$(date +%s)
           for spec in "small:iPhone SE" "large:Pro Max"; do
             label="${spec%%:*}"; name="${spec#*:}"
             UDID=$(pick "$name")
@@ -95,8 +96,18 @@ jobs:
             xcrun simctl privacy "$UDID" grant location-always "$BUNDLE" || xcrun simctl privacy "$UDID" grant location "$BUNDLE" || true
             xcrun simctl location "$UDID" set 35.6590,139.7010 || true
             # 1 つの手順が止まったままにならないよう、60 秒で打ち切る
-            limit() { perl -e 'alarm shift; exec @ARGV' "$@"; }
+            # 決まった秒数で必ず止める（止まらないものは強制的に終わらせる）
+            limit() {
+              local t=$1; shift
+              "$@" & local p=$!
+              ( sleep "$t"; kill -9 "$p" 2>/dev/null ) & local k=$!
+              wait "$p"; local rc=$?
+              kill "$k" 2>/dev/null; wait "$k" 2>/dev/null
+              return $rc
+            }
             for s in $SCREENS; do
+              # 全体で 25 分を超えたら、撮れたところまでで終える
+              if [ $(( $(date +%s) - START )) -gt 1380 ]; then echo "::warning title=見本::時間が足りないので $s から先は撮りません"; break; fi
               limit 60 xcrun simctl terminate "$UDID" "$BUNDLE" > /dev/null 2>&1 || true
               # アプリが出した文（落ちた理由・見本のサーバーへの問い合わせ）を、画面ごとに logs/ に残す
               LOG="$PWD/shots/logs/$label-$s.txt"
@@ -109,7 +120,7 @@ jobs:
               ls -t ~/Library/Logs/DiagnosticReports 2>/dev/null | head -3 | sed 's/^/report: /' >> "$LOG" || true
               # 画面が止まったまま（「止まっています」のあとに「動き出しました」が無い）なら、そのときの流れを 2 秒取っておく
               if [ -n "$PID" ] && python3 -c 'import sys; t=open(sys.argv[1], errors="replace").read(); sys.exit(0 if t.rfind("画面が止まっています") > t.rfind("画面が動き出しました") else 1)' "$LOG"; then
-                limit 30 sample "$PID" 2 -file "shots/logs/$label-$s-sample.txt" > /dev/null 2>&1 || echo "sample failed" >> "$LOG"
+                limit 20 sample "$PID" 2 -file "shots/logs/$label-$s-sample.txt" < /dev/null > /dev/null 2>&1 || echo "sample failed" >> "$LOG"
               fi
             done
             # 落ちた記録があれば、どこで落ちたかを出す
@@ -140,6 +151,7 @@ jobs:
           echo "::notice title=見本::$(ls shots | wc -l | tr -d ' ') 枚を撮りました"
 
       - name: shots ブランチに置く
+        if: always()
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
