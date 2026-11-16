@@ -600,7 +600,7 @@ struct CollectionView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 10))
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(gate.title).foregroundStyle(Theme.text)
-                                Text(kind == "visited" ? "\(gate.visits) 回・最後は\(gate.last_at.map(ServerDate.relative) ?? "")"
+                                Text(kind == "visited" ? "\(gate.visits) 回・最後は \(gate.last_at.map(ServerDate.relative) ?? "")"
                                                        : "\(gate.owner_name)・保存 \(gate.saved_at.map(ServerDate.relative) ?? "")")
                                     .font(.caption).foregroundStyle(Theme.textSecondary)
                             }

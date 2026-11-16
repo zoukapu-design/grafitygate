@@ -90,6 +90,8 @@ struct FriendWorks: View {
                     .annotationTitles(.hidden)
                 }
             }
+            // 印は場所の上に立つので、上に余白をとって地図に収める（左上の札にも重ならないように）
+            .safeAreaPadding(EdgeInsets(top: 72, leading: 28, bottom: 12, trailing: 28))
             .id(gates.map(\.id))
             .frame(height: 230)
             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))

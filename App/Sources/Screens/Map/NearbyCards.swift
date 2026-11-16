@@ -576,7 +576,7 @@ struct NearbyCardDetail: View {
 
     private var gateSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("このカードがある GATE").font(.headline).foregroundStyle(Theme.text)
+            Text("このグラフィティカードがある GATE").font(.headline).foregroundStyle(Theme.text)
             HStack(spacing: 8) {
                 Image(systemName: (GateKind(rawValue: card.gate_kind) ?? .place).symbol).foregroundStyle(Theme.accent)
                 Text(card.gate_title).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)

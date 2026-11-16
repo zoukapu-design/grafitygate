@@ -161,6 +161,8 @@ struct MyGatesMapCard: View {
                 }
             }
         }
+        // 印は場所の上に立つので、上に余白をとって地図に収める（下の札にも重ならないように）
+        .safeAreaPadding(EdgeInsets(top: 64, leading: 28, bottom: 40, trailing: 28))
         .id(placed.map(\.id))
         .frame(height: 190)
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
