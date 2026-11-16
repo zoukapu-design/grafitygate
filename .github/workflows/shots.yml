@@ -69,7 +69,7 @@ jobs:
         env:
           SCREENS_IN: ${{ inputs.screens }}
         run: |
-          SCREENS="${SCREENS_IN:-cards nearby nearby-detail chat lookback goal board edit-card edit-gate progress notifications onboarding}"
+          SCREENS="${SCREENS_IN:-home gate gate-board me map profile inbox messages cards nearby nearby-detail chat lookback goal board edit-card edit-gate progress notifications onboarding}"
           mkdir -p shots
           pick() {
             xcrun simctl list devices available -j | python3 -c '
@@ -91,6 +91,9 @@ jobs:
             xcrun simctl bootstatus "$UDID" -b
             xcrun simctl status_bar "$UDID" override --time 9:41 --batteryState charged --batteryLevel 100 --cellularBars 4 || true
             xcrun simctl install "$UDID" "$APP"
+            # 見本の位置（渋谷あたり）と、位置を使ってよいこと
+            xcrun simctl privacy "$UDID" grant location-always "$BUNDLE" || xcrun simctl privacy "$UDID" grant location "$BUNDLE" || true
+            xcrun simctl location "$UDID" set 35.6590,139.7010 || true
             # 1 つの手順が止まったままにならないよう、60 秒で打ち切る
             limit() { perl -e 'alarm shift; exec @ARGV' "$@"; }
             for s in $SCREENS; do

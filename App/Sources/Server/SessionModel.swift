@@ -54,6 +54,17 @@ final class SessionModel: ObservableObject {
     let media: MediaStore?
 
     init() {
+        #if DEBUG
+        if DemoGallery.requestedScreen != nil {
+            // 画面の見本：つなぐ先を「見本のサーバー」にする（本物のサーバーには送らない）
+            let c = SupabaseClient(supabaseURL: DemoServer.url, supabaseKey: "demo",
+                                   options: SupabaseClientOptions(global: .init(session: URLSession(configuration: DemoServer.configuration()))))
+            client = c
+            api = GateAPI(client: c)
+            media = MediaStore(client: c)
+            return
+        }
+        #endif
         if let url = ServerConfig.url, let key = ServerConfig.anonKey {
             let c = SupabaseClient(supabaseURL: url, supabaseKey: key)
             client = c
@@ -65,6 +76,16 @@ final class SessionModel: ObservableObject {
             media = nil
         }
     }
+
+    #if DEBUG
+    /// 画面の見本：見本の人として入ったことにする
+    func startDemo() {
+        userID = DemoData.me
+        profile = ProfileRow(id: DemoData.me, display_name: "あなた", handle: "me_demo")
+        termsToAccept = nil
+        state = .signedIn
+    }
+    #endif
 
     func start() async {
         guard let client else {

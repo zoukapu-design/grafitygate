@@ -14,10 +14,15 @@ struct DemoGallery: View {
         return args[i + 1]
     }
 
-    static let screens = ["cards", "nearby", "nearby-detail", "chat", "lookback", "goal", "board", "edit-card",
+    static let screens = ["home", "gate", "gate-board", "me", "map", "profile", "inbox", "messages",
+                          "cards", "nearby", "nearby-detail", "chat", "lookback", "goal", "board", "edit-card",
                           "edit-gate", "progress", "notifications", "onboarding"]
 
     @StateObject private var nearby = NearbyCardsModel()
+    @StateObject private var inbox = InboxModel()
+    @EnvironmentObject private var session: SessionModel
+    @EnvironmentObject private var nav: AppNavigator
+    @EnvironmentObject private var location: LocationModel
 
     init(screen: String) {
         self.screen = screen
@@ -27,10 +32,34 @@ struct DemoGallery: View {
     var body: some View {
         content
             .tint(Theme.accent)
+            .environmentObject(inbox)
+            .onAppear {
+                // 見本の人として入ったことにして（つなぐ先は見本のサーバー）、位置も調べ始める
+                session.startDemo()
+                location.start()
+                switch screen {
+                case "home": nav.tab = .home
+                case "me": nav.tab = .me
+                case "map": nav.tab = .map
+                default: break
+                }
+            }
     }
 
     @ViewBuilder private var content: some View {
         switch screen {
+        case "home", "me", "map":
+            RootView()
+        case "gate":
+            NavigationStack { GateDetailView(gateID: DemoData.hill) }
+        case "gate-board":
+            NavigationStack { GateDetailView(gateID: DemoData.hill, tab: .board) }
+        case "profile":
+            NavigationStack { ProfileView(userID: DemoData.misaki) }
+        case "inbox":
+            NavigationStack { NotificationsView() }
+        case "messages":
+            NavigationStack { MessagesView() }
         case "cards":
             NavigationStack {
                 ScrollView {
