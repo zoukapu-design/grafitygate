@@ -205,7 +205,8 @@ struct RemotePhoto: View {
     let contentMode: ContentMode
     let placeholder: Color
 
-    @EnvironmentObject private var session: SessionModel
+    // 地図の印（Annotation）の中では、アプリ全体の情報（EnvironmentObject）が届かないことがあり、
+    // 届かないと落ちる（2026-11-17 わたしの GATE の地図）。なので、いまの入り口を直接見る
     @State private var image: UIImage?
     @State private var failed = false
 
@@ -240,7 +241,7 @@ struct RemotePhoto: View {
             }
             image = nil
             failed = false
-            let loaded = await session.media?.photo(path: path)
+            let loaded = await SessionModel.current?.media?.photo(path: path)
             withAnimation(.easeOut(duration: 0.2)) {
                 image = loaded
                 failed = loaded == nil

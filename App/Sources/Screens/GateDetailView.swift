@@ -82,18 +82,21 @@ struct GateDetailView: View {
                     if summary.status == "closed" && isOwner(summary) {
                         closedBanner(summary)
                     }
+                    // グラフィティボード：表紙・名前・作った人 → 紹介と数 → 扉 → いつ・どこで → 扉の向こう
                     header(summary)
-                    if !trails.isEmpty {
-                        trailStrip
-                    }
                     TimelineView(.periodic(from: .now, by: 30)) { timeline in
                         let context = makeContext(summary, now: timeline.date)
                         VStack(alignment: .leading, spacing: 16) {
                             visitBanner(context, summary: summary, now: timeline.date)
+                            whereWhen(summary)
+                            if !trails.isEmpty {
+                                trailStrip
+                            }
                             if summary.owner == session.userID {
                                 addLooksButton(summary)
                             }
-                            Picker("GATE の中", selection: $tab) {
+                            insideHeading(context)
+                            Picker("扉の向こう", selection: $tab) {
                                 ForEach(GateTab.allCases) { t in Text(t.label).tag(t) }
                             }
                             .pickerStyle(.segmented)
@@ -113,7 +116,8 @@ struct GateDetailView: View {
             .padding(16)
         }
         .background(Theme.background.ignoresSafeArea())
-        .navigationTitle(summary?.title ?? "GATE")
+        // 扉を開けずに見ているあいだは「グラフィティボード」、扉が開いているあいだは「扉の中」
+        .navigationTitle(summary.map { makeContext($0, now: Date()).isInside ? "扉の中" : "グラフィティボード" } ?? "グラフィティボード")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbar }
         .task { await reload() }
@@ -294,98 +298,116 @@ struct GateDetailView: View {
     // MARK: 表紙
 
     private func header(_ s: GateSummary) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // 表紙（無いときは、アイコンと同じ夜空にしるし）。下に題と作った人を重ねる
-            ZStack(alignment: .bottomLeading) {
-                if let cover = s.cover_path {
-                    RemotePhoto(path: cover)
+        VStack(alignment: .leading, spacing: 12) {
+            GraffitiBoardHero(title: s.title, coverPath: s.cover_path, kind: GateKind(raw: s.kind)) {
+                if s.owner == session.userID {
+                    Label("あなたの GATE", systemImage: "person.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.92))
                 } else {
-                    LinearGradient(colors: [Color(hex: 0x060A24), Color(hex: 0x140F3A), Color(hex: 0x3A1530)],
-                                   startPoint: .top, endPoint: .bottom)
-                    GateMark(size: 84, glowing: false)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .padding(.bottom, 40)
-                }
-                LinearGradient(colors: [.black.opacity(0), .black.opacity(0.62)], startPoint: .center, endPoint: .bottom)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(s.title)
-                        .font(.title2.weight(.bold))
-                        .foregroundStyle(.white)
-                        .lineLimit(2)
-                        .shadow(color: .black.opacity(0.3), radius: 4, y: 1)
-                    if s.owner == session.userID {
-                        Label("あなたの GATE", systemImage: "person.fill")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.white.opacity(0.9))
-                    } else {
-                        NavigationLink {
-                            ProfileView(userID: s.owner)
-                        } label: {
-                            HStack(spacing: 6) {
-                                NeonAvatar(name: s.owner_name, size: 22)
-                                Text(s.owner_name).font(.subheadline.weight(.semibold))
-                                Image(systemName: "chevron.right").font(.caption2.weight(.bold))
-                            }
-                            .foregroundStyle(.white.opacity(0.92))
+                    NavigationLink {
+                        ProfileView(userID: s.owner)
+                    } label: {
+                        HStack(spacing: 6) {
+                            NeonAvatar(name: s.owner_name, size: 22)
+                            Text(s.owner_name).font(.subheadline.weight(.semibold))
+                            Image(systemName: "chevron.right").font(.caption2.weight(.bold))
                         }
-                    }
-                    if !managers.isEmpty {
-                        Label("一緒に管理：" + managers.map { $0.user_id == session.userID ? "あなた" : $0.display_name }
-                            .joined(separator: "・"), systemImage: "person.2.fill")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.white.opacity(0.85))
-                            .lineLimit(1)
+                        .foregroundStyle(.white.opacity(0.92))
                     }
                 }
-                .padding(16)
+                if !managers.isEmpty {
+                    Label("一緒に管理：" + managers.map { $0.user_id == session.userID ? "あなた" : $0.display_name }
+                        .joined(separator: "・"), systemImage: "person.2.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.85))
+                        .lineLimit(1)
+                }
             }
-            .frame(height: 230)
-            .frame(maxWidth: .infinity)
-            .clipped()
 
-            VStack(alignment: .leading, spacing: 12) {
+            // 紹介と数
+            VStack(alignment: .leading, spacing: 14) {
                 if !s.note.isEmpty {
                     Text(s.note).font(.body).foregroundStyle(Theme.text)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                // 数の札（入りきらなければ次の行へ。横に流すと、小さい iPhone で端が切れて見えた）
-                FlowLayout(spacing: 8, lineSpacing: 8) {
-                    Group {
-                        chip(GateKind(raw: s.kind).label, GateKind(raw: s.kind).symbol, warm: GateKind(raw: s.kind) == .view)
-                        chip("グラフィティカード \(s.graffiti_count) 枚", "square.stack")
-                        if let stats {
-                            chip("\(stats.visitor_count) 人が訪れた", "figure.walk")
-                            if stats.my_visits > 0 {
-                                Button {
-                                    showVisits = true
-                                } label: {
-                                    chip("あなたは \(stats.my_visits) 回", "door.left.hand.open", warm: true)
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel("あなたが来た日を見る")
-                            }
-                            if let last = stats.last_activity_at { chip("最後の記録 \(ServerDate.relative(last))", "clock") }
+                HStack(spacing: 0) {
+                    BoardStat(value: "\(s.graffiti_count)", label: "グラフィティカード")
+                    statDivider
+                    BoardStat(value: stats.map { "\($0.visitor_count)" } ?? "–", label: "訪れた人")
+                    statDivider
+                    if let stats, stats.my_visits > 0 {
+                        Button {
+                            showVisits = true
+                        } label: {
+                            BoardStat(value: "\(stats.my_visits)", label: "あなたが来た回数", warm: true)
                         }
-                        chip(Visibility.label(of: s.visibility), "eye")
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("あなたが来た日を見る")
+                    } else {
+                        BoardStat(value: stats == nil ? "–" : "0", label: "あなたが来た回数")
                     }
                 }
-                // いつ・どこで
-                GateWhereWhen(title: s.title, createdAt: s.created_at,
-                              coordinate: exactPlace ?? CLLocationCoordinate2D(latitude: s.approx_lat, longitude: s.approx_lon),
-                              exact: exactPlace != nil, coverPath: s.cover_path,
-                              mine: s.owner == session.userID, ownerName: s.owner_name)
-                if let health {
-                    placeMemoryNote(health)
+                // 入りきらなければ次の行へ
+                FlowLayout(spacing: 8, lineSpacing: 8) {
+                    Group {
+                        if let last = stats?.last_activity_at { chip("最後の記録 \(ServerDate.relative(last))", "clock") }
+                        chip("見える人：" + Visibility.label(of: s.visibility), "eye")
+                    }
                 }
                 if let actionMessage {
                     NoticeText(text: actionMessage, isError: false)
                 }
             }
             .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.surface)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.radiusCard))
+            .overlay(RoundedRectangle(cornerRadius: Theme.radiusCard).stroke(Theme.line))
         }
+    }
+
+    private var statDivider: some View {
+        Rectangle().fill(Theme.line).frame(width: 1, height: 34)
+    }
+
+    /// いつ・どこで（地図）と、GATE の位置の記録の様子（作った本人だけ）
+    private func whereWhen(_ s: GateSummary) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            GateWhereWhen(title: s.title, createdAt: s.created_at,
+                          coordinate: exactPlace ?? CLLocationCoordinate2D(latitude: s.approx_lat, longitude: s.approx_lon),
+                          exact: exactPlace != nil, coverPath: s.cover_path,
+                          mine: s.owner == session.userID, ownerName: s.owner_name)
+            if let health {
+                placeMemoryNote(health)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.surface)
         .clipShape(RoundedRectangle(cornerRadius: Theme.radiusCard))
         .overlay(RoundedRectangle(cornerRadius: Theme.radiusCard).stroke(Theme.line))
+    }
+
+    /// 扉の向こう（カード・アルバム・掲示板・手紙・今と昔）の見出し
+    private func insideHeading(_ context: GateContext) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: context.isInside ? "door.left.hand.open" : "lock.fill")
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(context.isInside ? Theme.accent : Theme.textSecondary)
+            Text(context.isInside ? "扉の中" : "扉の向こう")
+                .font(.title3.weight(.heavy))
+                .foregroundStyle(Theme.text)
+            Spacer(minLength: 8)
+            if !context.isInside {
+                Text("扉を開けると読めます・残せます")
+                    .font(.caption)
+                    .foregroundStyle(Theme.textSecondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+        }
+        .padding(.top, 6)
     }
 
     private func chip(_ text: String, _ symbol: String, warm: Bool = false) -> some View {
@@ -436,53 +458,51 @@ struct GateDetailView: View {
         }
     }
 
-    /// 入場中は残り時間、入る前は「現地で扉を開ける」
+    /// 扉の札：開いているあいだは「扉が開いています」、開ける前は「扉を開ける」（遠いときは、まず現地へ）
     @ViewBuilder private func visitBanner(_ context: GateContext, summary: GateSummary, now: Date) -> some View {
         if let expires = context.visitExpires, context.isInside {
             let minutes = max(1, Int(expires.timeIntervalSince(now) / 60 + 0.5))
             let near = keeper.entries[context.visit ?? UUID()]?.near
-            Label(near == false ? "GATE から離れたので、まもなく扉が閉じます（あと約 \(minutes) 分）"
-                                : "扉が開いています（その場にいるあいだ開いたまま）",
-                  systemImage: near == false ? "door.left.hand.closed" : "door.left.hand.open")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(Theme.accent)
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Theme.accentLight, in: RoundedRectangle(cornerRadius: 14))
+            BoardDoorPanel(isOpen: true,
+                           title: near == false ? "まもなく扉が閉じます" : "扉が開いています",
+                           detail: near == false ? "GATE から離れたので、あと約 \(minutes) 分で閉じます。"
+                                                 : "その場にいるあいだ開いたまま。下の「扉の中」で読んだり残したりできます。") {
+                EmptyView()
+            }
         } else {
             let distance = location.location?.distance(from: CLLocation(latitude: summary.approx_lat,
                                                                          longitude: summary.approx_lon))
             let far = (distance ?? 0) > 150
-            VStack(alignment: .leading, spacing: 8) {
-                if far, let distance {
-                    // 遠いとき：まず現地へ（地図アプリで歩く道）
-                    Button {
-                        openWalking(summary)
-                    } label: {
-                        Label("ここへ行く（\(TrailGuide.distanceText(distance))）", systemImage: "figure.walk")
+            BoardDoorPanel(isOpen: false,
+                           title: "扉は閉じています",
+                           detail: far && distance != nil
+                               ? "ここから \(TrailGuide.distanceText(distance!))。GATE の近く（120m 以内）まで行くと開けられます。"
+                               : "作った人が写した場所・物にカメラを向けて、位置と景色が合うと扉が開きます。") {
+                VStack(spacing: 10) {
+                    if far, distance != nil {
+                        // 遠いとき：まず現地へ（地図アプリで歩く道）
+                        Button {
+                            openWalking(summary)
+                        } label: {
+                            Label("ここへ行く", systemImage: "figure.walk")
+                        }
+                        .buttonStyle(PrimaryButtonStyle())
+                        Button {
+                            showAR = true
+                        } label: {
+                            Label("着いたら、扉を開ける", systemImage: "door.left.hand.open")
+                        }
+                        .buttonStyle(NightSecondaryButtonStyle())
+                        .disabled(session.api == nil)
+                    } else {
+                        Button {
+                            showAR = true
+                        } label: {
+                            Label("扉を開ける", systemImage: "door.left.hand.open")
+                        }
+                        .buttonStyle(PrimaryButtonStyle())
+                        .disabled(session.api == nil)
                     }
-                    .buttonStyle(PrimaryButtonStyle())
-                    Button {
-                        showAR = true
-                    } label: {
-                        Label("着いたら、扉を開ける", systemImage: "door.left.hand.open")
-                    }
-                    .buttonStyle(SecondaryButtonStyle())
-                    .disabled(session.api == nil)
-                    Text("扉は GATE の近く（120m 以内）で開けます。地図アプリで、おおよその場所までの歩く道を出します。")
-                        .font(.caption)
-                        .foregroundStyle(Theme.textSecondary)
-                } else {
-                    Button {
-                        showAR = true
-                    } label: {
-                        Label("現地で扉を開ける", systemImage: "door.left.hand.open")
-                    }
-                    .buttonStyle(PrimaryButtonStyle())
-                    .disabled(session.api == nil)
-                    Text("作った人が写した場所・物にカメラを向けます。位置（120m 以内）と景色の両方が合うと扉が現れ、その場にいるあいだ、中のグラフィティカードや掲示板を読んだり残したりできます。")
-                        .font(.caption)
-                        .foregroundStyle(Theme.textSecondary)
                 }
             }
         }

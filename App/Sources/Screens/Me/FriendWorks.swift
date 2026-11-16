@@ -18,6 +18,8 @@ struct FriendWorks: View {
     @State private var trails: [TrailSummary] = []
     @State private var loaded = false
     @State private var unsupported = false
+    /// 地図の印から開く GATE（印の中から直接画面を開くと、アプリ全体の情報が届かず落ちることがある）
+    @State private var openGate: UUID?
 
     enum Tab: String, CaseIterable, Identifiable {
         case gates = "GATE"
@@ -77,11 +79,11 @@ struct FriendWorks: View {
             note(unsupported ? "サーバーの準備がまだです（SQL を貼り直すと見られます）。"
                              : (isMe ? "まだ GATE を作っていません。" : "\(name) さんが見せている GATE はまだありません。"))
         } else {
-            Map(initialPosition: .automatic) {
+            Map(initialPosition: MapFraming.position(gates.map(\.coordinate))) {
                 ForEach(gates) { gate in
                     Annotation(gate.title, coordinate: gate.coordinate, anchor: .bottom) {
-                        NavigationLink {
-                            GateDetailView(gateID: gate.id)
+                        Button {
+                            openGate = gate.id
                         } label: {
                             GatePin(mine: isMe, coverPath: gate.cover_path, ownerName: name, showsName: false)
                         }
@@ -94,6 +96,9 @@ struct FriendWorks: View {
             .safeAreaPadding(EdgeInsets(top: 72, leading: 28, bottom: 12, trailing: 28))
             .id(gates.map(\.id))
             .frame(height: 230)
+            .navigationDestination(item: $openGate) { id in
+                GateDetailView(gateID: id)
+            }
             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(Theme.line))
             .overlay(alignment: .topLeading) {

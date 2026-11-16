@@ -10,7 +10,7 @@ struct DemoGallery: View {
 
     static var requestedScreen: String? { DemoMode.screen }
 
-    static let screens = ["home", "gate", "gate-board", "gate-albums", "gate-letters", "gate-then", "trail",
+    static let screens = ["home", "gate", "gate-outside", "gate-board", "gate-albums", "gate-letters", "gate-then", "trail",
                           "me", "map", "profile", "inbox", "messages",
                           "friends", "visited", "saved-cards", "letters", "albums", "settings",
                           "cards", "nearby", "nearby-detail", "chat", "lookback", "goal", "board", "edit-card",
@@ -51,6 +51,8 @@ struct DemoGallery: View {
             RootView()
         case "gate":
             NavigationStack { GateDetailView(gateID: DemoData.hill) }
+        case "gate-outside":
+            NavigationStack { GateDetailView(gateID: DemoData.tree) }
         case "gate-board":
             NavigationStack { GateDetailView(gateID: DemoData.hill, tab: .board) }
         case "gate-albums":

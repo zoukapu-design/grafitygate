@@ -16,6 +16,10 @@ struct NearbyMapView: View {
     @State private var route: MKRoute?
     @State private var routeFrom: CLLocation?
     @State private var selected: UUID?
+    /// 横にめくって前に出ているグラフィティボード
+    @State private var scrolledID: UUID?
+    /// 地図の下に重ねた札の高さ（地図の中身をその上に寄せる）
+    @State private var overlayHeight: CGFloat = 200
     @State private var loaded = false
     /// 「探す」
     @State private var showSearch = false
@@ -93,144 +97,220 @@ struct NearbyMapView: View {
         }
     }
 
+    /// 地図を画面いっぱいに出し、下に「近くのグラフィティボード」を重ねる（横にめくると、地図の印も選ばれる）
     private var mapContent: some View {
-                VStack(spacing: 0) {
-                    Map(position: $position) {
-                        UserAnnotation()
-                        // GATE を見つけられる範囲（100m）
-                        if let here = location.location {
-                            MapCircle(center: here.coordinate, radius: 100)
-                                .stroke(Theme.accent.opacity(0.35), style: StrokeStyle(lineWidth: 1.5, dash: [5, 5]))
-                                .foregroundStyle(Theme.accent.opacity(0.07))
-                        }
-                        if let route {
-                            MapPolyline(route.polyline)
-                                .stroke(Theme.warm, style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round,
-                                                                       dash: target?.fine == true ? [] : [2, 10]))
-                        }
-                        if let place {
-                            Marker(place.name ?? "探した場所", systemImage: "mappin",
-                                   coordinate: MapSearchSheet.coordinate(of: place))
-                                .tint(Theme.accent)
-                        }
-                        if let target {
-                            Annotation("次：\(target.stop.title)", coordinate: target.coordinate) {
-                                Text("\(target.stop.seq)")
-                                    .font(.system(size: 13, weight: .bold))
-                                    .foregroundStyle(.white)
-                                    .frame(width: 30, height: 30)
-                                    .background(Theme.warm, in: Circle())
-                                    .overlay(Circle().stroke(.white, lineWidth: 2))
-                            }
-                        }
-                        ForEach(gates) { gate in
-                            Annotation(gate.title, coordinate: CLLocationCoordinate2D(latitude: gate.approx_lat,
-                                                                                       longitude: gate.approx_lon)) {
-                                Button {
-                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                        selected = selected == gate.id ? nil : gate.id
-                                    }
-                                } label: {
-                                    GatePin(mine: gate.mine, selected: selected == gate.id,
-                                            coverPath: gate.cover_path, ownerName: gate.owner_name)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                            .annotationTitles(selected == gate.id ? .visible : .hidden)
-                        }
-                    }
-                    .mapControls {
-                        MapUserLocationButton()
-                        MapCompass()
-                    }
-                    .frame(maxHeight: .infinity)
-
-                    nearbyList
-                }
+        GeometryReader { geo in
+            ZStack(alignment: .bottom) {
+                map
+                    // 下に重ねた札の上に、いまいる所や印が来るように
+                    .safeAreaPadding(.bottom, overlayHeight + geo.safeAreaInsets.bottom)
+                    .ignoresSafeArea(edges: .bottom)
+                overlayCards
+                    .background(GeometryReader { p in
+                        Color.clear.preference(key: OverlayHeightKey.self, value: p.size.height)
+                    })
+            }
+            .onPreferenceChange(OverlayHeightKey.self) { overlayHeight = $0 }
+        }
     }
 
-    private var nearbyList: some View {
-        VStack(alignment: .leading, spacing: 8) {
+    private var map: some View {
+        Map(position: $position) {
+            UserAnnotation()
+            // GATE を見つけられる範囲（100m）
+            if let here = location.location {
+                MapCircle(center: here.coordinate, radius: 100)
+                    .stroke(Theme.accent.opacity(0.45), style: StrokeStyle(lineWidth: 1.5, dash: [5, 5]))
+                    .foregroundStyle(Theme.accent.opacity(0.08))
+            }
+            if let route {
+                MapPolyline(route.polyline)
+                    .stroke(Theme.warm, style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round,
+                                                           dash: target?.fine == true ? [] : [2, 10]))
+            }
             if let place {
-                placeCard(place)
+                Marker(place.name ?? "探した場所", systemImage: "mappin",
+                       coordinate: MapSearchSheet.coordinate(of: place))
+                    .tint(Theme.accent)
             }
             if let target {
-                NavigationLink {
-                    TrailDetailView(trailID: target.trail.id, title: target.trail.title)
-                } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: "figure.walk").foregroundStyle(Theme.warm)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("TRAIL「\(target.trail.title)」\(target.trail.reached)/\(target.trail.stop_count)")
-                                .font(.caption).foregroundStyle(Theme.textSecondary)
-                            Text("次は \(target.stop.seq). \(target.stop.title)").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
-                            if let route {
-                                Text("歩いて約 \(max(1, Int((route.expectedTravelTime / 60).rounded()))) 分・\(TrailGuide.distanceText(route.distance))"
-                                     + (target.fine ? "" : "（おおよその場所まで）"))
-                                    .font(.caption).foregroundStyle(Theme.warm)
-                            }
+                Annotation("次：\(target.stop.title)", coordinate: target.coordinate) {
+                    Text("\(target.stop.seq)")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 30, height: 30)
+                        .background(Theme.warm, in: Circle())
+                        .overlay(Circle().stroke(.white, lineWidth: 2))
+                }
+            }
+            ForEach(gates) { gate in
+                Annotation(gate.title, coordinate: CLLocationCoordinate2D(latitude: gate.approx_lat,
+                                                                           longitude: gate.approx_lon)) {
+                    Button {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            selected = selected == gate.id ? nil : gate.id
+                            if let id = selected { scrolledID = id }
                         }
-                        Spacer()
-                        Image(systemName: "chevron.right").font(.caption).foregroundStyle(Theme.textSecondary)
+                    } label: {
+                        GatePin(mine: gate.mine, selected: selected == gate.id,
+                                coverPath: gate.cover_path, ownerName: gate.owner_name)
                     }
-                    .padding(12)
-                    .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16))
-                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(Theme.warm.opacity(0.5)))
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
+                .annotationTitles(selected == gate.id ? .visible : .hidden)
             }
-            HStack(alignment: .firstTextBaseline) {
-                Text("100m 以内の GATE").font(.headline).foregroundStyle(Theme.text)
-                if !gates.isEmpty {
-                    Text("\(gates.count)").font(.subheadline.weight(.bold)).foregroundStyle(Theme.accent)
-                }
-                Spacer()
+        }
+        // 地図の色をおさえて、GATE の印とボードを目立たせる
+        .mapStyle(.standard(emphasis: .muted))
+        .mapControls {
+            MapUserLocationButton()
+            MapCompass()
+        }
+        .overlay(alignment: .topLeading) {
+            // 見つけられる範囲の目印
+            Label("半径 100m の GATE が見つかります", systemImage: "dot.radiowaves.left.and.right")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(Theme.accent)
+                .padding(.horizontal, 10).padding(.vertical, 6)
+                .background(.regularMaterial, in: Capsule())
+                .padding(12)
+        }
+    }
+
+    /// 地図の下に重ねる札：探した場所・TRAIL の次の地点・近くのグラフィティボード
+    private var overlayCards: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let place {
+                placeCard(place).padding(.horizontal, 16)
             }
-            if location.fixProblem != nil, location.location == nil || location.needsSettings {
-                LocationProblemView()
-            } else if let error {
-                NoticeText(text: error)
-            } else if !loaded {
-                HStack(spacing: 10) {
-                    ProgressView()
-                    Text(location.location == nil ? "いまの場所を調べています…" : "近くの GATE を探しています…")
-                        .font(.subheadline).foregroundStyle(Theme.textSecondary)
+            if let target {
+                trailCard(target).padding(.horizontal, 16)
+            }
+            boardsHeading.padding(.horizontal, 16)
+            boards
+        }
+        .padding(.bottom, 12)
+    }
+
+    private var boardsHeading: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "rectangle.portrait.on.rectangle.portrait.fill")
+                .foregroundStyle(Theme.neonBand)
+            Text("近くのグラフィティボード")
+                .font(.subheadline.weight(.heavy))
+                .foregroundStyle(Theme.text)
+            if !gates.isEmpty {
+                Text("\(gates.count)")
+                    .font(.caption.weight(.heavy))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 7).padding(.vertical, 2)
+                    .background(Theme.accent, in: Capsule())
+            }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 7)
+        .background(.regularMaterial, in: Capsule())
+    }
+
+    @ViewBuilder private var boards: some View {
+        if location.fixProblem != nil, location.location == nil || location.needsSettings {
+            LocationProblemView()
+                .padding(14)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
+                .padding(.horizontal, 16)
+        } else if let error {
+            NoticeText(text: error)
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
+                .padding(.horizontal, 16)
+        } else if !loaded {
+            HStack(spacing: 10) {
+                ProgressView()
+                Text(location.location == nil ? "いまの場所を調べています…" : "近くのグラフィティボードを探しています…")
+                    .font(.subheadline).foregroundStyle(Theme.textSecondary)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
+            .padding(.horizontal, 16)
+        } else if gates.isEmpty {
+            HStack(spacing: 12) {
+                GateMark(size: 44, glowing: false)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("近くに GATE はありません").font(.subheadline.weight(.bold)).foregroundStyle(Theme.text)
+                    Text("この場所に、最初の扉を置いてみませんか。").font(.caption).foregroundStyle(Theme.textSecondary)
                 }
-                .frame(height: 64)
-            } else if gates.isEmpty {
-                Text("近くに GATE はありません。この場所に、最初の扉を置いてみませんか。")
-                    .font(.subheadline)
-                    .foregroundStyle(Theme.textSecondary)
+                Spacer(minLength: 0)
                 Button {
                     nav.tab = .capture
                 } label: {
-                    Label("ここに GATE を作る", systemImage: "door.left.hand.open")
+                    Text("作る")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 16).padding(.vertical, 9)
+                        .background(Theme.neonBand, in: Capsule())
                 }
-                .buttonStyle(SecondaryButtonStyle())
-            } else {
-                ScrollViewReader { proxy in
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 12) {
-                            ForEach(gates) { gate in
-                                NavigationLink(value: GateRoute(id: gate.id)) {
-                                    NearbyGateCard(gate: gate, selected: selected == gate.id)
-                                }
-                                .buttonStyle(.plain)
-                                .id(gate.id)
-                            }
+                .buttonStyle(.plain)
+                .accessibilityLabel("ここに GATE を作る")
+            }
+            .padding(14)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
+            .padding(.horizontal, 16)
+        } else {
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 12) {
+                    ForEach(gates) { gate in
+                        NavigationLink(value: GateRoute(id: gate.id)) {
+                            GraffitiBoardCard(gate: gate, selected: selected == gate.id)
                         }
-                        .padding(.vertical, 2)
-                    }
-                    .onChange(of: selected) { _, id in
-                        guard let id else { return }
-                        withAnimation(.easeInOut(duration: 0.3)) { proxy.scrollTo(id, anchor: .center) }
+                        .buttonStyle(.plain)
+                        .id(gate.id)
                     }
                 }
+                .scrollTargetLayout()
+                .padding(.vertical, 6)
+            }
+            .scrollTargetBehavior(.viewAligned)
+            .safeAreaPadding(.horizontal, 16)
+            .scrollPosition(id: $scrolledID)
+            .onChange(of: scrolledID) { _, id in
+                // めくったボードの印を地図で選ぶ
+                guard let id, id != selected, gates.count > 1 else { return }
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { selected = id }
             }
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.background)
+    }
+
+    /// 歩いている TRAIL の次の地点
+    private func trailCard(_ target: TrailGuide.Target) -> some View {
+        NavigationLink {
+            TrailDetailView(trailID: target.trail.id, title: target.trail.title)
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "figure.walk")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .frame(width: 34, height: 34)
+                    .background(Theme.warm, in: Circle())
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("TRAIL「\(target.trail.title)」\(target.trail.reached)/\(target.trail.stop_count)")
+                        .font(.caption).foregroundStyle(Theme.textSecondary).lineLimit(1)
+                    Text("次は \(target.stop.seq). \(target.stop.title)").font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Theme.text).lineLimit(1)
+                    if let route {
+                        Text("歩いて約 \(max(1, Int((route.expectedTravelTime / 60).rounded()))) 分・\(TrailGuide.distanceText(route.distance))"
+                             + (target.fine ? "" : "（おおよその場所まで）"))
+                            .font(.caption).foregroundStyle(Theme.warm).lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(Theme.textSecondary)
+            }
+            .padding(12)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
+            .overlay(RoundedRectangle(cornerRadius: 18).stroke(Theme.warm.opacity(0.5)))
+        }
+        .buttonStyle(.plain)
     }
 
     /// 探して選んだ場所：名前と、歩いて行く道。GATE が見つかるのは、いまいる所の 100m 以内のまま
@@ -266,8 +346,8 @@ struct NearbyMapView: View {
             .accessibilityLabel("探した場所を消す")
         }
         .padding(12)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Theme.accent.opacity(0.4)))
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(Theme.accent.opacity(0.4)))
     }
 
     /// 歩いている TRAIL があれば、次の地点を地図に出す
@@ -321,34 +401,9 @@ struct NearbyMapView: View {
     }
 }
 
-/// 近くの GATE の横に並ぶカード（表紙・名前・作った人・距離）
-private struct NearbyGateCard: View {
-    let gate: NearbyGate
-    let selected: Bool
-
-    var body: some View {
-        HStack(spacing: 10) {
-            GateCoverImage(path: gate.cover_path, markSize: 26)
-                .frame(width: 52, height: 52)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            VStack(alignment: .leading, spacing: 3) {
-                Text(gate.title).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
-                    .lineLimit(1)
-                Text(gate.mine ? "あなたの GATE" : gate.owner_name)
-                    .font(.caption).foregroundStyle(gate.mine ? Theme.warm : Theme.textSecondary)
-                    .lineLimit(1)
-                Label("約 \(Int(gate.distance_m.rounded()))m", systemImage: "location.fill")
-                    .font(.caption2.weight(.semibold)).foregroundStyle(Theme.accent)
-                    .labelStyle(.titleAndIcon)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(10)
-        .frame(width: 236, alignment: .leading)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(selected ? Theme.accent : Theme.line, lineWidth: selected ? 2 : 1))
-        .shadow(color: selected ? Theme.accent.opacity(0.18) : .clear, radius: 8, y: 3)
-    }
+private struct OverlayHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
 }
 
 /// 地図の GATE の印：アイコンと同じネオンの扉（自分の GATE は夕焼けの色の縁）
@@ -360,8 +415,6 @@ struct GatePin: View {
     var ownerName: String? = nil
     /// 名前の札を出すか（たくさん並ぶ地図では選んだものだけ）
     var showsName = true
-
-    @EnvironmentObject private var session: SessionModel
 
     private var size: CGFloat { selected ? 52 : 40 }
     private var border: Color { mine ? Theme.warm : .white }
@@ -384,7 +437,7 @@ struct GatePin: View {
                     .shadow(color: .black.opacity(0.28), radius: 4, y: 2)
                     if !nameText.isEmpty {
                         // 作った人の顔の丸
-                        NeonAvatar(name: mine ? (session.profile?.display_name ?? "あなた") : nameText, size: selected ? 24 : 20)
+                        NeonAvatar(name: mine ? (SessionModel.current?.profile?.display_name ?? "あなた") : nameText, size: selected ? 24 : 20)
                             .background(Circle().fill(.white))
                             .overlay(Circle().stroke(.white, lineWidth: 1.5))
                             .offset(x: 7, y: 7)

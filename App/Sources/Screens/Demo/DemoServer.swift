@@ -162,9 +162,12 @@ enum DemoData {
             return [["id": g.id.uuidString, "title": g.title, "note": g.note, "kind": g.kind, "owner": g.owner.uuidString,
                      "owner_name": names[g.owner] ?? "", "cover_path": nn(g.cover), "approx_lat": g.lat, "approx_lon": g.lon,
                      "visibility": "friends", "status": "open", "graffiti_count": g.count, "created_at": ago(40 * 86400),
-                     "my_visit": visit.uuidString, "my_visit_expires_at": later(15 * 60)]]
+                     // 公園の大きな木は、扉を開けていない（グラフィティボードだけ見ている）見本
+                     "my_visit": g.id == tree ? NSNull() as Any : visit.uuidString as Any,
+                     "my_visit_expires_at": g.id == tree ? NSNull() as Any : later(15 * 60) as Any]]
         case "gf_gate_stats":
-            return [["visitor_count": 23, "last_activity_at": ago(3 * 3600), "my_visits": 3]]
+            let g = gate(params["p_gate"])
+            return [["visitor_count": g.id == tree ? 8 : 23, "last_activity_at": ago(3 * 3600), "my_visits": g.id == tree ? 0 : 3]]
         case "gf_gate_managers_of":
             return [["user_id": kenta.uuidString, "display_name": "けんた", "added_at": ago(10 * 86400)]]
         case "gf_card_extras":

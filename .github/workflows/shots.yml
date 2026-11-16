@@ -95,7 +95,7 @@ jobs:
           SCREENS_IN: ${{ inputs.screens }}
           LABEL: ${{ matrix.label }}
         run: |
-          SCREENS="${SCREENS_IN:-home gate gate-board gate-albums gate-letters gate-then trail me map profile inbox messages friends visited saved-cards letters albums settings cards nearby nearby-detail chat lookback goal board edit-card edit-gate progress notifications onboarding}"
+          SCREENS="${SCREENS_IN:-home gate gate-outside gate-board gate-albums gate-letters gate-then trail me map profile inbox messages friends visited saved-cards letters albums settings cards nearby nearby-detail chat lookback goal board edit-card edit-gate progress notifications onboarding}"
           mkdir -p shots/logs
           # 決まった秒数で必ず止める（止まらないものは強制的に終わらせる）
           limit() {

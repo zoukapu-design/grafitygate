@@ -7,9 +7,14 @@ struct MyGatesView: View {
     let gates: [MyGate]
 
     @State private var selected: UUID?
-    @State private var position: MapCameraPosition = .automatic
+    @State private var position: MapCameraPosition
 
     private var placed: [MyGate] { gates.filter { $0.coordinate != nil } }
+
+    init(gates: [MyGate]) {
+        self.gates = gates
+        _position = State(initialValue: MapFraming.position(gates.compactMap(\.coordinate)))
+    }
 
     /// 月ごと（新しい月から）
     private var months: [(title: String, gates: [MyGate])] {
@@ -89,6 +94,7 @@ struct MyGatesView: View {
             MapUserLocationButton()
             MapCompass()
         }
+        .safeAreaPadding(EdgeInsets(top: 50, leading: 16, bottom: 8, trailing: 16))
         .frame(height: 300)
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(Theme.line))
@@ -151,7 +157,7 @@ struct MyGatesMapCard: View {
     private var placed: [MyGate] { gates.filter { $0.coordinate != nil } }
 
     var body: some View {
-        Map(initialPosition: .automatic, interactionModes: []) {
+        Map(initialPosition: MapFraming.position(placed.compactMap(\.coordinate)), interactionModes: []) {
             ForEach(placed.prefix(40)) { gate in
                 if let c = gate.coordinate {
                     Annotation(gate.title, coordinate: c, anchor: .bottom) {
@@ -162,7 +168,7 @@ struct MyGatesMapCard: View {
             }
         }
         // 印は場所の上に立つので、上に余白をとって地図に収める（下の札にも重ならないように）
-        .safeAreaPadding(EdgeInsets(top: 64, leading: 28, bottom: 40, trailing: 28))
+        .safeAreaPadding(EdgeInsets(top: 56, leading: 20, bottom: 40, trailing: 20))
         .id(placed.map(\.id))
         .frame(height: 190)
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))

@@ -53,6 +53,9 @@ final class SessionModel: ObservableObject {
     let api: GateAPI?
     let media: MediaStore?
 
+    /// いま動いている入り口（地図の印の中など、EnvironmentObject が届かない所から使う）
+    private(set) weak static var current: SessionModel?
+
     init() {
         #if DEBUG
         if DemoGallery.requestedScreen != nil {
@@ -62,6 +65,7 @@ final class SessionModel: ObservableObject {
             client = c
             api = GateAPI(client: c)
             media = MediaStore(client: c)
+            Self.current = self
             return
         }
         #endif
@@ -75,6 +79,7 @@ final class SessionModel: ObservableObject {
             api = nil
             media = nil
         }
+        Self.current = self
     }
 
     #if DEBUG
