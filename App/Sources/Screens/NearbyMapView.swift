@@ -18,8 +18,6 @@ struct NearbyMapView: View {
     @State private var selected: UUID?
     /// 横にめくって前に出ているグラフィティボード
     @State private var scrolledID: UUID?
-    /// 地図の下に重ねた札の高さ（地図の中身をその上に寄せる）
-    @State private var overlayHeight: CGFloat = 200
     @State private var loaded = false
     /// 「探す」
     @State private var showSearch = false
@@ -102,19 +100,11 @@ struct NearbyMapView: View {
         GeometryReader { geo in
             ZStack(alignment: .bottom) {
                 map
-                    // 下に重ねた札の上に、いまいる所や印が来るように
-                    .safeAreaPadding(.bottom, overlayHeight + geo.safeAreaInsets.bottom)
+                    // 下に重ねた札の上に、いまいる所や印が来るように。札の高さは測らず、決まった高さで空ける
+                    // （測った高さで地図を動かすと、測り直しが続いて画面が止まることがあった）
+                    .safeAreaPadding(.bottom, reservedBottom + geo.safeAreaInsets.bottom)
                     .ignoresSafeArea(edges: .bottom)
                 overlayCards
-                    // 中身の高さだけを使う（地図の上まで広がらないように）
-                    .fixedSize(horizontal: false, vertical: true)
-                    .background(GeometryReader { p in
-                        Color.clear.preference(key: OverlayHeightKey.self, value: p.size.height)
-                    })
-            }
-            .onPreferenceChange(OverlayHeightKey.self) { h in
-                // 少しの違いでは変えない（地図の中身の位置が行ったり来たりしないように）
-                if abs(h - overlayHeight) > 2 { overlayHeight = h }
             }
         }
     }
@@ -180,6 +170,15 @@ struct NearbyMapView: View {
                 .background(.regularMaterial, in: Capsule())
                 .padding(12)
         }
+    }
+
+    /// 下に重ねた札のおおよその高さ（地図の中身をその上に寄せる）
+    private var reservedBottom: CGFloat {
+        let showsCarousel = loaded && error == nil && !gates.isEmpty
+        var h: CGFloat = 12 + 34 + 10 + (showsCarousel ? 168 : 84)
+        if place != nil { h += 74 + 10 }
+        if target != nil { h += 80 + 10 }
+        return h
     }
 
     /// 地図の下に重ねる札：探した場所・TRAIL の次の地点・近くのグラフィティボード
@@ -406,11 +405,6 @@ struct NearbyMapView: View {
             loaded = true
         }
     }
-}
-
-private struct OverlayHeightKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
 }
 
 /// 地図の GATE の印：アイコンと同じネオンの扉（自分の GATE は夕焼けの色の縁）

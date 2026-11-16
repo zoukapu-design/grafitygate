@@ -140,6 +140,12 @@ jobs:
               if [ $waited -ge 8 ] && settled "$LOG"; then break; fi
             done
             echo "shot after ${waited}s" >> "$LOG"
+            # 画面が止まったまま（または何も出していない）なら、そのときのアプリの流れを 3 秒取っておく
+            PID=$(awk '/: [0-9]+$/ {print $NF}' /tmp/launch.txt | tail -1)
+            if [ "$waited" -ge 30 ] && [ -n "$PID" ]; then
+              limit 40 sudo sample "$PID" 3 -file "shots/logs/$LABEL-$s-sample.txt" < /dev/null > /dev/null 2>&1 || echo "sample failed" >> "$LOG"
+              [ -f "shots/logs/$LABEL-$s-sample.txt" ] && sudo chmod a+r "shots/logs/$LABEL-$s-sample.txt"
+            fi
             limit 60 xcrun simctl io "$UDID" screenshot "shots/$LABEL-$s.png" > /dev/null || echo "::warning title=見本::$LABEL の $s を撮れませんでした"
           done
           # 落ちた記録があれば、どこで落ちたかを出す
