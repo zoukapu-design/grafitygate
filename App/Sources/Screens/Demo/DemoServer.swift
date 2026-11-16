@@ -247,6 +247,22 @@ enum DemoData {
             return ["scale": 1.0, "kind": "view"]
         case "gf_my_notify_mutes":
             return ["like"]
+        case "gf_my_letters":
+            return [
+                ["id": UUID().uuidString, "gate_id": hill.uuidString, "gate_title": "夕焼けの見える丘", "author": misaki.uuidString,
+                 "author_name": "みさき", "recipient": me.uuidString, "recipient_name": "あなた", "open_at": NSNull(), "onsite": true,
+                 "opened_at": NSNull(), "created_at": ago(2 * 86400), "sent": false, "time_ok": true, "here": false],
+                ["id": UUID().uuidString, "gate_id": clock.uuidString, "gate_title": "駅前の大時計", "author": me.uuidString,
+                 "author_name": "あなた", "recipient": me.uuidString, "recipient_name": "あなた", "open_at": later(200 * 86400),
+                 "onsite": false, "opened_at": NSNull(), "created_at": ago(20 * 86400), "sent": false, "time_ok": false, "here": false],
+            ]
+        case "gf_my_memories":
+            return [["id": UUID().uuidString, "gate_id": tree.uuidString, "gate_title": "公園の大きな木", "owner": kenta.uuidString,
+                     "owner_name": "けんた", "title": "春のお花見", "created_at": ago(200 * 86400), "item_count": 14,
+                     "cover_path": "demo/park.jpg"]]
+        case "gf_my_managed_gates":
+            return [["id": tree.uuidString, "title": "公園の大きな木", "kind": "place", "cover_path": "demo/park.jpg",
+                     "owner": kenta.uuidString, "owner_name": "けんた", "created_at": ago(60 * 86400), "added_at": ago(10 * 86400)]]
         default:
             return [Any]()
         }
@@ -256,33 +272,55 @@ enum DemoData {
 
     static func table(_ table: String, query: String, method: String) -> Data {
         guard method == "GET" else { return json([Any]()) }
-        let q = query.removingPercentEncoding ?? query
+        let rows: [[String: Any]]
         switch table {
         case "profiles":
-            return json([me, misaki, kenta, yui].map(profile))
+            rows = [me, misaki, kenta, yui].map(profile)
         case "follows":
             // あなた⇄みさき、あなた⇄けんたはお互いにフォロー、ゆいはあなたをフォローだけ
-            if q.contains("follower=eq.\(me.uuidString.lowercased())") || q.contains("follower=eq.\(me.uuidString)") {
-                return json([misaki, kenta].map { ["follower": me.uuidString, "followee": $0.uuidString] })
+            rows = [(me, misaki), (me, kenta), (misaki, me), (kenta, me), (yui, me), (misaki, kenta)].map {
+                ["follower": $0.0.uuidString, "followee": $0.1.uuidString]
             }
-            if q.contains("followee=eq.\(me.uuidString.lowercased())") || q.contains("followee=eq.\(me.uuidString)") {
-                return json([misaki, kenta, yui].map { ["follower": $0.uuidString, "followee": me.uuidString] })
-            }
-            return json([["follower": me.uuidString, "followee": misaki.uuidString]])
         case "gf_graffiti":
-            return json(cards)
+            rows = cards
         case "gf_reactions":
-            return json(cards.prefix(2).flatMap { c in
+            rows = cards.prefix(2).flatMap { c in
                 [["graffiti_id": c["id"]!, "user_id": kenta.uuidString], ["graffiti_id": c["id"]!, "user_id": yui.uuidString]]
-            })
+            }
         case "gf_gates":
-            return json(gates.filter { $0.owner == me }.map { g in
-                ["id": g.id.uuidString, "title": g.title, "visibility": "friends", "status": "open",
+            rows = gates.map { g in
+                ["id": g.id.uuidString, "owner": g.owner.uuidString, "title": g.title, "visibility": "friends", "status": "open",
                  "created_at": ago(40 * 86400), "cover_path": nn(g.cover), "lat": g.lat, "lon": g.lon,
                  "kind": g.kind, "note": g.note]
-            })
+            }
         default:
-            return json([Any]())
+            rows = []
+        }
+        return json(filter(rows, query: query))
+    }
+
+    /// 表の問い合わせの「列=eq.値」「列=in.(値,値)」「列=is.null」だけを、本物のサーバーと同じように絞る
+    private static func filter(_ rows: [[String: Any]], query: String) -> [[String: Any]] {
+        let items = URLComponents(string: "x:/?" + query)?.queryItems ?? []
+        let skip: Set<String> = ["select", "order", "limit", "offset", "or", "and"]
+        func text(_ v: Any?) -> String {
+            switch v {
+            case nil, is NSNull: return "null"
+            case let b as Bool: return b ? "true" : "false"
+            default: return "\(v!)".lowercased()
+            }
+        }
+        return rows.filter { row in
+            items.allSatisfy { item in
+                guard !skip.contains(item.name), let value = item.value else { return true }
+                if value.hasPrefix("eq.") { return text(row[item.name]) == value.dropFirst(3).lowercased() }
+                if value.hasPrefix("in.(") {
+                    let list = value.dropFirst(4).dropLast().split(separator: ",").map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "\" ")).lowercased() }
+                    return list.contains(text(row[item.name]))
+                }
+                if value == "is.null" { return row[item.name] == nil || row[item.name] is NSNull }
+                return true
+            }
         }
     }
 
