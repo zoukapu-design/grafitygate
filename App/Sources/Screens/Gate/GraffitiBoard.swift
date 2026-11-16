@@ -11,11 +11,15 @@ private let neonLine = LinearGradient(colors: Brand.neon, startPoint: .leading, 
 /// 「GRAFFITI BOARD」の札（写真の上に置く。ネオンの縁）
 struct BoardTag: View {
     var compact = false
+    /// しるしだけ（狭い札で、ほかの札と並ぶとき）
+    var iconOnly = false
 
     var body: some View {
         HStack(spacing: compact ? 4 : 5) {
             Image(systemName: "rectangle.portrait.on.rectangle.portrait.fill")
-            Text("GRAFFITI BOARD")
+            if !iconOnly {
+                Text("GRAFFITI BOARD")
+            }
         }
         .font(.system(size: compact ? 9 : 11, weight: .heavy, design: .rounded))
         .tracking(compact ? 0.8 : 1.4)
@@ -227,7 +231,7 @@ struct GraffitiBoardCard: View {
             .padding(.bottom, 14)
         }
         .frame(width: Self.size(compact: compact).width, height: Self.size(compact: compact).height)
-        .overlay(alignment: .topLeading) { BoardTag(compact: true).padding(10) }
+        .overlay(alignment: .topLeading) { BoardTag(compact: true, iconOnly: compact).padding(10) }
         .overlay(alignment: .topTrailing) {
             BoardPill(text: "約 \(Int(gate.distance_m.rounded()))m", symbol: "location.fill").padding(10)
         }

@@ -164,7 +164,7 @@ struct NearbyMapView: View {
         }
         .overlay(alignment: .topLeading) {
             // 見つけられる範囲の目印
-            Label("半径 100m の GATE が見つかります", systemImage: "dot.radiowaves.left.and.right")
+            Label("半径 100m で見つかります", systemImage: "dot.radiowaves.left.and.right")
                 .font(.caption2.weight(.bold))
                 .foregroundStyle(Theme.accent)
                 .padding(.horizontal, 10).padding(.vertical, 6)
@@ -178,7 +178,7 @@ struct NearbyMapView: View {
         let showsCarousel = loaded && error == nil && !gates.isEmpty
         var h: CGFloat = 12 + 34 + 10 + (showsCarousel ? GraffitiBoardCard.size(compact: compact).height + 12 : 84)
         if place != nil { h += 74 + 10 }
-        if target != nil { h += 80 + 10 }
+        if target != nil { h += (compact ? 58 : 80) + 10 }
         return h
     }
 
@@ -189,7 +189,7 @@ struct NearbyMapView: View {
                 placeCard(place).padding(.horizontal, 16)
             }
             if let target {
-                trailCard(target).padding(.horizontal, 16)
+                trailCard(target, compact: compact).padding(.horizontal, 16)
             }
             boardsHeading.padding(.horizontal, 16)
             boards(compact: compact)
@@ -289,31 +289,33 @@ struct NearbyMapView: View {
     }
 
     /// 歩いている TRAIL の次の地点
-    private func trailCard(_ target: TrailGuide.Target) -> some View {
+    private func trailCard(_ target: TrailGuide.Target, compact: Bool) -> some View {
         NavigationLink {
             TrailDetailView(trailID: target.trail.id, title: target.trail.title)
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: "figure.walk")
-                    .font(.headline)
+                    .font(compact ? .subheadline : .headline)
                     .foregroundStyle(.white)
-                    .frame(width: 34, height: 34)
+                    .frame(width: compact ? 28 : 34, height: compact ? 28 : 34)
                     .background(Theme.warm, in: Circle())
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("TRAIL「\(target.trail.title)」\(target.trail.reached)/\(target.trail.stop_count)")
-                        .font(.caption).foregroundStyle(Theme.textSecondary).lineLimit(1)
+                    if !compact {
+                        Text("TRAIL「\(target.trail.title)」\(target.trail.reached)/\(target.trail.stop_count)")
+                            .font(.caption).foregroundStyle(Theme.textSecondary).lineLimit(1)
+                    }
                     Text("次は \(target.stop.seq). \(target.stop.title)").font(.subheadline.weight(.semibold))
                         .foregroundStyle(Theme.text).lineLimit(1)
                     if let route {
                         Text("歩いて約 \(max(1, Int((route.expectedTravelTime / 60).rounded()))) 分・\(TrailGuide.distanceText(route.distance))"
-                             + (target.fine ? "" : "（おおよその場所まで）"))
+                             + (target.fine || compact ? "" : "（おおよその場所まで）"))
                             .font(.caption).foregroundStyle(Theme.warm).lineLimit(1)
                     }
                 }
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(Theme.textSecondary)
             }
-            .padding(12)
+            .padding(compact ? 9 : 12)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
             .overlay(RoundedRectangle(cornerRadius: 18).stroke(Theme.warm.opacity(0.5)))
         }
