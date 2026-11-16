@@ -1,7 +1,8 @@
 name: 画面の見本
 
 # シミュレーターで見本のデータの画面を開いて撮り、shots ブランチに置く（Claude が文字やボタンの重なりを確かめる）。
-# 見本は Debug の組み立てだけにある画面（App/Sources/Screens/Demo/DemoGallery.swift）。サーバーにはつながない。
+# 見本は Debug の組み立てだけにある画面（App/Sources/Screens/Demo/DemoGallery.swift）。つなぐ先は見本のサーバー
+# （DemoServer.swift。本物のサーバーにはつながない）。小さい iPhone と大きい iPhone を同時に撮り、最後にまとめる。
 on:
   workflow_dispatch:
     inputs:
@@ -18,9 +19,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  shots:
+  shoot:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: small
+            device: "iPhone SE"
+          - label: large
+            device: "Pro Max"
     runs-on: ${{ vars.MAC_RUNNER || 'macos-15-intel' }}
-    timeout-minutes: 40
+    timeout-minutes: 45
     env:
       PROJECT_DIR: App
       SCHEME: GrafityGate
@@ -48,6 +57,22 @@ jobs:
           key: spm-${{ runner.os }}-${{ hashFiles('App/project.yml') }}
           restore-keys: spm-${{ runner.os }}-
 
+      - name: シミュレーターを起こしておく（組み立てと同時に）
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          want = sys.argv[1]
+          devs = json.load(sys.stdin)["devices"]
+          for runtime, items in sorted(devs.items(), reverse=True):
+              if "iOS" not in runtime: continue
+              for d in items:
+                  if want in d["name"]:
+                      print(d["udid"]); sys.exit(0)
+          ' "${{ matrix.device }}")
+          if [ -z "$UDID" ]; then echo "::error title=見本::${{ matrix.device }} のシミュレーターがありません"; exit 1; fi
+          echo "UDID=$UDID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$UDID" || true
+
       - name: シミュレーター用に組み立てる
         run: |
           set -o pipefail
@@ -65,67 +90,58 @@ jobs:
           echo "APP=$APP" >> "$GITHUB_ENV"
           echo "BUNDLE=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")" >> "$GITHUB_ENV"
 
-      - name: 小さい iPhone と大きい iPhone で撮る
+      - name: 撮る
         env:
           SCREENS_IN: ${{ inputs.screens }}
+          LABEL: ${{ matrix.label }}
         run: |
           SCREENS="${SCREENS_IN:-home gate gate-board gate-albums gate-letters gate-then trail me map profile inbox messages friends visited saved-cards letters albums settings cards nearby nearby-detail chat lookback goal board edit-card edit-gate progress notifications onboarding}"
           mkdir -p shots/logs
-          pick() {
-            xcrun simctl list devices available -j | python3 -c '
-          import json, sys
-          want = sys.argv[1]
-          devs = json.load(sys.stdin)["devices"]
-          for runtime, items in sorted(devs.items(), reverse=True):
-              if "iOS" not in runtime: continue
-              for d in items:
-                  if want in d["name"]:
-                      print(d["udid"]); sys.exit(0)
-          ' "$1"
+          # 決まった秒数で必ず止める（止まらないものは強制的に終わらせる）
+          limit() {
+            local t=$1; shift
+            "$@" & local p=$!
+            ( sleep "$t"; kill -9 "$p" 2>/dev/null ) & local k=$!
+            wait "$p"; local rc=$?
+            kill "$k" 2>/dev/null; wait "$k" 2>/dev/null
+            return $rc
+          }
+          # 画面が落ち着いたか：アプリが何か出していて、3 秒なにも増えず、画面が止まったままでない
+          settled() {
+            [ -s "$1" ] || return 1
+            local age=$(( $(date +%s) - $(stat -f %m "$1") ))
+            [ "$age" -ge 3 ] || return 1
+            python3 -c 'import sys; t=open(sys.argv[1], errors="replace").read(); sys.exit(1 if t.rfind("画面が止まっています") > t.rfind("画面が動き出しました") else 0)' "$1"
           }
           START=$(date +%s)
-          for spec in "small:iPhone SE" "large:Pro Max"; do
-            label="${spec%%:*}"; name="${spec#*:}"
-            UDID=$(pick "$name")
-            if [ -z "$UDID" ]; then echo "::warning title=見本::$name のシミュレーターがありません"; continue; fi
-            xcrun simctl boot "$UDID" || true
-            xcrun simctl bootstatus "$UDID" -b
-            xcrun simctl status_bar "$UDID" override --time 9:41 --batteryState charged --batteryLevel 100 --cellularBars 4 || true
-            xcrun simctl install "$UDID" "$APP"
-            # 見本の位置（渋谷あたり）と、位置を使ってよいこと
-            xcrun simctl privacy "$UDID" grant location-always "$BUNDLE" || xcrun simctl privacy "$UDID" grant location "$BUNDLE" || true
-            xcrun simctl location "$UDID" set 35.6590,139.7010 || true
-            # 1 つの手順が止まったままにならないよう、60 秒で打ち切る
-            # 決まった秒数で必ず止める（止まらないものは強制的に終わらせる）
-            limit() {
-              local t=$1; shift
-              "$@" & local p=$!
-              ( sleep "$t"; kill -9 "$p" 2>/dev/null ) & local k=$!
-              wait "$p"; local rc=$?
-              kill "$k" 2>/dev/null; wait "$k" 2>/dev/null
-              return $rc
-            }
-            for s in $SCREENS; do
-              # 全体で 25 分を超えたら、撮れたところまでで終える
-              if [ $(( $(date +%s) - START )) -gt 1380 ]; then echo "::warning title=見本::時間が足りないので $s から先は撮りません"; break; fi
-              limit 60 xcrun simctl terminate "$UDID" "$BUNDLE" > /dev/null 2>&1 || true
-              # アプリが出した文（落ちた理由・見本のサーバーへの問い合わせ）を、画面ごとに logs/ に残す
-              LOG="$PWD/shots/logs/$label-$s.txt"
-              # 起動の答え（"<bundle>: <pid>"）はファイルで受ける（パイプで受けると、アプリが出口をつかんだままで待ち続ける）
-              limit 60 xcrun simctl launch --stdout="$LOG" --stderr="$LOG" "$UDID" "$BUNDLE" -GGDemoScreen "$s" \
-                -AppleLanguages "(ja)" -AppleLocale ja_JP > /tmp/launch.txt 2>&1 || echo "::warning title=見本::$label の $s を開けませんでした"
-              PID=$(awk '/: [0-9]+$/ {print $NF}' /tmp/launch.txt | tail -1)
-              sleep 12
-              limit 60 xcrun simctl io "$UDID" screenshot "shots/$label-$s.png" > /dev/null || echo "::warning title=見本::$label の $s を撮れませんでした"
-              ls -t ~/Library/Logs/DiagnosticReports 2>/dev/null | head -3 | sed 's/^/report: /' >> "$LOG" || true
-              # 画面が止まったまま（「止まっています」のあとに「動き出しました」が無い）なら、そのときの流れを 2 秒取っておく
-              if [ -n "$PID" ] && python3 -c 'import sys; t=open(sys.argv[1], errors="replace").read(); sys.exit(0 if t.rfind("画面が止まっています") > t.rfind("画面が動き出しました") else 1)' "$LOG"; then
-                limit 20 sample "$PID" 2 -file "shots/logs/$label-$s-sample.txt" < /dev/null > /dev/null 2>&1 || echo "sample failed" >> "$LOG"
-              fi
+          limit 300 xcrun simctl bootstatus "$UDID" -b > /dev/null || true
+          xcrun simctl status_bar "$UDID" override --time 9:41 --batteryState charged --batteryLevel 100 --cellularBars 4 || true
+          xcrun simctl install "$UDID" "$APP"
+          # 見本の位置（渋谷あたり）と、位置を使ってよいこと
+          xcrun simctl privacy "$UDID" grant location-always "$BUNDLE" || xcrun simctl privacy "$UDID" grant location "$BUNDLE" || true
+          xcrun simctl location "$UDID" set 35.6590,139.7010 || true
+          for s in $SCREENS; do
+            # 時間の上限が近づいたら、撮れたところまでで終える
+            if [ $(( $(date +%s) - START )) -gt 1800 ]; then echo "::warning title=見本::時間が足りないので $LABEL の $s から先は撮りません"; break; fi
+            limit 60 xcrun simctl terminate "$UDID" "$BUNDLE" > /dev/null 2>&1 || true
+            # アプリが出した文（落ちた理由・見本のサーバーへの問い合わせ・画面が止まった）を、画面ごとに logs/ に残す
+            LOG="$PWD/shots/logs/$LABEL-$s.txt"
+            : > "$LOG"
+            # 起動の答えはファイルで受ける（パイプで受けると、アプリが出口をつかんだままで待ち続ける）
+            limit 60 xcrun simctl launch --stdout="$LOG" --stderr="$LOG" "$UDID" "$BUNDLE" -GGDemoScreen "$s" \
+              -AppleLanguages "(ja)" -AppleLocale ja_JP > /tmp/launch.txt 2>&1 || echo "::warning title=見本::$LABEL の $s を開けませんでした"
+            # 少なくとも 8 秒、長くて 30 秒。画面が落ち着いたら撮る（クラウドの Mac のシミュレーターは描くのが遅い）
+            waited=0
+            while [ $waited -lt 30 ]; do
+              sleep 1; waited=$((waited + 1))
+              if [ $waited -ge 8 ] && settled "$LOG"; then break; fi
             done
-            # 落ちた記録があれば、どこで落ちたかを出す
-            for f in $(ls -t ~/Library/Logs/DiagnosticReports/*GrafityGate* 2>/dev/null | head -3); do
-              python3 - "$f" <<'PY'
+            echo "shot after ${waited}s" >> "$LOG"
+            limit 60 xcrun simctl io "$UDID" screenshot "shots/$LABEL-$s.png" > /dev/null || echo "::warning title=見本::$LABEL の $s を撮れませんでした"
+          done
+          # 落ちた記録があれば、どこで落ちたかを出す
+          for f in $(ls -t ~/Library/Logs/DiagnosticReports/*GrafityGate* 2>/dev/null | head -3); do
+            python3 - "$f" <<'PY'
           import json, sys
           path = sys.argv[1]
           text = open(path, errors="replace").read()
@@ -144,17 +160,35 @@ jobs:
               msg = text[:3000]
           print("::warning title=落ちた記録::" + msg.replace("%", "%25").replace("\n", "%0A")[:3800])
           PY
-            done
-            xcrun simctl shutdown "$UDID" || true
           done
-          ls shots | head -50
-          echo "::notice title=見本::$(ls shots | wc -l | tr -d ' ') 枚を撮りました"
+          echo "::notice title=見本::$LABEL で $(ls shots/*.png 2>/dev/null | wc -l | tr -d ' ') 枚を撮りました"
+
+      - name: 撮ったものを渡す
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shots-${{ matrix.label }}
+          path: shots
+          retention-days: 3
+          if-no-files-found: ignore
+
+  publish:
+    needs: shoot
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: 受け取る
+        uses: actions/download-artifact@v4
+        with:
+          pattern: shots-*
+          merge-multiple: true
+          path: shots
 
       - name: shots ブランチに置く
-        if: always()
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          mkdir -p shots
           cd shots
           git init -q
           git checkout -q -b shots

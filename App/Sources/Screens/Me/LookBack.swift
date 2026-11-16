@@ -139,7 +139,7 @@ struct SavedCardsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                Text("GATE の中で 🔖 を押したカードです。写真・場所・日付はいつでも、ひとことは現地で読めます。")
+                Text("GATE の中で「保存」したグラフィティカードです。写真・場所・日付はいつでも、ひとことは現地で読めます。")
                     .font(.subheadline).foregroundStyle(Theme.textSecondary)
                 if let message { NoticeText(text: message) }
                 if loaded && cards.isEmpty && message == nil {
