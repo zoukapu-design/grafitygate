@@ -98,13 +98,14 @@ struct NearbyMapView: View {
     /// 地図を画面いっぱいに出し、下に「近くのグラフィティボード」を重ねる（横にめくると、地図の印も選ばれる）
     private var mapContent: some View {
         GeometryReader { geo in
+            // 小さい iPhone（地図の欄が低い）では、ボードを低くして地図を広く見せる
+            let compact = geo.size.height < 560
             ZStack(alignment: .bottom) {
                 map
                     // 下に重ねた札の上に、いまいる所や印が来るように。札の高さは測らず、決まった高さで空ける
-                    // （測った高さで地図を動かすと、測り直しが続いて画面が止まることがあった）
-                    .safeAreaPadding(.bottom, reservedBottom + geo.safeAreaInsets.bottom)
+                    .safeAreaPadding(.bottom, reservedBottom(compact: compact) + geo.safeAreaInsets.bottom)
                     .ignoresSafeArea(edges: .bottom)
-                overlayCards
+                overlayCards(compact: compact)
             }
         }
     }
@@ -173,16 +174,16 @@ struct NearbyMapView: View {
     }
 
     /// 下に重ねた札のおおよその高さ（地図の中身をその上に寄せる）
-    private var reservedBottom: CGFloat {
+    private func reservedBottom(compact: Bool) -> CGFloat {
         let showsCarousel = loaded && error == nil && !gates.isEmpty
-        var h: CGFloat = 12 + 34 + 10 + (showsCarousel ? 168 : 84)
+        var h: CGFloat = 12 + 34 + 10 + (showsCarousel ? GraffitiBoardCard.size(compact: compact).height + 12 : 84)
         if place != nil { h += 74 + 10 }
         if target != nil { h += 80 + 10 }
         return h
     }
 
     /// 地図の下に重ねる札：探した場所・TRAIL の次の地点・近くのグラフィティボード
-    private var overlayCards: some View {
+    private func overlayCards(compact: Bool) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             if let place {
                 placeCard(place).padding(.horizontal, 16)
@@ -191,7 +192,7 @@ struct NearbyMapView: View {
                 trailCard(target).padding(.horizontal, 16)
             }
             boardsHeading.padding(.horizontal, 16)
-            boards
+            boards(compact: compact)
         }
         .padding(.bottom, 12)
     }
@@ -215,7 +216,7 @@ struct NearbyMapView: View {
         .background(.regularMaterial, in: Capsule())
     }
 
-    @ViewBuilder private var boards: some View {
+    @ViewBuilder private func boards(compact: Bool) -> some View {
         if location.fixProblem != nil, location.location == nil || location.needsSettings {
             LocationProblemView()
                 .padding(14)
@@ -265,7 +266,7 @@ struct NearbyMapView: View {
                 LazyHStack(spacing: 12) {
                     ForEach(gates) { gate in
                         NavigationLink(value: GateRoute(id: gate.id)) {
-                            GraffitiBoardCard(gate: gate, selected: selected == gate.id)
+                            GraffitiBoardCard(gate: gate, selected: selected == gate.id, compact: compact)
                         }
                         .buttonStyle(.plain)
                         .id(gate.id)
@@ -275,7 +276,7 @@ struct NearbyMapView: View {
                 .padding(.vertical, 6)
             }
             // 高さは札の高さに決める（決めないと横に流す欄が縦にのび、地図の上まで広がっていた）
-            .frame(height: 168)
+            .frame(height: GraffitiBoardCard.size(compact: compact).height + 12)
             .scrollTargetBehavior(.viewAligned)
             .safeAreaPadding(.horizontal, 16)
             .scrollPosition(id: $scrolledID)

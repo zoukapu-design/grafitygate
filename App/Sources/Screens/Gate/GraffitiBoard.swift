@@ -192,6 +192,10 @@ struct NightSecondaryButtonStyle: ButtonStyle {
 struct GraffitiBoardCard: View {
     let gate: NearbyGate
     var selected = false
+    /// 小さい iPhone では低くして、上の地図を広く見せる
+    var compact = false
+
+    static func size(compact: Bool) -> CGSize { compact ? CGSize(width: 224, height: 124) : CGSize(width: 260, height: 156) }
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
@@ -202,7 +206,7 @@ struct GraffitiBoardCard: View {
                            startPoint: .top, endPoint: .bottom)
             VStack(alignment: .leading, spacing: 5) {
                 Text(gate.title)
-                    .font(.system(size: 19, weight: .heavy))
+                    .font(.system(size: compact ? 17 : 19, weight: .heavy))
                     .foregroundStyle(.white)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
@@ -222,7 +226,7 @@ struct GraffitiBoardCard: View {
             .padding(.horizontal, 14)
             .padding(.bottom, 14)
         }
-        .frame(width: 260, height: 156)
+        .frame(width: Self.size(compact: compact).width, height: Self.size(compact: compact).height)
         .overlay(alignment: .topLeading) { BoardTag(compact: true).padding(10) }
         .overlay(alignment: .topTrailing) {
             BoardPill(text: "約 \(Int(gate.distance_m.rounded()))m", symbol: "location.fill").padding(10)
