@@ -29,7 +29,7 @@ jobs:
           - label: large
             device: "Pro Max"
     runs-on: ${{ vars.MAC_RUNNER || 'macos-15-intel' }}
-    timeout-minutes: 45
+    timeout-minutes: 50
     env:
       PROJECT_DIR: App
       SCHEME: GrafityGate
@@ -120,6 +120,9 @@ jobs:
           # 見本の位置（渋谷あたり）と、位置を使ってよいこと
           xcrun simctl privacy "$UDID" grant location-always "$BUNDLE" || xcrun simctl privacy "$UDID" grant location "$BUNDLE" || true
           xcrun simctl location "$UDID" set 35.6590,139.7010 || true
+          # はじめの 1 回はアプリの起動がとても遅い（入れたばかり）ので、撮らずに 1 回開いておく
+          limit 60 xcrun simctl launch "$UDID" "$BUNDLE" -GGDemoScreen settings > /dev/null 2>&1 || true
+          sleep 15
           for s in $SCREENS; do
             # 時間の上限が近づいたら、撮れたところまでで終える
             if [ $(( $(date +%s) - START )) -gt 1500 ]; then echo "::warning title=見本::時間が足りないので $LABEL の $s から先は撮りません"; break; fi
@@ -130,9 +133,9 @@ jobs:
             # 起動の答えはファイルで受ける（パイプで受けると、アプリが出口をつかんだままで待ち続ける）
             limit 60 xcrun simctl launch --stdout="$LOG" --stderr="$LOG" "$UDID" "$BUNDLE" -GGDemoScreen "$s" \
               -AppleLanguages "(ja)" -AppleLocale ja_JP > /tmp/launch.txt 2>&1 || echo "::warning title=見本::$LABEL の $s を開けませんでした"
-            # 少なくとも 8 秒、長くて 20 秒。画面が落ち着いたら撮る（クラウドの Mac のシミュレーターは描くのが遅い）
+            # 少なくとも 8 秒、長くて 30 秒。画面が落ち着いたら撮る（クラウドの Mac のシミュレーターは描くのが遅い）
             waited=0
-            while [ $waited -lt 20 ]; do
+            while [ $waited -lt 30 ]; do
               sleep 1; waited=$((waited + 1))
               if [ $waited -ge 8 ] && settled "$LOG"; then break; fi
             done
