@@ -10,7 +10,8 @@ struct DemoGallery: View {
 
     static var requestedScreen: String? { DemoMode.screen }
 
-    static let screens = ["home", "gate", "gate-board", "me", "map", "profile", "inbox", "messages",
+    static let screens = ["home", "gate", "gate-board", "gate-albums", "gate-letters", "gate-then", "trail",
+                          "me", "map", "profile", "inbox", "messages",
                           "cards", "nearby", "nearby-detail", "chat", "lookback", "goal", "board", "edit-card",
                           "edit-gate", "progress", "notifications", "onboarding"]
 
@@ -33,6 +34,7 @@ struct DemoGallery: View {
                 // 見本の人として入ったことにして（つなぐ先は見本のサーバー）、位置も調べ始める
                 session.startDemo()
                 location.start()
+                MainWatch.shared.start()
                 switch screen {
                 case "home": nav.tab = .home
                 case "me": nav.tab = .me
@@ -50,6 +52,14 @@ struct DemoGallery: View {
             NavigationStack { GateDetailView(gateID: DemoData.hill) }
         case "gate-board":
             NavigationStack { GateDetailView(gateID: DemoData.hill, tab: .board) }
+        case "gate-albums":
+            NavigationStack { GateDetailView(gateID: DemoData.hill, tab: .memories) }
+        case "gate-letters":
+            NavigationStack { GateDetailView(gateID: DemoData.hill, tab: .letters) }
+        case "gate-then":
+            NavigationStack { GateDetailView(gateID: DemoData.hill, tab: .thenNow) }
+        case "trail":
+            NavigationStack { TrailDetailView(trailID: DemoData.trail, title: "夕焼けの散歩道") }
         case "profile":
             NavigationStack { ProfileView(userID: DemoData.misaki) }
         case "inbox":

@@ -335,9 +335,9 @@ struct NotificationSettingsView: View {
     static let groups: [NotifyGroup] = [
         NotifyGroup(id: "gate", title: "自分の GATE にグラフィティカード・AR の飾り", detail: "あなたの GATE に、だれかがカードや AR の飾りを残したとき",
               symbol: "square.stack", kinds: ["gate_graffiti", "gate_artwork"]),
-        NotifyGroup(id: "cards", title: "カードへの返信・来たよ", detail: "あなたのカードに返信や「来たよ」が届いたとき",
+        NotifyGroup(id: "cards", title: "グラフィティカードへの返信・来たよ", detail: "あなたのグラフィティカードに返信や「来たよ」が届いたとき",
               symbol: "bubble.left", kinds: ["card_comment", "card_link"]),
-        NotifyGroup(id: "like", title: "いいね", detail: "あなたのカードにいいねが付いたとき", symbol: "heart", kinds: ["like"]),
+        NotifyGroup(id: "like", title: "いいね", detail: "あなたのグラフィティカードにいいねが付いたとき", symbol: "heart", kinds: ["like"]),
         NotifyGroup(id: "board", title: "掲示板", detail: "あなたの GATE に話題が立った・あなたの話題に返信があったとき",
               symbol: "bubble.left.and.bubble.right", kinds: ["board_thread", "board_reply"]),
         NotifyGroup(id: "letters", title: "手紙", detail: "手紙が届いた・あなたの手紙が開かれたとき",

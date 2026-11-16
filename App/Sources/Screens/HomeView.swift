@@ -256,24 +256,16 @@ private struct FeedRow: View {
                     Text(card.body).font(.body).foregroundStyle(Theme.text)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                HStack(spacing: 8) {
-                    Label(card.gate_title, systemImage: "door.left.hand.open")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Theme.accent)
-                        .lineLimit(1)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(Theme.accentLight, in: Capsule())
-                    Spacer(minLength: 0)
-                    if let onCompare {
-                        // ここに自分のカードもある：ふたりのグラフィティカードを並べる
-                        Button(action: onCompare) {
-                            Label("あなたのカードと並べる", systemImage: "rectangle.split.2x1")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(Theme.warm)
-                                .lineLimit(1)
-                        }
-                        .buttonStyle(.borderless)
+                // 1 行に入らないとき（小さい iPhone・長い GATE の名前）は、2 行に分けて名前を切らない
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) {
+                        gateChip.fixedSize()
+                        Spacer(minLength: 0)
+                        compareButton
+                    }
+                    VStack(alignment: .leading, spacing: 8) {
+                        gateChip
+                        compareButton
                     }
                 }
             }
@@ -283,6 +275,30 @@ private struct FeedRow: View {
         .clipShape(RoundedRectangle(cornerRadius: Theme.radiusCard))
         .overlay(RoundedRectangle(cornerRadius: Theme.radiusCard).stroke(Theme.line))
         .padding(.vertical, 4)
+    }
+
+    private var gateChip: some View {
+        Label(card.gate_title, systemImage: "door.left.hand.open")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(Theme.accent)
+            .lineLimit(1)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(Theme.accentLight, in: Capsule())
+    }
+
+    @ViewBuilder private var compareButton: some View {
+        if let onCompare {
+            // ここに自分のカードもある：ふたりのグラフィティカードを並べる
+            Button(action: onCompare) {
+                Label("あなたのカードと並べる", systemImage: "rectangle.split.2x1")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Theme.warm)
+                    .lineLimit(1)
+                    .fixedSize()
+            }
+            .buttonStyle(.borderless)
+        }
     }
 }
 

@@ -204,8 +204,8 @@ struct NearbyCardsView: View {
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("今日、近くにある友達のカード").font(.headline).foregroundStyle(Theme.text)
-                Text("いまいる所から 300m 以内の GATE に、友達が残したカードです")
+                Text("今日、近くにある友達のグラフィティカード").font(.headline).foregroundStyle(Theme.text)
+                Text("いまいる所から 300m 以内の GATE に、友達が残したものです")
                     .font(.caption).foregroundStyle(Theme.textSecondary)
             }
             Spacer()

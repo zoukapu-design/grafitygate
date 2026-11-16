@@ -185,7 +185,7 @@ enum DemoData {
                  "last_activity_at": ago(30 * 3600), "created_at": ago(30 * 3600), "unread": false, "edited_at": ago(28 * 3600),
                  "resolved": false, "progress": "open", "conclusion": NSNull()],
             ]
-        case "gf_trail_list", "gf_user_trails", "gf_trail_search":
+        case "gf_trail_list", "gf_user_trails", "gf_trail_search", "gf_trail_get":
             return [["id": trail.uuidString, "owner": misaki.uuidString, "owner_name": "みさき", "title": "夕焼けの散歩道",
                      "note": "駅から丘まで、夕方に歩くのがおすすめ", "visibility": "friends", "created_at": ago(12 * 86400),
                      "stop_count": 5, "cover_path": "demo/park.jpg", "reached": 2, "completed": false, "started": true]]
@@ -241,12 +241,32 @@ enum DemoData {
                      "last_from_me": true, "unread": 0, "can_send": true, "last_kind": "card"],
                     ["other": kenta.uuidString, "other_name": "けんた", "last_body": "明日あの丘に行かない？", "last_at": ago(7200),
                      "last_from_me": false, "unread": 1, "can_send": true, "last_kind": "text"]]
+        case "gf_keep_open":
+            return ["open": true, "expires_at": later(15 * 60), "near": true]
         case "gf_gate_ref_count":
             return ["count": 3, "max": 12]
         case "gf_gate_door":
             return ["scale": 1.0, "kind": "view"]
         case "gf_my_notify_mutes":
             return ["like"]
+        case "gf_trail_stops_of":
+            return [
+                ["seq": 1, "gate_id": clock.uuidString, "title": "駅前の大時計", "cover_path": "demo/night.jpg", "approx_lat": 35.6581,
+                 "approx_lon": 139.7016, "visible": true, "reached": true],
+                ["seq": 2, "gate_id": tree.uuidString, "title": "公園の大きな木", "cover_path": "demo/park.jpg", "approx_lat": 35.6572,
+                 "approx_lon": 139.7029, "visible": true, "reached": true],
+                ["seq": 3, "gate_id": hill.uuidString, "title": "夕焼けの見える丘", "cover_path": "demo/sunset.jpg", "approx_lat": 35.6595,
+                 "approx_lon": 139.7005, "visible": true, "reached": false],
+                ["seq": 4, "gate_id": NSNull(), "title": "見られない地点", "cover_path": NSNull(), "approx_lat": NSNull(),
+                 "approx_lon": NSNull(), "visible": false, "reached": false],
+            ]
+        case "gf_memory_list":
+            return [["id": UUID().uuidString, "owner": kenta.uuidString, "owner_name": "けんた", "title": "春のお花見",
+                     "note": "毎年みんなで集まる日の写真と声", "visibility": "friends", "created_at": ago(200 * 86400), "item_count": 14,
+                     "cover_path": "demo/park.jpg", "member_count": 5, "is_member": true, "can_add": true],
+                    ["id": UUID().uuidString, "owner": misaki.uuidString, "owner_name": "みさき", "title": "卒業の日",
+                     "note": "", "visibility": "friends", "created_at": ago(400 * 86400), "item_count": 3,
+                     "cover_path": NSNull(), "member_count": 2, "is_member": false, "can_add": false]]
         case "gf_my_letters":
             return [
                 ["id": UUID().uuidString, "gate_id": hill.uuidString, "gate_title": "夕焼けの見える丘", "author": misaki.uuidString,
@@ -287,6 +307,11 @@ enum DemoData {
             rows = cards.prefix(2).flatMap { c in
                 [["graffiti_id": c["id"]!, "user_id": kenta.uuidString], ["graffiti_id": c["id"]!, "user_id": yui.uuidString]]
             }
+        case "gf_snapshots":
+            rows = [["id": UUID().uuidString, "gate_id": hill.uuidString, "author": misaki.uuidString, "photo_path": "demo/sunset.jpg",
+                     "visibility": "friends", "created_at": ago(300 * 86400)],
+                    ["id": UUID().uuidString, "gate_id": hill.uuidString, "author": me.uuidString, "photo_path": "demo/night.jpg",
+                     "visibility": "friends", "created_at": ago(2 * 86400)]]
         case "gf_gates":
             rows = gates.map { g in
                 ["id": g.id.uuidString, "owner": g.owner.uuidString, "title": g.title, "visibility": "friends", "status": "open",
