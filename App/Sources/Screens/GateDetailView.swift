@@ -348,9 +348,9 @@ struct GateDetailView: View {
                     Text(s.note).font(.body).foregroundStyle(Theme.text)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                // 数の札（横に流す）
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
+                // 数の札（入りきらなければ次の行へ。横に流すと、小さい iPhone で端が切れて見えた）
+                FlowLayout(spacing: 8, lineSpacing: 8) {
+                    Group {
                         chip(GateKind(raw: s.kind).label, GateKind(raw: s.kind).symbol, warm: GateKind(raw: s.kind) == .view)
                         chip("グラフィティカード \(s.graffiti_count) 枚", "square.stack")
                         if let stats {

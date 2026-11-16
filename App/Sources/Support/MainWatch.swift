@@ -14,6 +14,10 @@ final class MainWatch {
 
     func start() {
         guard timer == nil else { return }
+        // 見張りを始めた時刻から測る（作ったときから測ると、始めてすぐ「止まっています」と出ていた）
+        lock.lock()
+        lastBeat = Date().addingTimeInterval(2)
+        lock.unlock()
         let t = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .utility))
         t.schedule(deadline: .now() + 2, repeating: 0.2)
         t.setEventHandler { [weak self] in self?.tick() }

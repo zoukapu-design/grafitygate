@@ -794,7 +794,8 @@ struct DMThread: Decodable, Identifiable, Hashable {
     /// 一覧に出す、いちばん新しいメッセージ
     var preview: String {
         switch last_kind {
-        case "card": return last_body.isEmpty ? "🃏 グラフィティカード" : "🃏 " + last_body
+        // 🃏（トランプ）はカードの意味がちがって見えるので、絵文字は付けない
+        case "card": return last_body.isEmpty ? "グラフィティカード" : "グラフィティカード：" + last_body
         case "photo": return last_body.isEmpty ? "📷 写真" : "📷 " + last_body
         default: return last_body.isEmpty ? "📷 写真" : last_body
         }

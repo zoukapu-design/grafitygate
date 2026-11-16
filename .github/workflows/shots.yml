@@ -57,22 +57,6 @@ jobs:
           key: spm-${{ runner.os }}-${{ hashFiles('App/project.yml') }}
           restore-keys: spm-${{ runner.os }}-
 
-      - name: シミュレーターを起こしておく（組み立てと同時に）
-        run: |
-          UDID=$(xcrun simctl list devices available -j | python3 -c '
-          import json, sys
-          want = sys.argv[1]
-          devs = json.load(sys.stdin)["devices"]
-          for runtime, items in sorted(devs.items(), reverse=True):
-              if "iOS" not in runtime: continue
-              for d in items:
-                  if want in d["name"]:
-                      print(d["udid"]); sys.exit(0)
-          ' "${{ matrix.device }}")
-          if [ -z "$UDID" ]; then echo "::error title=見本::${{ matrix.device }} のシミュレーターがありません"; exit 1; fi
-          echo "UDID=$UDID" >> "$GITHUB_ENV"
-          xcrun simctl boot "$UDID" || true
-
       - name: シミュレーター用に組み立てる
         run: |
           set -o pipefail
@@ -89,6 +73,22 @@ jobs:
           APP=$(find build/Build/Products/Debug-iphonesimulator -maxdepth 1 -name "*.app" | head -1)
           echo "APP=$APP" >> "$GITHUB_ENV"
           echo "BUNDLE=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")" >> "$GITHUB_ENV"
+
+      - name: シミュレーターを起こす（組み立てのあと。同時にすると組み立てが 3 倍遅くなった）
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          want = sys.argv[1]
+          devs = json.load(sys.stdin)["devices"]
+          for runtime, items in sorted(devs.items(), reverse=True):
+              if "iOS" not in runtime: continue
+              for d in items:
+                  if want in d["name"]:
+                      print(d["udid"]); sys.exit(0)
+          ' "${{ matrix.device }}")
+          if [ -z "$UDID" ]; then echo "::error title=見本::${{ matrix.device }} のシミュレーターがありません"; exit 1; fi
+          echo "UDID=$UDID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$UDID" || true
 
       - name: 撮る
         env:
@@ -122,7 +122,7 @@ jobs:
           xcrun simctl location "$UDID" set 35.6590,139.7010 || true
           for s in $SCREENS; do
             # 時間の上限が近づいたら、撮れたところまでで終える
-            if [ $(( $(date +%s) - START )) -gt 1800 ]; then echo "::warning title=見本::時間が足りないので $LABEL の $s から先は撮りません"; break; fi
+            if [ $(( $(date +%s) - START )) -gt 1500 ]; then echo "::warning title=見本::時間が足りないので $LABEL の $s から先は撮りません"; break; fi
             limit 60 xcrun simctl terminate "$UDID" "$BUNDLE" > /dev/null 2>&1 || true
             # アプリが出した文（落ちた理由・見本のサーバーへの問い合わせ・画面が止まった）を、画面ごとに logs/ に残す
             LOG="$PWD/shots/logs/$LABEL-$s.txt"
@@ -130,9 +130,9 @@ jobs:
             # 起動の答えはファイルで受ける（パイプで受けると、アプリが出口をつかんだままで待ち続ける）
             limit 60 xcrun simctl launch --stdout="$LOG" --stderr="$LOG" "$UDID" "$BUNDLE" -GGDemoScreen "$s" \
               -AppleLanguages "(ja)" -AppleLocale ja_JP > /tmp/launch.txt 2>&1 || echo "::warning title=見本::$LABEL の $s を開けませんでした"
-            # 少なくとも 8 秒、長くて 30 秒。画面が落ち着いたら撮る（クラウドの Mac のシミュレーターは描くのが遅い）
+            # 少なくとも 8 秒、長くて 20 秒。画面が落ち着いたら撮る（クラウドの Mac のシミュレーターは描くのが遅い）
             waited=0
-            while [ $waited -lt 30 ]; do
+            while [ $waited -lt 20 ]; do
               sleep 1; waited=$((waited + 1))
               if [ $waited -ge 8 ] && settled "$LOG"; then break; fi
             done
