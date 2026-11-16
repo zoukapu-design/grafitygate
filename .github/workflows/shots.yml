@@ -70,7 +70,7 @@ jobs:
           SCREENS_IN: ${{ inputs.screens }}
         run: |
           SCREENS="${SCREENS_IN:-home gate gate-board me map profile inbox messages cards nearby nearby-detail chat lookback goal board edit-card edit-gate progress notifications onboarding}"
-          mkdir -p shots
+          mkdir -p shots/logs
           pick() {
             xcrun simctl list devices available -j | python3 -c '
           import json, sys
@@ -98,10 +98,13 @@ jobs:
             limit() { perl -e 'alarm shift; exec @ARGV' "$@"; }
             for s in $SCREENS; do
               limit 60 xcrun simctl terminate "$UDID" "$BUNDLE" > /dev/null 2>&1 || true
-              limit 60 xcrun simctl launch "$UDID" "$BUNDLE" -GGDemoScreen "$s" \
+              # アプリが出した文（落ちた理由・見本のサーバーへの問い合わせ）を、画面ごとに logs/ に残す
+              LOG="$PWD/shots/logs/$label-$s.txt"
+              limit 60 xcrun simctl launch --stdout="$LOG" --stderr="$LOG" "$UDID" "$BUNDLE" -GGDemoScreen "$s" \
                 -AppleLanguages "(ja)" -AppleLocale ja_JP > /dev/null || echo "::warning title=見本::$label の $s を開けませんでした"
               sleep 8
               limit 60 xcrun simctl io "$UDID" screenshot "shots/$label-$s.png" > /dev/null || echo "::warning title=見本::$label の $s を撮れませんでした"
+              ls -t ~/Library/Logs/DiagnosticReports 2>/dev/null | head -3 | sed 's/^/report: /' >> "$LOG" || true
             done
             # 落ちた記録があれば、どこで落ちたかを出す
             for f in $(ls -t ~/Library/Logs/DiagnosticReports/*GrafityGate* 2>/dev/null | head -3); do

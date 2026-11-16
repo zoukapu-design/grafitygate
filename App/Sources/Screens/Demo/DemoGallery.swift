@@ -8,11 +8,7 @@ import UIKit
 struct DemoGallery: View {
     let screen: String
 
-    static var requestedScreen: String? {
-        let args = ProcessInfo.processInfo.arguments
-        guard let i = args.firstIndex(of: "-GGDemoScreen"), i + 1 < args.count else { return nil }
-        return args[i + 1]
-    }
+    static var requestedScreen: String? { DemoMode.screen }
 
     static let screens = ["home", "gate", "gate-board", "me", "map", "profile", "inbox", "messages",
                           "cards", "nearby", "nearby-detail", "chat", "lookback", "goal", "board", "edit-card",

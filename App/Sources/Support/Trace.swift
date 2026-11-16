@@ -13,6 +13,12 @@ enum Trace {
 
     static func log(_ message: String) {
         let now = Date()
+        #if DEBUG
+        // 画面の見本（シミュレーター）では、組み立ての記録からも読めるように画面の外にも出す
+        if DemoMode.screen != nil {
+            FileHandle.standardError.write(Data("trace: \(message)\n".utf8))
+        }
+        #endif
         queue.async {
             let f = DateFormatter()
             f.locale = Locale(identifier: "en_US_POSIX")

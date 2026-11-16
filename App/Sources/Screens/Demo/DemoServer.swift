@@ -1,6 +1,15 @@
 #if DEBUG
 import Foundation
 
+/// 見本の画面の名前（起動のときの -GGDemoScreen <名前>。どの列からでも読める）
+enum DemoMode {
+    static let screen: String? = {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-GGDemoScreen"), i + 1 < args.count else { return nil }
+        return args[i + 1]
+    }()
+}
+
 /// 画面の見本（シミュレーターの Debug の組み立てだけ）で、サーバーの代わりに見本の答えを返す。
 /// アプリの部品はそのまま（ホーム・GATE・わたし・地図）で、つなぐ先だけをこの「見本のサーバー」にする。
 /// 知らない問い合わせには空の一覧を返す（画面は「まだありません」になる）。
@@ -32,6 +41,7 @@ final class DemoServer: URLProtocol {
             status = 404
             data = Data("{}".utf8)
         }
+        FileHandle.standardError.write(Data("demo-server: \(request.httpMethod ?? "") \(path) → \(status) \(data.count)B\n".utf8))
         let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: "HTTP/1.1",
                                        headerFields: ["Content-Type": "application/json"])!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
