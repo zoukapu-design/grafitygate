@@ -8,7 +8,8 @@ import UIKit
 struct DemoGallery: View {
     let screen: String
 
-    static var requestedScreen: String? { DemoMode.screen }
+    /// 「@」より後ろ（下げて撮る場所）は外した、画面の名前
+    static var requestedScreen: String? { DemoMode.screen.map { String($0.split(separator: "@").first ?? "") } }
 
     static let screens = ["home", "gate", "gate-outside", "gate-board", "gate-albums", "gate-letters", "gate-then", "trail",
                           "me", "map", "profile", "inbox", "messages",

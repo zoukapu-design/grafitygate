@@ -8,6 +8,12 @@ enum DemoMode {
         guard let i = args.firstIndex(of: "-GGDemoScreen"), i + 1 < args.count else { return nil }
         return args[i + 1]
     }()
+
+    /// 画面の名前の「@」より後ろ（例：gate-outside@door＝扉の札まで下げて撮る）
+    static var scroll: String? {
+        guard let screen, let at = screen.firstIndex(of: "@") else { return nil }
+        return String(screen[screen.index(after: at)...])
+    }
 }
 
 /// 画面の見本（シミュレーターの Debug の組み立てだけ）で、サーバーの代わりに見本の答えを返す。

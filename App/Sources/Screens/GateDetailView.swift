@@ -76,6 +76,7 @@ struct GateDetailView: View {
     }
 
     var body: some View {
+        ScrollViewReader { scroller in
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 if let summary {
@@ -88,6 +89,7 @@ struct GateDetailView: View {
                         let context = makeContext(summary, now: timeline.date)
                         VStack(alignment: .leading, spacing: 16) {
                             visitBanner(context, summary: summary, now: timeline.date)
+                                .id("door")
                             whereWhen(summary)
                             if !trails.isEmpty {
                                 trailStrip
@@ -114,6 +116,14 @@ struct GateDetailView: View {
                 }
             }
             .padding(16)
+        }
+        #if DEBUG
+        // 画面の見本：下のほう（扉の札から）を撮る
+        .onChange(of: summary?.id) { _, id in
+            guard id != nil, DemoMode.scroll == "door" else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { scroller.scrollTo("door", anchor: .top) }
+        }
+        #endif
         }
         .background(Theme.background.ignoresSafeArea())
         // 扉を開けずに見ているあいだは「グラフィティボード」、扉が開いているあいだは「扉の中」
