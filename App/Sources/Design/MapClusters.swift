@@ -35,11 +35,22 @@ struct PinStack: Identifiable {
 
 enum MapClusters {
     /// 印の大きさ（pt）。名前の札まで入れて、これより近いと重なって見える
-    static let pinPoints: Double = 56
+    static let pinPoints: Double = 64
 
     /// 1pt が何 m か（地図の縦の広さと、地図の高さから）
     static func metersPerPoint(_ region: MKCoordinateRegion, height: CGFloat) -> Double {
         region.span.latitudeDelta * 111_000 / max(Double(height), 100)
+    }
+
+    /// 1pt が何 m か（地図の上の 2 点を実際に緯度経度へ直して測る。地図の余白・縦横の比に左右されない）
+    static func metersPerPoint(_ proxy: MapProxy, region: MKCoordinateRegion, height: CGFloat) -> Double {
+        if let a = proxy.convert(CGPoint(x: 20, y: 20), from: .local),
+           let b = proxy.convert(CGPoint(x: 20, y: 120), from: .local) {
+            let d = CLLocation(latitude: a.latitude, longitude: a.longitude)
+                .distance(from: CLLocation(latitude: b.latitude, longitude: b.longitude))
+            if d > 0 { return d / 100 }
+        }
+        return metersPerPoint(region, height: height)
     }
 
     /// 近いものをまとめる（並びの順に、いちばん先に近いまとまりへ入れる。まとまりのまん中は平均）

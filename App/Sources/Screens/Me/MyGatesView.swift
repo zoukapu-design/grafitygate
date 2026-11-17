@@ -84,6 +84,7 @@ struct MyGatesView: View {
 
     /// 全部の GATE の地図（印を押すと選ぶ）
     private var map: some View {
+        MapReader { proxy in
         Map(position: $position) {
             UserAnnotation()
             // 同じ・近い所の GATE は 1 つの「重ねた印」にまとめる
@@ -119,11 +120,13 @@ struct MyGatesView: View {
             }
         }
         .onMapCameraChange(frequency: .onEnd) { context in
-            metersPerPoint = MapClusters.metersPerPoint(context.region, height: Self.mapHeight)
+            metersPerPoint = MapClusters.metersPerPoint(proxy, region: context.region, height: Self.mapHeight)
+            Trace.log(String(format: "わたしの GATE の地図：1pt = %.1fm", metersPerPoint))
         }
         .mapControls {
             MapUserLocationButton()
             MapCompass()
+        }
         }
         .safeAreaPadding(EdgeInsets(top: 50, leading: 16, bottom: 8, trailing: 16))
         .frame(height: Self.mapHeight)
@@ -184,12 +187,14 @@ struct GateJournalRow: View {
 /// 「わたし」の上に置く、自分の GATE の地図（さわれない小さな地図。押すと見返す画面）
 struct MyGatesMapCard: View {
     let gates: [MyGate]
+    @State private var metersPerPoint: Double?
 
     private var placed: [MyGate] { gates.filter { $0.coordinate != nil } }
 
     var body: some View {
         let coords = placed.compactMap(\.coordinate)
-        let mpp = MapFraming.region(coords).map { MapClusters.metersPerPoint($0, height: 190) } ?? 2
+        let mpp = metersPerPoint ?? MapFraming.region(coords).map { MapClusters.metersPerPoint($0, height: 190) } ?? 2
+        MapReader { proxy in
         Map(initialPosition: MapFraming.position(coords), interactionModes: []) {
             // 重なる印はまとめる（さわれない地図なので、数だけ見せる）
             ForEach(MapClusters.group(MyGate.pins(Array(placed.prefix(40))), metersPerPoint: mpp)) { cluster in
@@ -202,6 +207,10 @@ struct MyGatesMapCard: View {
                 }
                 .annotationTitles(.hidden)
             }
+        }
+        .onMapCameraChange(frequency: .onEnd) { context in
+            metersPerPoint = MapClusters.metersPerPoint(proxy, region: context.region, height: 190)
+        }
         }
         // 印は場所の上に立つので、上に余白をとって地図に収める（下の札にも重ならないように）
         .safeAreaPadding(EdgeInsets(top: 56, leading: 20, bottom: 40, trailing: 20))

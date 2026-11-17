@@ -88,6 +88,7 @@ struct FriendWorks: View {
             }
             let mpp = metersPerPoint
                 ?? MapFraming.region(gates.map(\.coordinate)).map { MapClusters.metersPerPoint($0, height: 230) } ?? 2
+            MapReader { proxy in
             Map(initialPosition: MapFraming.position(gates.map(\.coordinate))) {
                 // 同じ・近い所の GATE は 1 つの「重ねた印」にまとめる（押すと一覧）
                 ForEach(MapClusters.group(pins, metersPerPoint: mpp)) { cluster in
@@ -111,7 +112,8 @@ struct FriendWorks: View {
                 }
             }
             .onMapCameraChange(frequency: .onEnd) { context in
-                metersPerPoint = MapClusters.metersPerPoint(context.region, height: 230)
+                metersPerPoint = MapClusters.metersPerPoint(proxy, region: context.region, height: 230)
+            }
             }
             // 印は場所の上に立つので、上に余白をとって地図に収める（左上の札にも重ならないように）
             .safeAreaPadding(EdgeInsets(top: 72, leading: 28, bottom: 12, trailing: 28))

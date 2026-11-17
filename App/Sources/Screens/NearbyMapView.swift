@@ -110,9 +110,6 @@ struct NearbyMapView: View {
                     // 下に重ねた札の上に、いまいる所や印が来るように。札の高さは測らず、決まった高さで空ける
                     .safeAreaPadding(.bottom, reservedBottom(compact: compact) + geo.safeAreaInsets.bottom)
                     .ignoresSafeArea(edges: .bottom)
-                    .onMapCameraChange(frequency: .onEnd) { context in
-                        metersPerPoint = MapClusters.metersPerPoint(context.region, height: geo.size.height)
-                    }
                 overlayCards(compact: compact)
             }
         }
@@ -145,6 +142,7 @@ struct NearbyMapView: View {
     }
 
     private var map: some View {
+        MapReader { proxy in
         Map(position: $position) {
             UserAnnotation()
             // GATE を見つけられる範囲（100m）
@@ -207,6 +205,14 @@ struct NearbyMapView: View {
         .mapControls {
             MapUserLocationButton()
             MapCompass()
+        }
+        .onMapCameraChange(frequency: .onEnd) { context in
+            let next = MapClusters.metersPerPoint(proxy, region: context.region, height: 600)
+            if abs(next - metersPerPoint) > metersPerPoint * 0.1 {
+                Trace.log(String(format: "地図の縮尺：1pt = %.1fm（印をまとめる距離 %.0fm）", next, next * MapClusters.pinPoints))
+            }
+            metersPerPoint = next
+        }
         }
     }
 

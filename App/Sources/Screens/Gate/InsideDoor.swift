@@ -19,31 +19,48 @@ struct InsideBackground: View {
     }
 }
 
-/// 散らばった星（場所は毎回同じ。ゆっくりまたたく）
+/// 散らばった星（場所は毎回同じ）。2 つの層をゆっくり交互に明るくして、またたいて見せる。
+/// 毎コマ描き直さない（星を描くのは 1 回だけで、明るさの変化は重ねた層の透明度だけ）
 struct StarDust: View {
     let count: Int
+    @State private var twinkle = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 15)) { timeline in
-            Canvas { context, size in
-                let t = timeline.date.timeIntervalSinceReferenceDate
-                var seed: UInt64 = 0x9E3779B97F4A7C15
-                func next() -> Double {
-                    seed = seed &* 6364136223846793005 &+ 1442695040888963407
-                    return Double(seed >> 11) / Double(1 << 53)
-                }
-                for i in 0..<count {
-                    let x = next() * size.width
-                    let y = next() * size.height * 0.75
-                    let r = 0.6 + next() * 1.6
-                    let twinkle = 0.35 + 0.65 * (0.5 + 0.5 * sin(t * (0.6 + next() * 1.4) + Double(i)))
-                    let rect = CGRect(x: x - r, y: y - r, width: r * 2, height: r * 2)
-                    context.fill(Path(ellipseIn: rect), with: .color(.white.opacity(twinkle * 0.8)))
-                }
-            }
+        ZStack {
+            StarLayer(count: count / 2, seed: 0x9E3779B97F4A7C15)
+                .opacity(twinkle ? 0.35 : 1)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 2.6).repeatForever(autoreverses: true), value: twinkle)
+            StarLayer(count: count - count / 2, seed: 0x2545F4914F6CDD1D)
+                .opacity(twinkle ? 1 : 0.4)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 3.4).repeatForever(autoreverses: true), value: twinkle)
         }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+        .onAppear { twinkle = true }
+    }
+}
+
+private struct StarLayer: View {
+    let count: Int
+    let seed: UInt64
+
+    var body: some View {
+        Canvas { context, size in
+            var state = seed
+            func next() -> Double {
+                state = state &* 6364136223846793005 &+ 1442695040888963407
+                return Double(state >> 11) / Double(1 << 53)
+            }
+            for _ in 0..<count {
+                let x = next() * size.width
+                let y = next() * size.height * 0.75
+                let r = 0.6 + next() * 1.6
+                let a = 0.35 + next() * 0.5
+                context.fill(Path(ellipseIn: CGRect(x: x - r, y: y - r, width: r * 2, height: r * 2)),
+                             with: .color(.white.opacity(a)))
+            }
+        }
     }
 }
 
