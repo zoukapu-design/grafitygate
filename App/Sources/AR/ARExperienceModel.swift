@@ -534,6 +534,26 @@ final class ARExperienceModel: ObservableObject {
         revealArtworks()
     }
 
+    /// AR の扉・飾りごと、いまの景色を撮って、グラフィティカードの写真にする（扉の中の「カードを作る」へ渡す）
+    func captureCardPhoto() {
+        guard let gate = enteredGate else { return }
+        Haptics.tap()
+        stage.arView.snapshot(saveToHDR: false) { [weak self] image in
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard let self, let image else {
+                        self?.showToast("撮れませんでした。もう一度押してください。")
+                        return
+                    }
+                    CardPhotoInbox.shared.put(image.downscaled(maxSide: 1600), gate: gate)
+                    Haptics.success()
+                    Trace.log("カード：AR ごと撮った")
+                    self.goInside()
+                }
+            }
+        }
+    }
+
     /// 扉をくぐった：閉じていれば開け、光と鐘のあと「扉の中」へ
     func passedThroughDoor() {
         guard phase == .doorClosed || phase == .doorOpen, art == nil, !adjustingDoor,

@@ -116,12 +116,28 @@ struct GateAPI {
             .execute().value
     }
 
+    /// カードの仕上げを変える（書いた本人だけ）
+    func setCardFinish(_ id: UUID, finish: CardFinish) async throws {
+        struct P: Encodable { let p_card: UUID; let p_finish: String }
+        try await client.rpc("gf_set_card_finish", params: P(p_card: id, p_finish: finish.rawValue)).execute()
+    }
+
     func deleteGraffiti(_ id: UUID) async throws {
         try await client.rpc("gf_delete_graffiti", params: IDParam(p_id: id)).execute()
     }
 
     /// GATE の中のグラフィティ（入場中なら友達のものも、そうでなければ自分のものだけが返る）
     func graffiti(in gate: UUID) async throws -> [Graffiti] {
+        do {
+            return try await client.from("gf_graffiti")
+                .select("id,gate_id,author,body,photo_path,visibility,local_only,created_at,in_atlas,edited_at,finish")
+                .eq("gate_id", value: gate.uuidString)
+                .order("created_at", ascending: false)
+                .limit(200)
+                .execute().value
+        } catch let error where ErrorText.isMissingColumn(error) {
+            // 0026 の前のサーバー（カードの仕上げの欄が無い）
+        }
         do {
             return try await client.from("gf_graffiti")
                 .select("id,gate_id,author,body,photo_path,visibility,local_only,created_at,in_atlas,edited_at")

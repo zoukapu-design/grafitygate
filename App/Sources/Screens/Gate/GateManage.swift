@@ -68,7 +68,7 @@ struct GateEditSheet: View {
                                         .padding(.horizontal, 12).padding(.vertical, 8)
                                         .background(.black.opacity(0.55), in: Capsule())
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(.borderless)
                                 .accessibilityLabel("表紙の写真を右に回す")
                             }
                             PhotosPicker(selection: $photoItem, matching: .images) {
@@ -79,6 +79,8 @@ struct GateEditSheet: View {
                                     .padding(.horizontal, 12).padding(.vertical, 8)
                                     .background(.black.opacity(0.55), in: Capsule())
                             }
+                            // 表の 1 行にボタンが 2 つあると、どこを押しても同じボタンになるので、それぞれだけを押せるようにする
+                            .buttonStyle(.borderless)
                         }
                         .padding(10)
                     }
@@ -421,6 +423,105 @@ struct GraffitiEditSheet: View {
     }
 }
 
+
+/// 表紙の向きを直す（グラフィティボードの表紙の「向きを直す」から。作った人・一緒に管理する人）
+struct CoverRotateSheet: View {
+    let summary: GateSummary
+    let onSaved: () -> Void
+
+    @EnvironmentObject private var session: SessionModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var original: UIImage?
+    @State private var turns = 0
+    @State private var saving = false
+    @State private var message: String?
+
+    private var shown: UIImage? {
+        guard var image = original else { return nil }
+        for _ in 0..<((turns % 4 + 4) % 4) { image = image.rotatedRight() }
+        return image
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 20) {
+                Group {
+                    if let shown {
+                        Image(uiImage: shown).resizable().scaledToFit()
+                            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    } else {
+                        ProgressView().frame(maxWidth: .infinity, minHeight: 260)
+                    }
+                }
+                .frame(maxHeight: 380)
+                .animation(.spring(response: 0.35, dampingFraction: 0.85), value: turns)
+                HStack(spacing: 14) {
+                    Button {
+                        turns -= 1
+                        Haptics.tap()
+                    } label: {
+                        Label("左に回す", systemImage: "rotate.left")
+                    }
+                    .buttonStyle(SecondaryButtonStyle())
+                    Button {
+                        turns += 1
+                        Haptics.tap()
+                    } label: {
+                        Label("右に回す", systemImage: "rotate.right")
+                    }
+                    .buttonStyle(SecondaryButtonStyle())
+                }
+                .disabled(original == nil)
+                Button {
+                    Task { await save() }
+                } label: {
+                    if saving { ProgressView().tint(.white) } else { Text("この向きで保存") }
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(saving || original == nil || (turns % 4 + 4) % 4 == 0)
+                if let message { NoticeText(text: message) }
+                Spacer(minLength: 0)
+            }
+            .padding(20)
+            .background(Theme.background.ignoresSafeArea())
+            .navigationTitle("表紙の向きを直す")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("やめる") { dismiss() }
+                }
+            }
+            .task {
+                if let path = summary.cover_path { original = await session.media?.photo(path: path) }
+                if original == nil { message = "表紙を読めませんでした。少し待ってから、もう一度開いてください。" }
+            }
+        }
+    }
+
+    private func save() async {
+        guard let api = session.api, let media = session.media, let me = session.userID, let image = shown else { return }
+        saving = true
+        defer { saving = false }
+        var uploaded: String?
+        do {
+            uploaded = try await media.uploadPhoto(image, owner: me)
+            let old = try await api.editGate(summary.id, title: summary.title, note: summary.note,
+                                             coverPath: uploaded, visibility: nil)
+            if let old, old.hasPrefix(me.uuidString.lowercased() + "/") {
+                await media.removePhoto(path: old)
+            }
+            Trace.log("表紙の向きを直した（右に \((turns % 4 + 4) % 4) 回）")
+            Haptics.success()
+            onSaved()
+            dismiss()
+        } catch {
+            if let uploaded { await media.removePhoto(path: uploaded) }
+            Trace.log("表紙の向きを直せませんでした：\(ErrorText.of(error))")
+            message = ErrorText.isMissingFunction(error)
+                ? "表紙を直すのは、サーバーの準備（setup_all.sql の貼り直し）のあとで使えます。" : ErrorText.of(error)
+        }
+    }
+}
 
 extension UIImage {
     /// 右に 90° 回した絵

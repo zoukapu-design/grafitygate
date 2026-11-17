@@ -735,6 +735,13 @@ private struct DoorOpenCard: View {
                                           : "扉をくぐるか、「中へ」を押すと、扉の中へ。")
             Button("中へ") { model.goInside() }
                 .buttonStyle(PrimaryButtonStyle())
+            // AR の扉や飾りが写った写真を、そのままグラフィティカードに
+            Button {
+                model.captureCardPhoto()
+            } label: {
+                Label("AR ごと撮ってカードにする", systemImage: "camera.viewfinder")
+            }
+            .buttonStyle(SecondaryButtonStyle())
             if !model.placedPrecisely {
                 Button {
                     model.beginAdjust()

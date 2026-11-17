@@ -161,6 +161,8 @@ struct Graffiti: Decodable, Identifiable, Hashable {
     var in_atlas: Bool? = nil
     /// 書いた本人が文を直した時刻（直していなければ無い。0019 の前のサーバーでも無い）
     var edited_at: String? = nil
+    /// カードの仕上げ（normal／holo／gold／neon。0026 の前のサーバーでは無い＝ふつう）
+    var finish: String? = nil
 }
 
 /// 自分の GATE（表 gf_gates。自分のものだけ読める）
@@ -1043,6 +1045,7 @@ struct GatePeek: Decodable, Equatable {
         let body: String
         let photo_path: String?
         let created_at: String
+        var finish: String? = nil
     }
 
     struct PeekThread: Decodable, Equatable, Identifiable {

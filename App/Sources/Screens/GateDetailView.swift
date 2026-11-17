@@ -62,6 +62,11 @@ struct GateDetailView: View {
     /// 一緒に管理する人（作った人のほか）
     @State private var managers: [GateManager] = []
     @State private var editingGate = false
+    /// 表紙の向きを直す（作った人・一緒に管理する人）
+    @State private var rotatingCover = false
+    /// 「再開する」を押しているあいだと、うまくいかなかったときの一言
+    @State private var resuming = false
+    @State private var resumeError: String?
     @ObservedObject private var keeper = VisitKeeper.shared
     @State private var showManagers = false
     @State private var confirmClose = false
@@ -96,12 +101,15 @@ struct GateDetailView: View {
                     TimelineView(.periodic(from: .now, by: 30)) { timeline in
                         let context = makeContext(summary, now: timeline.date)
                         if context.isInside {
-                            // 扉の中：夜空の画面。ようこそ → ここでできること → 扉を出る → 中のもの
+                            // 扉の中：夜空の画面。小さな見出し → みんなのカード → カードを作る → 中のもの
                             insidePage(summary, context: context, now: timeline.date, scroller: scroller)
                         } else {
                             // グラフィティボード：表紙・名前・作った人 → 紹介と数 → 扉 → いつ・どこで → 扉の向こう
                             VStack(alignment: .leading, spacing: 16) {
                                 header(summary)
+                                // 友達・訪れた人のグラフィティカード（まだ開けていなければチラ見せと鍵）
+                                GateCardShowcase(context: context, refreshToken: refreshToken,
+                                                 onReport: { report = $0 })
                                 visitBanner(context, summary: summary, now: timeline.date)
                                     .id("door")
                                 whereWhen(summary)
@@ -129,6 +137,14 @@ struct GateDetailView: View {
                 }
             }
             .padding(16)
+        }
+        // AR の画面で「AR ごと撮ってカードにする」をしたら、カードを作る所へ
+        .onReceive(CardPhotoInbox.shared.$pending) { pending in
+            guard pending?.gate == gateID else { return }
+            tab = .graffiti
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                withAnimation(.easeInOut(duration: 0.35)) { scroller.scrollTo("inside", anchor: .top) }
+            }
         }
         #if DEBUG
         // 画面の見本：下のほう（扉の札から）を撮る
@@ -172,6 +188,12 @@ struct GateDetailView: View {
         }
         .sheet(item: $report) { item in
             ReportSheet(item: item)
+        }
+        .sheet(isPresented: $rotatingCover) {
+            if let summary {
+                CoverRotateSheet(summary: summary) { Task { await reload() } }
+                    .environmentObject(session)
+            }
         }
         .sheet(isPresented: $editingGate) {
             if let summary {
@@ -223,19 +245,54 @@ struct GateDetailView: View {
                     .font(.caption).foregroundStyle(Theme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Button {
-                    Task { await setOpen(true) }
+                    Task { await resume() }
                 } label: {
-                    Label("再開する", systemImage: "door.left.hand.open")
-                        .font(.subheadline.weight(.semibold))
+                    if resuming {
+                        ProgressView().tint(.white).frame(minWidth: 90)
+                    } else {
+                        Label("再開する", systemImage: "door.left.hand.open")
+                            .font(.subheadline.weight(.semibold))
+                    }
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(Theme.accent)
+                .disabled(resuming)
+                if let resumeError {
+                    NoticeText(text: resumeError)
+                }
             }
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.warm.opacity(0.1), in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(Theme.warm.opacity(0.35)))
+    }
+
+    /// お休みの GATE を再開する（押したことが分かるように、ここで待ち・うまくいかなければ、ここに理由を出す）
+    private func resume() async {
+        guard let api = session.api else {
+            resumeError = "サーバーにつながっていません。少し待ってからもう一度押してください。"
+            return
+        }
+        resuming = true
+        resumeError = nil
+        Haptics.tap()
+        defer { resuming = false }
+        do {
+            try await api.setGateOpen(gateID, open: true)
+            Trace.log("GATE を再開した")
+            await reload()
+            if summary?.status == "closed" {
+                resumeError = "再開できませんでした（サーバーの答えが「お休み中」のままです）。もう一度押してください。"
+                Trace.log("GATE の再開：サーバーの答えがお休み中のまま")
+            } else {
+                Haptics.success()
+            }
+        } catch {
+            Trace.log("GATE を再開できませんでした：\(ErrorText.of(error))")
+            resumeError = ErrorText.isMissingFunction(error)
+                ? "お休み・再開は、サーバーの準備（setup_all.sql の貼り直し）のあとで使えます。" : ErrorText.of(error)
+        }
     }
 
     private func setOpen(_ open: Bool) async {
@@ -328,6 +385,10 @@ struct GateDetailView: View {
 
     // MARK: 表紙
 
+    private func canManage(_ s: GateSummary) -> Bool {
+        s.owner == session.userID || managers.contains { $0.user_id == session.userID }
+    }
+
     /// いま扉の中か（画面の色・題を変える）
     private var insideNow: Bool {
         summary.map { makeContext($0, now: Date()).isInside } ?? false
@@ -345,46 +406,26 @@ struct GateDetailView: View {
         let minutes = context.visitExpires.map { max(1, Int($0.timeIntervalSince(now) / 60 + 0.5)) } ?? 0
         let near = keeper.entries[context.visit ?? UUID()]?.near
         return VStack(alignment: .leading, spacing: 22) {
-            InsideWelcome(title: s.title, coverPath: s.cover_path,
-                          ownerLine: s.owner == session.userID ? "あなたの GATE" : "\(s.owner_name) さんの GATE",
-                          status: near == false ? "GATE から離れたので、あと約 \(minutes) 分で扉が閉じます"
-                                                : "その場にいるあいだ、扉は開いたまま",
-                          warning: near == false)
-
-            // ここでできること（押すと、下の「扉の中」のその場所へ）
-            VStack(alignment: .leading, spacing: 12) {
-                Text("扉の中でできること")
-                    .font(.headline.weight(.heavy))
-                    .foregroundStyle(.white)
-                InsideActionTile(symbol: "square.and.pencil", title: "グラフィティカードを残す",
-                                 detail: "この扉の中でだけ残せる 1 枚。写真とひとことを、ここに。", primary: true) {
-                    jump(to: .graffiti, scroller: scroller)
-                }
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
-                    InsideActionTile(symbol: "square.stack.fill", title: "みんなのカード",
-                                     detail: "\(s.graffiti_count) 枚・いいね・返信・保存") { jump(to: .graffiti, scroller: scroller) }
-                    InsideActionTile(symbol: "text.bubble.fill", title: "掲示板",
-                                     detail: "話題を立てる・返す") { jump(to: .board, scroller: scroller) }
-                    InsideActionTile(symbol: "photo.on.rectangle.angled", title: "アルバム",
-                                     detail: "みんなで写真・動画・声を") { jump(to: .memories, scroller: scroller) }
-                    InsideActionTile(symbol: "envelope.fill", title: "手紙",
-                                     detail: "未来のだれかへ・届いた手紙") { jump(to: .letters, scroller: scroller) }
-                    InsideActionTile(symbol: "clock.arrow.circlepath", title: "今と昔",
-                                     detail: "同じ場所の写真を重ねる") { jump(to: .thenNow, scroller: scroller) }
-                    InsideActionTile(symbol: "person.2.fill", title: "来たよ",
-                                     detail: "友達のカードに自分のカードを") { jump(to: .graffiti, scroller: scroller) }
-                }
-            }
-
-            Button {
+            // 1. どこにいるか（小さく）と、扉を出る
+            InsideHeader(title: s.title, coverPath: s.cover_path,
+                         ownerLine: s.owner == session.userID ? "あなたの GATE" : "\(s.owner_name) さんの GATE",
+                         status: near == false ? "離れたので、あと約 \(minutes) 分で扉が閉じます" : "扉が開いています",
+                         warning: near == false) {
                 confirmLeave = true
-            } label: {
-                Label("扉を出る", systemImage: "rectangle.portrait.and.arrow.right")
-                    .font(.headline)
-                    .frame(maxWidth: .infinity, minHeight: 54)
             }
-            .buttonStyle(NightSecondaryButtonStyle())
-            .accessibilityHint("扉の中から出て、グラフィティボードに戻ります")
+
+            // 2. いちばんの見どころ：友達・訪れた人のグラフィティカード（左端は「あなたの 1 枚を作る」）
+            GateCardShowcase(context: context, refreshToken: refreshToken, onDark: true,
+                             onReport: { report = $0 },
+                             onMake: { jump(to: .graffiti, scroller: scroller) })
+
+            // 3. 次にすることは 1 つだけ大きく
+            Button {
+                jump(to: .graffiti, scroller: scroller)
+            } label: {
+                Label("グラフィティカードを作る", systemImage: "camera.fill")
+            }
+            .buttonStyle(PrimaryButtonStyle())
 
             // 扉の中のもの（白い紙の上に）
             VStack(alignment: .leading, spacing: 16) {
@@ -465,6 +506,24 @@ struct GateDetailView: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.white.opacity(0.85))
                         .lineLimit(1)
+                }
+            }
+            .overlay(alignment: .bottomTrailing) {
+                // 表紙が横倒しのとき、すぐ直せるように（作った人・一緒に管理する人）
+                if s.cover_path != nil, canManage(s) {
+                    Button {
+                        rotatingCover = true
+                    } label: {
+                        Label("向きを直す", systemImage: "rotate.right")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 12).padding(.vertical, 8)
+                            .background(.black.opacity(0.5), in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(14)
+                    .padding(.bottom, 6)
+                    .accessibilityLabel("表紙の写真の向きを直す")
                 }
             }
 
@@ -758,8 +817,12 @@ struct GraffitiSection: View {
     @State private var draft = ""
     @State private var draftVisibility: Visibility = .friends
     @State private var draftLocalOnly = false
-    @State private var photoItem: PhotosPickerItem?
     @State private var photo: UIImage?
+    /// カードの仕上げ（ノーマル・キラ・ゴールド・ネオン）
+    @State private var draftFinish: CardFinish = .normal
+    /// その場で撮るカメラ
+    @State private var showCamera = false
+    @ObservedObject private var inbox = CardPhotoInbox.shared
     @State private var posting = false
     @State private var postMessage: (text: String, isError: Bool)?
     @State private var order: GraffitiOrder = .newest
@@ -990,7 +1053,8 @@ struct GraffitiSection: View {
                                  }
                              },
                              onEdit: isMine ? { editingCard = item } : nil,
-                             onSendToFriend: isMine ? { sendingCard = item } : nil)
+                             onSendToFriend: isMine ? { sendingCard = item } : nil,
+                             gateTitle: context.title)
             }
         }
         .sheet(item: $sendingCard) { card in
@@ -1021,8 +1085,17 @@ struct GraffitiSection: View {
             CardCompareView(request: request).environmentObject(session)
         }
         .task(id: "\(context.isInside)-\(refreshToken)") { await load() }
-        .onChange(of: photoItem) { _, item in
-            Task { await loadPhoto(item) }
+        // AR の画面で「AR ごと撮る」をした写真を、カードの写真にする
+        .onReceive(inbox.$pending) { pending in
+            guard context.isInside, pending?.gate == context.gateID, let image = inbox.take(for: context.gateID) else { return }
+            photo = image
+            postMessage = ("AR ごと撮った写真をカードに入れました。ひとことを書いて「残す」を押してください。", false)
+        }
+        .fullScreenCover(isPresented: $showCamera) {
+            CardCameraView { image in
+                photo = image
+                Trace.log("カード：その場で写真を撮った")
+            }
         }
     }
 
@@ -1067,44 +1140,61 @@ struct GraffitiSection: View {
         }
     }
 
+    /// カードを作る：上に出来上がりの見本（トレーディングカードの形）、その下に写真・ひとこと・仕上げ・見せる人
     private var composer: some View {
         Card {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("ここに 1 枚残す").font(.headline).foregroundStyle(Theme.text)
-                if let photo {
-                    ZStack(alignment: .topTrailing) {
-                        Image(uiImage: photo)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(height: 200)
-                            .frame(maxWidth: .infinity)
-                            .clipShape(RoundedRectangle(cornerRadius: 14))
-                        Button {
-                            self.photo = nil
-                            photoItem = nil
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.title2)
-                                .foregroundStyle(.white, .black.opacity(0.45))
-                        }
-                        .padding(8)
-                        .accessibilityLabel("写真を外す")
+            VStack(alignment: .leading, spacing: 14) {
+                Text("グラフィティカードを作る").font(.headline.weight(.heavy)).foregroundStyle(Theme.text)
+                TradingCard(content: TradingCardContent(id: UUID(uuidString: "00000000-0000-0000-0000-0000000000c0")!,
+                                                        image: photo, body: draft.trimmingCharacters(in: .whitespacesAndNewlines),
+                                                        author: session.profile?.display_name ?? "あなた",
+                                                        gateTitle: context.title,
+                                                        createdAt: ISO8601DateFormatter().string(from: Date()),
+                                                        finish: draftFinish, badge: .mine))
+                    .frame(maxWidth: 230)
+                    .frame(maxWidth: .infinity)
+                    .animation(.spring(response: 0.4, dampingFraction: 0.8), value: draftFinish)
+                // 写真はその場で撮る（AR の扉や飾りごと撮るときは、AR の画面の「AR ごと撮る」から）
+                HStack(spacing: 10) {
+                    Button {
+                        showCamera = true
+                    } label: {
+                        Label(photo == nil ? "その場で撮る" : "撮り直す", systemImage: "camera.fill")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(Theme.accent)
+                            .padding(.horizontal, 14)
+                            .frame(minHeight: 40)
+                            .background(Theme.accentLight, in: Capsule())
                     }
+                    .buttonStyle(.plain)
+                    if photo != nil {
+                        Button {
+                            photo = nil
+                        } label: {
+                            Label("写真を外す", systemImage: "xmark")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(Theme.textSecondary)
+                                .padding(.horizontal, 12)
+                                .frame(minHeight: 40)
+                                .background(Theme.surfaceElevated, in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    Spacer(minLength: 0)
                 }
-                TextField("この場所の思い出・ひとこと", text: $draft, axis: .vertical)
+                Text("AR の扉や飾りと一緒に撮るときは、AR の画面で扉を開けて「AR ごと撮る」を押します。")
+                    .font(.caption)
+                    .foregroundStyle(Theme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                TextField("ひとこと（この場所で思ったこと・メッセージ）", text: $draft, axis: .vertical)
                     .lineLimit(2...5)
                     .padding(12)
                     .background(Theme.surfaceElevated, in: RoundedRectangle(cornerRadius: 12))
-                // 写真と、見せる人（細かい決まりはメニューの中に。詰め込まない）
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("仕上げ").font(.caption.weight(.bold)).foregroundStyle(Theme.textSecondary)
+                    CardFinishPicker(selection: $draftFinish)
+                }
                 HStack(spacing: 10) {
-                    PhotosPicker(selection: $photoItem, matching: .images) {
-                        Label(photo == nil ? "写真" : "選び直す", systemImage: "photo")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(Theme.accent)
-                            .padding(.horizontal, 12)
-                            .frame(minHeight: 36)
-                            .background(Theme.accentLight, in: Capsule())
-                    }
                     Menu {
                         Picker("見せる人", selection: $draftVisibility) {
                             ForEach(Visibility.allCases) { v in Text(v.label).tag(v) }
@@ -1113,7 +1203,7 @@ struct GraffitiSection: View {
                         Toggle("友達のカード図鑑に写真を載せる", isOn: $draftInAtlas)
                             .disabled(draftLocalOnly)
                     } label: {
-                        Label(draftVisibility.label + (draftLocalOnly ? "・現地だけ" : ""), systemImage: "eye")
+                        Label("見せる人：" + draftVisibility.label + (draftLocalOnly ? "・現地だけ" : ""), systemImage: "eye")
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(Theme.text)
                             .padding(.horizontal, 12)
@@ -1125,7 +1215,7 @@ struct GraffitiSection: View {
                 Button {
                     Task { await post() }
                 } label: {
-                    if posting { ProgressView().tint(.white) } else { Text("残す") }
+                    if posting { ProgressView().tint(.white) } else { Text("このカードを残す") }
                 }
                 .buttonStyle(PrimaryButtonStyle())
                 .disabled(posting || (draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && photo == nil))
@@ -1174,15 +1264,6 @@ struct GraffitiSection: View {
         }
     }
 
-    private func loadPhoto(_ item: PhotosPickerItem?) async {
-        guard let item else { return }
-        if let data = try? await item.loadTransferable(type: Data.self), let image = UIImage(data: data) {
-            photo = image.downscaled(maxSide: 1600)
-        } else {
-            postMessage = ("写真を読み込めませんでした。", true)
-        }
-    }
-
     private func post() async {
         guard let api = session.api, let visit = context.visit else { return }
         posting = true
@@ -1198,9 +1279,18 @@ struct GraffitiSection: View {
             if photoPath != nil, !draftLocalOnly, draftInAtlas, draftVisibility != .private {
                 try? await api.setGraffitiAtlas(newID, on: true)
             }
+            // 仕上げ（キラ・ゴールド・ネオン）。0026 の前のサーバーでは、ふつうのまま
+            if draftFinish != .normal {
+                do {
+                    try await api.setCardFinish(newID, finish: draftFinish)
+                } catch {
+                    Trace.log("カードの仕上げを付けられませんでした：\(ErrorText.of(error))")
+                }
+            }
+            Trace.log("カード：残した（写真\(photoPath == nil ? "なし" : "あり")・仕上げ \(draftFinish.rawValue)）")
             draft = ""
             photo = nil
-            photoItem = nil
+            draftFinish = .normal
             postMessage = ("残しました。", false)
             Haptics.success()
             await load()
@@ -1270,6 +1360,10 @@ struct GraffitiCard: View {
 
     @State private var confirmDelete = false
     @State private var viewer: PhotoViewerItem?
+    /// トレーディングカードの形で大きく見る
+    @State private var showBig = false
+    /// カードの帯に出す GATE の名前
+    let gateTitle: String
     /// 裏返しているか（裏はくわしいこと：書いた人・日時・公開範囲など）
     @State private var flipped = false
     /// 表と裏の高さ（いま見えている面の高さにする。高いほうに合わせると、低い面の上下に空きができる）
@@ -1283,8 +1377,9 @@ struct GraffitiCard: View {
          linkNote: String? = nil, inAtlas: Bool? = nil, onToggleAtlas: @escaping () -> Void = {},
          commentCount: Int = 0, onComments: (() -> Void)? = nil,
          saved: Bool? = nil, onToggleSave: @escaping () -> Void = {}, onEdit: (() -> Void)? = nil,
-         onSendToFriend: (() -> Void)? = nil, startFlipped: Bool = false) {
+         onSendToFriend: (() -> Void)? = nil, startFlipped: Bool = false, gateTitle: String = "") {
         _flipped = State(initialValue: startFlipped)
+        self.gateTitle = gateTitle
         self.item = item
         self.author = author
         self.isMine = isMine
@@ -1331,6 +1426,9 @@ struct GraffitiCard: View {
             PhotoViewer(path: item.path, caption: item.caption)
                 .environmentObject(session)
         }
+        .fullScreenCover(isPresented: $showBig) {
+            TradingCardViewer(content: tradingContent, isMine: isMine, onReport: onReport)
+        }
         .confirmationDialog("このグラフィティカードを消しますか？", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("消す", role: .destructive, action: onDelete)
         } message: {
@@ -1351,51 +1449,53 @@ struct GraffitiCard: View {
 
     // MARK: 表（写真とひとこと）
 
+    /// トレーディングカードの形にする中身
+    private var tradingContent: TradingCardContent {
+        TradingCardContent(id: item.id, photoPath: item.photo_path, body: item.body,
+                           author: isMine ? (session.profile?.display_name ?? "あなた") : author,
+                           gateTitle: gateTitle, createdAt: item.created_at, likes: likeCount,
+                           finish: CardFinish(raw: item.finish), badge: isMine ? .mine : nil)
+    }
+
     private var front: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if let path = item.photo_path {
-                Button {
-                    viewer = PhotoViewerItem(path: path, caption: item.body)
-                } label: {
-                    RemotePhoto(path: path)
-                        .frame(height: 240)
-                        .frame(maxWidth: .infinity)
-                        .contentShape(Rectangle())
+        VStack(alignment: .leading, spacing: 10) {
+            // カードそのもの（押すと大きく見て、指で傾けられる）
+            Button {
+                showBig = true
+            } label: {
+                TradingCard(content: tradingContent)
+                    .frame(maxWidth: 290)
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("押すと大きく見られます")
+            HStack(spacing: 8) {
+                authorLabel
+                Spacer()
+                Text(ServerDate.relative(item.created_at)).font(.caption).foregroundStyle(Theme.textSecondary)
+                Button(action: flip) {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.textSecondary)
+                        .frame(width: 30, height: 26)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("写真を大きく見る")
+                .accessibilityLabel("カードの裏を見る")
             }
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
-                    authorLabel
-                    Spacer()
-                    Text(ServerDate.relative(item.created_at)).font(.caption).foregroundStyle(Theme.textSecondary)
-                    Button(action: flip) {
-                        Image(systemName: "arrow.triangle.2.circlepath")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(Theme.textSecondary)
-                            .frame(width: 30, height: 26)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("カードの裏を見る")
-                }
-                if !item.body.isEmpty {
-                    Text(item.body).font(.body).foregroundStyle(Theme.text)
-                }
-                if item.edited_at != nil {
-                    Text("直しました").font(.caption2).foregroundStyle(Theme.textSecondary)
-                }
-                if let linkNote {
-                    Label(linkNote, systemImage: "hand.wave.fill")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Theme.warm)
-                        .padding(.horizontal, 10).padding(.vertical, 4)
-                        .background(Theme.warm.opacity(0.12), in: Capsule())
-                }
-                actionRow
+            if item.edited_at != nil {
+                Text("直しました").font(.caption2).foregroundStyle(Theme.textSecondary)
             }
-            .padding(16)
+            if let linkNote {
+                Label(linkNote, systemImage: "hand.wave.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Theme.warm)
+                    .padding(.horizontal, 10).padding(.vertical, 4)
+                    .background(Theme.warm.opacity(0.12), in: Capsule())
+            }
+            actionRow
         }
+        .padding(14)
     }
 
     @ViewBuilder private var authorLabel: some View {
