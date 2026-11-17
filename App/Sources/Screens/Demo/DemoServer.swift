@@ -134,7 +134,8 @@ enum DemoData {
         ["id": String(format: "00000000-0000-0000-0000-0000000c%04d", id), "gate_id": gate.uuidString,
          "author": author.uuidString, "body": body, "photo_path": nn(photo), "visibility": "friends",
          "local_only": false, "created_at": ago(seconds), "in_atlas": author == me ? true : NSNull(),
-         "edited_at": id == 3 ? ago(1800) : NSNull()]
+         "edited_at": id == 3 ? ago(1800) : NSNull(),
+         "finish": ["holo", "normal", "neon", "gold"][(id - 1) % 4]]
     }
 
     static var cards: [[String: Any]] {
@@ -274,7 +275,7 @@ enum DemoData {
                         "cards": [
                             ["id": UUID().uuidString, "author": kenta.uuidString, "author_name": "けんた",
                              "body": "今年の桜、満開でした。木の下でお弁当を食べました。", "photo_path": "demo/park.jpg",
-                             "created_at": ago(5 * 3600)],
+                             "created_at": ago(5 * 3600), "finish": "holo"],
                             ["id": UUID().uuidString, "author": misaki.uuidString, "author_name": "みさき",
                              "body": "ここのベンチ、夕方に座るとちょうど木もれ日が当たる。", "photo_path": NSNull(),
                              "created_at": ago(2 * 86400)]],

@@ -15,7 +15,7 @@ struct DemoGallery: View {
                           "me", "map", "profile", "inbox", "messages",
                           "friends", "visited", "saved-cards", "letters", "albums", "settings",
                           "cards", "nearby", "nearby-detail", "chat", "lookback", "goal", "board", "edit-card",
-                          "edit-gate", "progress", "notifications", "onboarding", "my-gates", "gate-stack", "map-hidden"]
+                          "edit-gate", "progress", "notifications", "onboarding", "my-gates", "gate-stack", "map-hidden", "trading-cards", "card-viewer", "cover-rotate"]
 
     @StateObject private var nearby = NearbyCardsModel()
     @StateObject private var inbox = InboxModel()
@@ -196,6 +196,30 @@ struct DemoGallery: View {
             NavigationStack { NotificationSettingsView() }
         case "onboarding":
             OnboardingView {}
+        case "trading-cards":
+            // 仕上げ 4 種類を並べる（ノーマル・キラ・ゴールド・ネオン）
+            ScrollView {
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)], spacing: 18) {
+                    ForEach(Array(CardFinish.allCases.enumerated()), id: \.offset) { i, finish in
+                        TradingCard(content: TradingCardContent(
+                            id: UUID(), photoPath: ["demo/sunset.jpg", "demo/park.jpg", "demo/night.jpg", nil][i],
+                            body: ["ここから見る夕焼けが一番好き。", "初めて来た。坂がきつい！でも来てよかった。", "夜の駅前。", ""][i],
+                            author: ["みさき", "けんた", "ゆい", "あなた"][i], gateTitle: "夕焼けの見える丘",
+                            createdAt: "2026-11-17T09:00:00Z", likes: [12, 3, 8, 0][i], finish: finish,
+                            badge: [.friend, .visitor, .friend, .mine][i]))
+                    }
+                }
+                .padding(16)
+            }
+            .background(Theme.background)
+        case "card-viewer":
+            TradingCardViewer(content: TradingCardContent(id: UUID(), photoPath: "demo/sunset.jpg",
+                                                          body: "ここから見る夕焼けが一番好き。ベンチに座って待ってみて。",
+                                                          author: "みさき", gateTitle: "夕焼けの見える丘",
+                                                          createdAt: "2026-11-17T09:00:00Z", likes: 12, finish: .holo,
+                                                          badge: .friend)) {}
+        case "cover-rotate":
+            CoverRotateSheet(summary: Demo.gate) {}
         case "my-gates":
             // 同じ所に 2 つ（重ねた印）・少し離れて 1 つ
             NavigationStack { MyGatesView(gates: Self.myGates) }

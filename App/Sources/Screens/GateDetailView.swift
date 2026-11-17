@@ -385,10 +385,6 @@ struct GateDetailView: View {
 
     // MARK: 表紙
 
-    private func canManage(_ s: GateSummary) -> Bool {
-        s.owner == session.userID || managers.contains { $0.user_id == session.userID }
-    }
-
     /// いま扉の中か（画面の色・題を変える）
     private var insideNow: Bool {
         summary.map { makeContext($0, now: Date()).isInside } ?? false
