@@ -30,6 +30,8 @@ struct NearbyMapView: View {
     /// 重ねた印から選ぶ一覧と、そこで選んだ GATE
     @State private var stack: PinStack?
     @State private var openGate: UUID?
+    /// 近くのグラフィティボードをしまって、地図を広く見る（2026-11-18 オーナー。次に開いたときも覚えておく）
+    @AppStorage("gg.map.boardsHidden") private var boardsHidden = false
     @StateObject private var nearbyCards = NearbyCardsModel()
 
     enum Mode: Hashable { case map, cards }
@@ -179,6 +181,8 @@ struct NearbyMapView: View {
                             withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                                 selected = selected == gate.id ? nil : gate.id
                                 if let id = selected { scrolledID = id }
+                                // しまっていたら、押した GATE のボードを見せる
+                                if selected != nil { boardsHidden = false }
                             }
                         } label: {
                             GatePin(mine: gate.mine, selected: selected == gate.id,
@@ -219,16 +223,17 @@ struct NearbyMapView: View {
     /// 下に重ねた札のおおよその高さ（地図の中身をその上に寄せる）
     private func reservedBottom(compact: Bool) -> CGFloat {
         let showsCarousel = loaded && error == nil && !gates.isEmpty
-        // 棚：上の余白・見出し・すき間・中身・下の余白
-        let shelf: CGFloat = (compact ? 10 : 14) + 34 + (compact ? 8 : 10)
-            + (showsCarousel ? GraffitiBoardCard.size(compact: compact).height + 12 : 76) + (compact ? 8 : 10)
-        var h: CGFloat = 10 + shelf
+        // 見出しの札と、出しているときはボード（しまうと見出しの札だけ＝地図を広く見せる）
+        var h: CGFloat = 10 + 40
+        if !boardsHidden {
+            h += 8 + (showsCarousel ? GraffitiBoardCard.size(compact: compact).height + 12 : 76)
+        }
         if place != nil { h += 74 + 10 }
         if target != nil { h += (compact ? 58 : 80) + 10 }
         return h
     }
 
-    /// 地図の下に重ねる札：探した場所・TRAIL の次の地点・近くのグラフィティボード
+    /// 地図の下に重ねる札：探した場所・TRAIL の次の地点・近くのグラフィティボード（しまえる）
     private func overlayCards(compact: Bool) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             if let place {
@@ -237,63 +242,80 @@ struct NearbyMapView: View {
             if let target {
                 trailCard(target, compact: compact).padding(.horizontal, 16)
             }
-            boardShelf(compact: compact)
+            VStack(alignment: .leading, spacing: 8) {
+                boardsHeader
+                if !boardsHidden {
+                    boards(compact: compact)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+            // 下へはらうとしまう、上へはらうと出す
+            .gesture(DragGesture(minimumDistance: 20).onEnded { value in
+                // 横にめくる動きでは、しまわない（縦にはっきり動かしたときだけ）
+                let dy = value.translation.height, dx = value.translation.width
+                guard abs(dy) > abs(dx) * 1.5 else { return }
+                if dy > 30, !boardsHidden { setBoardsHidden(true) }
+                if dy < -30, boardsHidden { setBoardsHidden(false) }
+            })
         }
         .padding(.bottom, 10)
     }
 
-    /// 「近くのグラフィティボード」の棚：すりガラスの板に、光る扉のしるし・見出し・数、その下に横にめくるボード
-    private func boardShelf(compact: Bool) -> some View {
-        VStack(alignment: .leading, spacing: compact ? 8 : 10) {
-            HStack(spacing: 10) {
-                GateMark(size: compact ? 28 : 32, glowing: true)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("近くのグラフィティボード")
-                        .font(.subheadline.weight(.heavy))
-                        .foregroundStyle(Theme.text)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                    Text("半径 100m・着いたら扉を開けられます")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(Theme.textSecondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                }
-                Spacer(minLength: 0)
+    private func setBoardsHidden(_ hidden: Bool) {
+        Haptics.tap()
+        withAnimation(.spring(response: 0.38, dampingFraction: 0.85)) { boardsHidden = hidden }
+        Trace.log(hidden ? "地図：近くのグラフィティボードをしまった" : "地図：近くのグラフィティボードを出した")
+    }
+
+    /// 「近くのグラフィティボード」の見出しの札（押すと、ボードをしまう・出す）
+    private var boardsHeader: some View {
+        Button {
+            setBoardsHidden(!boardsHidden)
+        } label: {
+            HStack(spacing: 8) {
+                GateMark(size: 24, glowing: true)
+                Text("近くのグラフィティボード")
+                    .font(.subheadline.weight(.heavy))
+                    .foregroundStyle(Theme.text)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                 if !gates.isEmpty {
                     Text("\(gates.count)")
-                        .font(.system(size: 15, weight: .heavy, design: .rounded))
+                        .font(.system(size: 13, weight: .heavy, design: .rounded))
                         .foregroundStyle(.white)
-                        .frame(minWidth: 32, minHeight: 32)
+                        .frame(minWidth: 24, minHeight: 24)
                         .padding(.horizontal, 2)
                         .background(Theme.neonBand, in: Capsule())
-                        .shadow(color: Color(hex: 0xFF3D7F).opacity(0.35), radius: 6, y: 2)
-                        .accessibilityLabel("\(gates.count) 個")
                 }
+                Image(systemName: boardsHidden ? "chevron.up" : "chevron.down")
+                    .font(.caption.weight(.heavy))
+                    .foregroundStyle(Theme.accent)
+                    .frame(width: 24, height: 24)
+                    .background(Theme.accentLight, in: Circle())
             }
-            .frame(height: 34)
-            .padding(.horizontal, 16)
-            boards(compact: compact)
+            .padding(.leading, 8).padding(.trailing, 8)
+            .frame(height: 40)
+            .background(.regularMaterial, in: Capsule())
+            .overlay(Capsule().strokeBorder(.white.opacity(0.7), lineWidth: 1))
+            .shadow(color: .black.opacity(0.14), radius: 8, y: 3)
         }
-        .padding(.top, compact ? 10 : 14)
-        .padding(.bottom, compact ? 8 : 10)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
-        .overlay(alignment: .top) {
-            // 上の縁に、ネオンの帯（夕焼け → 夜空）
-            Capsule().fill(Theme.neonBand).frame(width: 56, height: 4).padding(.top, 5)
-        }
-        .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).strokeBorder(.white.opacity(0.7), lineWidth: 1))
-        .shadow(color: .black.opacity(0.16), radius: 18, y: 6)
-        .padding(.horizontal, 10)
+        .buttonStyle(.plain)
+        .padding(.horizontal, 16)
+        .accessibilityLabel(boardsHidden ? "近くのグラフィティボードを出す" : "近くのグラフィティボードをしまう")
+        .accessibilityValue(gates.isEmpty ? "" : "\(gates.count) 個")
     }
 
     @ViewBuilder private func boards(compact: Bool) -> some View {
         if location.fixProblem != nil, location.location == nil || location.needsSettings {
             LocationProblemView()
+                .padding(14)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
                 .padding(.horizontal, 16)
         } else if let error {
             NoticeText(text: error)
+                .padding(14)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
                 .padding(.horizontal, 16)
         } else if !loaded {
             HStack(spacing: 10) {
@@ -301,7 +323,9 @@ struct NearbyMapView: View {
                 Text(location.location == nil ? "いまの場所を調べています…" : "近くのグラフィティボードを探しています…")
                     .font(.subheadline).foregroundStyle(Theme.textSecondary)
             }
-            .frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
             .padding(.horizontal, 16)
         } else if gates.isEmpty {
             HStack(spacing: 12) {
@@ -323,9 +347,9 @@ struct NearbyMapView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("ここに GATE を作る")
             }
-            .padding(12)
-            .background(Theme.surface.opacity(0.75), in: RoundedRectangle(cornerRadius: 18))
-            .padding(.horizontal, 12)
+            .padding(14)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
+            .padding(.horizontal, 16)
         } else {
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: 12) {
