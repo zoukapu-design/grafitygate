@@ -93,7 +93,8 @@ final class VideoTextureFeeder {
         self.commands = commands
         CVMetalTextureCacheCreate(kCFAllocatorDefault, nil, device, nil, &cache)
         do {
-            let descriptor = TextureResource.DrawableQueue.Descriptor(pixelFormat: .bgra8Unorm, width: width, height: height,
+            // 動画の色は sRGB。_srgb にしないと、最初の 1 コマ（写真の質感）より白っぽく見える
+            let descriptor = TextureResource.DrawableQueue.Descriptor(pixelFormat: .bgra8Unorm_srgb, width: width, height: height,
                                                                       usage: [.shaderRead, .renderTarget],
                                                                       mipmapsMode: .none)
             queue = try TextureResource.DrawableQueue(descriptor)
@@ -111,7 +112,8 @@ final class VideoTextureFeeder {
     func push(_ buffer: CVPixelBuffer) {
         guard let cache, let drawable = try? queue.nextDrawable() else { return }
         var cvTexture: CVMetalTexture?
-        CVMetalTextureCacheCreateTextureFromImage(kCFAllocatorDefault, cache, buffer, nil, .bgra8Unorm, width, height, 0,
+        // 写し先と同じ形（sRGB）で読む（形が違うと、そのまま写せない）
+        CVMetalTextureCacheCreateTextureFromImage(kCFAllocatorDefault, cache, buffer, nil, .bgra8Unorm_srgb, width, height, 0,
                                                   &cvTexture)
         guard let cvTexture, let source = CVMetalTextureGetTexture(cvTexture),
               let commandBuffer = commands.makeCommandBuffer(),

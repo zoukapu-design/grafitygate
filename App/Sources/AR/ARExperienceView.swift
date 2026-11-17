@@ -995,7 +995,7 @@ private struct ArtCard: View {
                         .font(.caption).foregroundStyle(Theme.textSecondary)
                 } else {
                     Text(model.draft.person.map { "\(durationText($0.duration)) の人物の映像ができました" }
-                         ?? "10 秒まで。全身か上半身がはっきり写っている動画が向いています。")
+                         ?? "10 秒まで。頭から足もとまで（全身）はっきり写っている動画が向いています。")
                         .font(.caption).foregroundStyle(Theme.textSecondary)
                 }
             }
@@ -1333,7 +1333,7 @@ private struct PersonCaptureCard: View {
                 }
                 Caption(recording
                         ? "止めるときは、もう一度押します。10 秒で自動で止まります。"
-                        : "映したい人の全身か上半身が入るようにカメラを向けて、赤いボタンで撮り始めます。声も一緒に残ります（明るい所・1 人だけが切り抜きやすいです）。")
+                        : "映したい人の頭から足もとまで（全身）が入るように、2〜3m 離れてカメラを向け、赤いボタンで撮り始めます。声も一緒に残ります。足もとまで写すと、その場に立っているように見えます（明るい所・1 人だけが切り抜きやすいです）。")
                 if recording {
                     ProgressView(value: min(recorder.elapsed, ARPersonRecorder.limit), total: ARPersonRecorder.limit)
                         .tint(.red)

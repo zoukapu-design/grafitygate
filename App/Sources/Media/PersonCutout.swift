@@ -23,6 +23,8 @@ enum PersonCutout {
         let duration: Double
         /// 10 秒より長かったので、はじめの 10 秒にした
         let trimmed: Bool
+        /// 足もとまで写っていない（上半身だけ・足が画面の下で切れている）。AR では地面に立って見えない
+        var feetCut = false
     }
 
     enum Failure: LocalizedError {
@@ -73,9 +75,36 @@ enum PersonCutout {
         let rotated = orientation == .left || orientation == .right
         let upright = rotated ? CGSize(width: natural.height, height: natural.width) : natural
         let scale = min(1, maxSide / max(upright.width, upright.height))
-        let outW = max(2, Int((upright.width * scale / 2).rounded()) * 2)
-        let outH = max(2, Int((upright.height * scale / 2).rounded()) * 2)
+        // 縮めたカメラの絵の大きさ（人を探すのはこの大きさで）
+        let frameW = max(2, Int((upright.width * scale / 2).rounded()) * 2)
+        let frameH = max(2, Int((upright.height * scale / 2).rounded()) * 2)
         let range = CMTimeRange(start: .zero, duration: CMTime(seconds: length, preferredTimescale: 600))
+        let frameExtent = CGRect(x: 0, y: 0, width: frameW, height: frameH)
+
+        // 先に何コマかで人のいる範囲を調べ、その範囲だけを切り出す（人が絵いっぱいになり、足もとが絵の下の端に来る。
+        // AR では絵の高さを人の背の高さにして地面に立たせるので、まわりの余白が残ると小さく・浮いて見えていた）
+        let bounds = personBounds(asset: asset, track: track, orientation: orientation, scale: scale,
+                                  extent: frameExtent, range: range, length: length)
+        let crop: CGRect
+        var feetCut = false
+        if let b = bounds {
+            // b は 0〜1（左上が原点）。横と上に少し余白、足もとは 2% だけ余白（絵の下で切れているなら下の端まで）
+            feetCut = b.maxY > 0.965
+            let left = max(0, b.minX - 0.08), right = min(1, b.maxX + 0.08)
+            let top = max(0, b.minY - 0.05), bottom = feetCut ? 1 : min(1, b.maxY + 0.02)
+            // CIImage は左下が原点
+            let rect = CGRect(x: left * CGFloat(frameW), y: (1 - bottom) * CGFloat(frameH),
+                              width: (right - left) * CGFloat(frameW), height: (bottom - top) * CGFloat(frameH))
+            crop = rect.width >= 48 && rect.height >= 96 ? rect.integral.intersection(frameExtent) : frameExtent
+        } else {
+            crop = frameExtent
+        }
+        let outW = max(2, Int((crop.width / 2).rounded(.down)) * 2)
+        let outH = max(2, Int((crop.height / 2).rounded(.down)) * 2)
+        let outExtent = CGRect(x: 0, y: 0, width: outW, height: outH)
+        Trace.log(String(format: "人物の映像：人のいる範囲 %@ → %d×%d に切り出す%@",
+                         bounds.map { String(format: "x %.2f〜%.2f・y %.2f〜%.2f", $0.minX, $0.maxX, $0.minY, $0.maxY) } ?? "（見つからず）",
+                         outW, outH, feetCut ? "（足もとが切れている）" : ""))
 
         // 声は先に読んでおき、映像と交互に書く（書く側は両方が進むのを待つため）
         var audioSamples: [CMSampleBuffer] = []
@@ -181,32 +210,35 @@ enum PersonCutout {
                 var image = CIImage(cvPixelBuffer: source).oriented(orientation)
                 image = image.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
                 image = image.transformed(by: CGAffineTransform(translationX: -image.extent.minX, y: -image.extent.minY))
-                let extent = CGRect(x: 0, y: 0, width: outW, height: outH)
+                let extent = frameExtent
                 image = image.cropped(to: extent)
 
                 // 人の形（白＝人）
                 try VNImageRequestHandler(ciImage: image, options: [:]).perform([request])
                 guard let maskBuffer = request.results?.first?.pixelBuffer else { return }
                 var mask = CIImage(cvPixelBuffer: maskBuffer)
-                mask = mask.transformed(by: CGAffineTransform(scaleX: CGFloat(outW) / mask.extent.width,
-                                                              y: CGFloat(outH) / mask.extent.height))
+                mask = mask.transformed(by: CGAffineTransform(scaleX: CGFloat(frameW) / mask.extent.width,
+                                                              y: CGFloat(frameH) / mask.extent.height))
                 mask = mask.clampedToExtent().applyingGaussianBlur(sigma: 1.4).cropped(to: extent)
 
                 // 人がどれくらい写っているか（ときどき測る）
                 if frameIndex % 8 == 0 { coverageSum += average(of: mask, in: extent); coverageCount += 1 }
                 frameIndex += 1
 
+                // 人だけを残し、人のいる範囲を切り出して左下を原点にする
                 let cut = image.applyingFilter("CIBlendWithMask", parameters: [
                     kCIInputBackgroundImageKey: CIImage.empty(),
                     kCIInputMaskImageKey: mask,
-                ]).cropped(to: extent)
-                if poster == nil { poster = context.createCGImage(cut, from: extent) }
+                ]).cropped(to: crop)
+                    .transformed(by: CGAffineTransform(translationX: -crop.minX, y: -crop.minY))
+                    .cropped(to: outExtent)
+                if poster == nil { poster = context.createCGImage(cut, from: outExtent) }
 
                 guard let pool = adaptor.pixelBufferPool else { throw Failure.failed("書き出しの準備") }
                 var buffer: CVPixelBuffer?
                 CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer)
                 guard let buffer else { throw Failure.failed("書き出しの準備") }
-                context.render(cut, to: buffer, bounds: extent, colorSpace: colorSpace)
+                context.render(cut, to: buffer, bounds: outExtent, colorSpace: colorSpace)
 
                 // 声をこの時刻まで進めてから、映像を書く
                 while pushAudio(upTo: pts) {}
@@ -245,7 +277,77 @@ enum PersonCutout {
         }
         let posterImage = UIImage(cgImage: poster)
         return Result(file: out, poster: posterImage, thumbnail: thumbnail(of: posterImage),
-                      duration: max(0.5, min(lastTime + 1 / fps, limit)), trimmed: trimmed)
+                      duration: max(0.5, min(lastTime + 1 / fps, limit)), trimmed: trimmed, feetCut: feetCut)
+    }
+
+    /// 何コマかを見て、人のいる範囲を返す（0〜1・左上が原点。全部のコマを合わせた範囲）。人がいなければ nil
+    private static func personBounds(asset: AVURLAsset, track: AVAssetTrack, orientation: CGImagePropertyOrientation,
+                                     scale: CGFloat, extent: CGRect, range: CMTimeRange, length: Double) -> CGRect? {
+        guard let reader = try? AVAssetReader(asset: asset) else { return nil }
+        reader.timeRange = range
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+        ])
+        output.alwaysCopiesSampleData = false
+        guard reader.canAdd(output) else { return nil }
+        reader.add(output)
+        guard reader.startReading() else { return nil }
+        defer { reader.cancelReading() }
+
+        let request = VNGeneratePersonSegmentationRequest()
+        request.qualityLevel = .balanced
+        request.outputPixelFormat = kCVPixelFormatType_OneComponent8
+        // 0.4 秒ごと（10 秒で 25 コマほど）
+        let step = 0.4
+        var nextTime = 0.0
+        var union: CGRect?
+        while let sample = output.copyNextSampleBuffer() {
+            let t = CMSampleBufferGetPresentationTimeStamp(sample).seconds
+            guard t >= nextTime, let source = CMSampleBufferGetImageBuffer(sample) else { continue }
+            nextTime = t + step
+            autoreleasepool {
+                var image = CIImage(cvPixelBuffer: source).oriented(orientation)
+                image = image.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+                image = image.transformed(by: CGAffineTransform(translationX: -image.extent.minX, y: -image.extent.minY))
+                    .cropped(to: extent)
+                guard (try? VNImageRequestHandler(ciImage: image, options: [:]).perform([request])) != nil,
+                      let mask = request.results?.first?.pixelBuffer,
+                      let box = maskBounds(mask) else { return }
+                union = union.map { $0.union(box) } ?? box
+            }
+        }
+        return union
+    }
+
+    /// 人の形の絵（白＝人）で、人のいる範囲（0〜1・左上が原点）。小さな点（ごみ）は数えない
+    private static func maskBounds(_ buffer: CVPixelBuffer) -> CGRect? {
+        CVPixelBufferLockBaseAddress(buffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
+        guard let base = CVPixelBufferGetBaseAddress(buffer) else { return nil }
+        let width = CVPixelBufferGetWidth(buffer), height = CVPixelBufferGetHeight(buffer)
+        let row = CVPixelBufferGetBytesPerRow(buffer)
+        let pixels = base.assumingMemoryBound(to: UInt8.self)
+        // 行・列ごとに「人」の点の数を数え、ある程度いる行・列だけを範囲にする
+        var rows = [Int](repeating: 0, count: height)
+        var cols = [Int](repeating: 0, count: width)
+        var total = 0
+        for y in 0..<height {
+            let line = pixels + y * row
+            var count = 0
+            for x in 0..<width where line[x] > 127 {
+                count += 1
+                cols[x] += 1
+            }
+            rows[y] = count
+            total += count
+        }
+        guard total > width * height / 400 else { return nil }   // 0.25% より少なければ、人はいない
+        let rowMin = max(1, width / 200), colMin = max(1, height / 200)
+        guard let top = rows.firstIndex(where: { $0 >= rowMin }), let bottom = rows.lastIndex(where: { $0 >= rowMin }),
+              let left = cols.firstIndex(where: { $0 >= colMin }), let right = cols.lastIndex(where: { $0 >= colMin }),
+              bottom > top, right > left else { return nil }
+        return CGRect(x: CGFloat(left) / CGFloat(width), y: CGFloat(top) / CGFloat(height),
+                      width: CGFloat(right - left + 1) / CGFloat(width), height: CGFloat(bottom - top + 1) / CGFloat(height))
     }
 
     /// 白黒の絵の平均の明るさ（0〜1＝人の写っている割合）

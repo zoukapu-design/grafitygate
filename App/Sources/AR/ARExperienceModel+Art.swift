@@ -297,7 +297,13 @@ extension ARExperienceModel {
         if let old = draft.person, old.file != result.file { try? FileManager.default.removeItem(at: old.file) }
         draft.person = result
         draft.image = result.poster
-        notice = result.trimmed ? "10 秒より長い動画は、はじめの 10 秒にしました。" : nil
+        var notes: [String] = []
+        if result.trimmed { notes.append("10 秒より長い動画は、はじめの 10 秒にしました。") }
+        if result.feetCut {
+            // 足もとが写っていないと、AR で地面に立って見えない
+            notes.append("足もとまで写っていません。足もとまで入れて撮り直すと、その場に立っているように見えます。")
+        }
+        notice = notes.isEmpty ? nil : notes.joined(separator: "\n")
     }
 
     // MARK: その場で人を撮る（人物の映像）
