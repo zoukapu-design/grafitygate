@@ -106,10 +106,11 @@ struct GateDetailView: View {
                         } else {
                             // グラフィティボード：表紙・名前・作った人 → 紹介と数 → 扉 → いつ・どこで → 扉の向こう
                             VStack(alignment: .leading, spacing: 16) {
-                                header(summary)
-                                // 友達・訪れた人のグラフィティカード（まだ開けていなければチラ見せと鍵）
+                                hero(summary)
+                                // 友達・訪れた人のグラフィティカード（まだ開けていなければチラ見せと鍵）。表紙のすぐ下に
                                 GateCardShowcase(context: context, refreshToken: refreshToken,
                                                  onReport: { report = $0 })
+                                statsBox(summary)
                                 visitBanner(context, summary: summary, now: timeline.date)
                                     .id("door")
                                 whereWhen(summary)
@@ -479,6 +480,14 @@ struct GateDetailView: View {
 
     private func header(_ s: GateSummary) -> some View {
         VStack(alignment: .leading, spacing: 12) {
+            hero(s)
+            statsBox(s)
+        }
+    }
+
+    /// 表紙と名前（グラフィティボードのいちばん上）
+    private func hero(_ s: GateSummary) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
             GraffitiBoardHero(title: s.title, coverPath: s.cover_path, kind: GateKind(raw: s.kind)) {
                 if s.owner == session.userID {
                     Label("あなたの GATE", systemImage: "person.fill")
@@ -522,7 +531,12 @@ struct GateDetailView: View {
                     .accessibilityLabel("表紙の写真の向きを直す")
                 }
             }
+        }
+    }
 
+    /// 紹介と数
+    private func statsBox(_ s: GateSummary) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
             // 紹介と数
             VStack(alignment: .leading, spacing: 14) {
                 if !s.note.isEmpty {
