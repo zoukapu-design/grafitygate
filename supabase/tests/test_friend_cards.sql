@@ -40,7 +40,15 @@ update gf_graffiti set created_at = now() - interval '2 days' where id in (:'ca'
 update gf_visits set expires_at = now() - interval '1 minute' where user_id = :'bob' and gate_id = :'vg';
 :as_bob
 select t_ok((select count(*) from gf_user_card_atlas(:'alice')) = 0, '書いた人が載せていないカードは、図鑑に出ない');
-select t_ok(not gf_can_read_media(:'alice' || '/view-a.jpg'), '載せていないカードの写真は、遠くから受け取れない');
+-- 0024：一度扉を開けた GATE のカードは遠くからも読めるので、「この GATE の中だけ」のカードで確かめる
+:as_admin
+update gf_graffiti set local_only = true where id = :'ca';
+:as_bob
+select t_ok(not gf_can_read_media(:'alice' || '/view-a.jpg'), '「この GATE の中だけ」で図鑑にもないカードの写真は、遠くから受け取れない');
+:as_admin
+update gf_graffiti set local_only = false where id = :'ca';
+:as_bob
+select t_ok(gf_can_read_media(:'alice' || '/view-a.jpg'), '一度扉を開けた GATE のカードの写真は、図鑑に載せていなくても受け取れる');
 :as_alice
 select t_ok((select count(*) from gf_user_card_atlas(:'alice')) >= 1, '自分の図鑑には、自分のカードがいつも出る');
 select gf_set_graffiti_atlas(:'ca', true);

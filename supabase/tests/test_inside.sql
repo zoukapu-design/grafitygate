@@ -70,7 +70,8 @@ select t_ok((select reply_count from gf_board_list(:'g4') where id = :'t2') = 0,
 :as_admin
 update gf_visits set expires_at = now() - interval '1 second' where id = :'vb';
 :as_bob
-select t_ok((select count(*) from gf_board_list(:'g4')) = 0, '入場券が切れると掲示板は見えない');
+-- 0024：一度扉を開けた GATE の掲示板は、入場券が切れても読める（書く・返すは扉の中だけ）
+select t_ok((select count(*) from gf_board_list(:'g4')) > 0, '一度扉を開けた GATE の掲示板は、入場券が切れても読める');
 select t_throws(format('select gf_board_reply(%L, %L, %L)', :'vb', :'t1', 'まだいる？'), 'gf_visit_invalid',
   '入場券が切れると返信できない');
 

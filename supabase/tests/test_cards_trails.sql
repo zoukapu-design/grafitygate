@@ -35,8 +35,8 @@ select t_ok((select saved from gf_card_extras(:'vg') where graffiti_id = :'ca'),
 update gf_visits set expires_at = now() - interval '1 minute' where gate_id = :'vg';
 :as_bob
 select t_ok((select count(*) from gf_my_saved_cards()
-             where id = :'ca' and photo_path = :'alice' || '/view-a.jpg' and body is null and gate_title = :'vg_title') = 1,
-  '遠くからも、お気に入りの写真・GATE・日付は見える（文は現地だけ）');
+             where id = :'ca' and photo_path = :'alice' || '/view-a.jpg' and body is not null and gate_title = :'vg_title') = 1,
+  '遠くからも、お気に入りの写真・GATE・日付が見え、一度扉を開けた GATE なのでひとことも読める');
 select t_ok(gf_can_read_media(:'alice' || '/view-a.jpg'), 'お気に入りにしたカードの写真は、遠くから受け取れる');
 :as_admin
 update gf_graffiti set local_only = true where id = :'ca';
@@ -54,7 +54,8 @@ select t_ok((select count(*) from gf_my_saved_cards() where id = :'ca') = 0, '�
 :as_bob
 select t_ok(not gf_save_card(:'ca', false), '外すのは遠くからでもできる');
 select t_ok((select count(*) from gf_my_saved_cards() where id = :'ca') = 0, '外したら一覧から消える');
-select t_ok(not gf_can_read_media(:'alice' || '/view-a.jpg'), '外したら写真も受け取れない');
+-- 0024：ボブは一度扉を開けているので、保存を外しても遠くから読める（この GATE の中だけのカードは除く）
+select t_ok(gf_can_read_media(:'alice' || '/view-a.jpg'), '外しても、一度扉を開けた GATE のカードの写真は受け取れる');
 
 \echo '== カードへの返信'
 :as_bob
@@ -78,7 +79,8 @@ select t_ok(exists (select 1 from gf_my_notifications() where kind = 'card_comme
 :as_admin
 update gf_visits set expires_at = now() - interval '1 minute' where gate_id = :'vg';
 :as_bob
-select t_throws(format('select * from gf_card_comments_of(%L)', :'ca'), 'gf_not_found', 'GATE を出たら返信は読めない（現地だけ）');
+select t_ok((select count(*) from gf_card_comments_of(:'ca')) = 2, '一度扉を開けた GATE のカードの返信は、遠くからも読める');
+select t_throws(format('select gf_card_comment(%L, %L)', :'ca', '遠くから'), 'gf_not_found', 'GATE を出たら返信は書けない');
 :as_carol
 select t_throws(format('select * from gf_card_comments_of(%L)', :'ca'), 'gf_not_found', 'ほかの人は読めない');
 select t_throws(format('select gf_delete_card_comment(%L)', :'cm'), 'gf_not_found', 'ほかの人の返信は消せない');

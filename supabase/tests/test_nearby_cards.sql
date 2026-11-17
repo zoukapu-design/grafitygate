@@ -18,6 +18,14 @@ select id as ca, photo_path as ca_photo from gf_graffiti where author = :'alice'
 update gf_graffiti set in_atlas = false, local_only = false, visibility = 'friends',
                        created_at = least(created_at, now() - interval '2 days') where id = :'ca';
 update gf_visits set expires_at = now() - interval '1 minute' where gate_id = :'vg';
+-- 0024：一度扉を開けた GATE は遠くから読めるので、このテストのあいだはボブの入場を「取り消し」にしておく（最後に戻す）
+update gf_visits set revoked_at = now() where gate_id = :'vg' and user_id = :'bob' and revoked_at is null;
+create temp table if not exists t_bob_revoked as
+  select id from gf_visits where gate_id = :'vg' and user_id = :'bob' and revoked_at > now() - interval '1 minute';
+grant select on t_bob_revoked to authenticated;
+-- チラ見せ（新しい 3 枚）にアリスのカードが出ないよう、新しいカードを 3 枚置いておく（最後に消す）
+insert into gf_graffiti (gate_id, author, body, visibility)
+  select :'vg', :'alice', 'チラ見せ用 ' || n, 'public' from generate_series(1, 3) n;
 delete from gf_card_saves where graffiti_id = :'ca';
 delete from gf_card_nearby_passes;
 
@@ -65,3 +73,5 @@ select t_ok((select count(*) from gf_nearby_cards(:glat, :glon, 10) where id = :
 :as_admin
 delete from gf_card_nearby_passes;
 delete from gf_rate;
+update gf_visits set revoked_at = null where id in (select id from t_bob_revoked);
+update gf_graffiti set deleted_at = now() where gate_id = :'vg' and body like 'チラ見せ用 %' and deleted_at is null;

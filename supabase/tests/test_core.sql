@@ -229,8 +229,16 @@ select t_ok((select count(*) from storage.objects where name = :'bob' || '/g1.jp
 :as_admin
 update gf_visits set expires_at = now() - interval '1 second' where id = :'va';
 :as_alice
+-- 0024：一度扉を開けた GATE は、入場券が切れても遠くから読める（この GATE の中だけのカードは除く）
+select t_ok((select count(*) from storage.objects where name = :'bob' || '/g1.jpg') = 1,
+  '一度扉を開けた GATE のグラフィティの写真は、入場券が切れても見られる');
+:as_admin
+update gf_graffiti set local_only = true where id = :'p1';
+:as_alice
 select t_ok((select count(*) from storage.objects where name = :'bob' || '/g1.jpg') = 0,
-  '入場券が切れ、新着からも消えたら、写真も見られない');
+  '「この GATE の中だけ」のカードの写真は、入場券が切れたら見られない');
+:as_admin
+update gf_graffiti set local_only = false where id = :'p1';
 
 -- =========================================================
 \echo '== 反応'
