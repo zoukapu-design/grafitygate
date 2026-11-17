@@ -20,6 +20,9 @@ struct FriendWorks: View {
     @State private var unsupported = false
     /// 地図の印から開く GATE（印の中から直接画面を開くと、アプリ全体の情報が届かず落ちることがある）
     @State private var openGate: UUID?
+    /// 地図の縮尺（近い印をまとめる）と、重ねた印から選ぶ一覧
+    @State private var metersPerPoint: Double?
+    @State private var stack: PinStack?
 
     enum Tab: String, CaseIterable, Identifiable {
         case gates = "GATE"
@@ -79,18 +82,36 @@ struct FriendWorks: View {
             note(unsupported ? "サーバーの準備がまだです（SQL を貼り直すと見られます）。"
                              : (isMe ? "まだ GATE を作っていません。" : "\(name) さんが見せている GATE はまだありません。"))
         } else {
+            let pins = gates.map {
+                MapPinItem(id: $0.id, title: $0.title, cover: $0.cover_path, coordinate: $0.coordinate,
+                           mine: isMe, ownerName: name)
+            }
+            let mpp = metersPerPoint
+                ?? MapFraming.region(gates.map(\.coordinate)).map { MapClusters.metersPerPoint($0, height: 230) } ?? 2
             Map(initialPosition: MapFraming.position(gates.map(\.coordinate))) {
-                ForEach(gates) { gate in
-                    Annotation(gate.title, coordinate: gate.coordinate, anchor: .bottom) {
+                // 同じ・近い所の GATE は 1 つの「重ねた印」にまとめる（押すと一覧）
+                ForEach(MapClusters.group(pins, metersPerPoint: mpp)) { cluster in
+                    Annotation(cluster.items[0].title, coordinate: cluster.coordinate, anchor: .bottom) {
                         Button {
-                            openGate = gate.id
+                            if cluster.isSingle {
+                                openGate = cluster.items[0].id
+                            } else {
+                                stack = PinStack(items: cluster.items)
+                            }
                         } label: {
-                            GatePin(mine: isMe, coverPath: gate.cover_path, ownerName: name, showsName: false)
+                            if cluster.isSingle {
+                                GatePin(mine: isMe, coverPath: cluster.items[0].cover, ownerName: name, showsName: false)
+                            } else {
+                                GateStackPin(cluster: cluster)
+                            }
                         }
                         .buttonStyle(.plain)
                     }
                     .annotationTitles(.hidden)
                 }
+            }
+            .onMapCameraChange(frequency: .onEnd) { context in
+                metersPerPoint = MapClusters.metersPerPoint(context.region, height: 230)
             }
             // 印は場所の上に立つので、上に余白をとって地図に収める（左上の札にも重ならないように）
             .safeAreaPadding(EdgeInsets(top: 72, leading: 28, bottom: 12, trailing: 28))
@@ -99,6 +120,7 @@ struct FriendWorks: View {
             .navigationDestination(item: $openGate) { id in
                 GateDetailView(gateID: id)
             }
+            .gateStackSheet($stack, open: $openGate)
             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(Theme.line))
             .overlay(alignment: .topLeading) {

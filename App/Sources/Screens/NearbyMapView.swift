@@ -25,6 +25,11 @@ struct NearbyMapView: View {
     @State private var place: MKMapItem?
     /// 上の切り替え：地図／近くの友達のカード
     @State private var mode: Mode = .map
+    /// 地図の縮尺（1pt が何 m か。近い印をまとめるのに使う）
+    @State private var metersPerPoint: Double = 2
+    /// 重ねた印から選ぶ一覧と、そこで選んだ GATE
+    @State private var stack: PinStack?
+    @State private var openGate: UUID?
     @StateObject private var nearbyCards = NearbyCardsModel()
 
     enum Mode: Hashable { case map, cards }
@@ -105,8 +110,37 @@ struct NearbyMapView: View {
                     // 下に重ねた札の上に、いまいる所や印が来るように。札の高さは測らず、決まった高さで空ける
                     .safeAreaPadding(.bottom, reservedBottom(compact: compact) + geo.safeAreaInsets.bottom)
                     .ignoresSafeArea(edges: .bottom)
+                    .onMapCameraChange(frequency: .onEnd) { context in
+                        metersPerPoint = MapClusters.metersPerPoint(context.region, height: geo.size.height)
+                    }
                 overlayCards(compact: compact)
             }
+        }
+        .gateStackSheet($stack, open: $openGate)
+        .navigationDestination(item: $openGate) { id in
+            GateDetailView(gateID: id)
+        }
+    }
+
+    private var pinItems: [MapPinItem] {
+        gates.map {
+            MapPinItem(id: $0.id, title: $0.title, cover: $0.cover_path,
+                       coordinate: CLLocationCoordinate2D(latitude: $0.approx_lat, longitude: $0.approx_lon),
+                       mine: $0.mine, ownerName: $0.owner_name)
+        }
+    }
+
+    /// 重ねた印を押した：散らばっていれば寄って分け、同じ所なら一覧
+    private func tapCluster(_ cluster: PinCluster) {
+        Haptics.tap()
+        if let region = MapClusters.zoomRegion(for: cluster) {
+            withAnimation(.easeInOut(duration: 0.5)) {
+                position = .region(region)
+                selected = cluster.items[0].id
+                scrolledID = cluster.items[0].id
+            }
+        } else {
+            stack = PinStack(items: cluster.items)
         }
     }
 
@@ -139,21 +173,33 @@ struct NearbyMapView: View {
                         .overlay(Circle().stroke(.white, lineWidth: 2))
                 }
             }
-            ForEach(gates) { gate in
-                Annotation(gate.title, coordinate: CLLocationCoordinate2D(latitude: gate.approx_lat,
-                                                                           longitude: gate.approx_lon)) {
-                    Button {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                            selected = selected == gate.id ? nil : gate.id
-                            if let id = selected { scrolledID = id }
+            // 近すぎて重なる印は、1 つの「重ねた印」にまとめる（数を出し、押すと分ける・一覧）
+            ForEach(MapClusters.group(pinItems, metersPerPoint: metersPerPoint)) { cluster in
+                if cluster.isSingle, let gate = cluster.items.first {
+                    Annotation(gate.title, coordinate: gate.coordinate) {
+                        Button {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                selected = selected == gate.id ? nil : gate.id
+                                if let id = selected { scrolledID = id }
+                            }
+                        } label: {
+                            GatePin(mine: gate.mine, selected: selected == gate.id,
+                                    coverPath: gate.cover, ownerName: gate.ownerName)
                         }
-                    } label: {
-                        GatePin(mine: gate.mine, selected: selected == gate.id,
-                                coverPath: gate.cover_path, ownerName: gate.owner_name)
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
+                    .annotationTitles(selected == gate.id ? .visible : .hidden)
+                } else {
+                    Annotation("\(cluster.items.count) 個の GATE", coordinate: cluster.coordinate) {
+                        Button {
+                            tapCluster(cluster)
+                        } label: {
+                            GateStackPin(cluster: cluster, selected: cluster.contains(selected))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .annotationTitles(.hidden)
                 }
-                .annotationTitles(selected == gate.id ? .visible : .hidden)
             }
         }
         // 地図の色をおさえて、GATE の印とボードを目立たせる
@@ -162,21 +208,15 @@ struct NearbyMapView: View {
             MapUserLocationButton()
             MapCompass()
         }
-        .overlay(alignment: .topLeading) {
-            // 見つけられる範囲の目印
-            Label("半径 100m で見つかります", systemImage: "dot.radiowaves.left.and.right")
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(Theme.accent)
-                .padding(.horizontal, 10).padding(.vertical, 6)
-                .background(.regularMaterial, in: Capsule())
-                .padding(12)
-        }
     }
 
     /// 下に重ねた札のおおよその高さ（地図の中身をその上に寄せる）
     private func reservedBottom(compact: Bool) -> CGFloat {
         let showsCarousel = loaded && error == nil && !gates.isEmpty
-        var h: CGFloat = 12 + 34 + 10 + (showsCarousel ? GraffitiBoardCard.size(compact: compact).height + 12 : 84)
+        // 棚：上の余白・見出し・すき間・中身・下の余白
+        let shelf: CGFloat = (compact ? 10 : 14) + 34 + (compact ? 8 : 10)
+            + (showsCarousel ? GraffitiBoardCard.size(compact: compact).height + 12 : 76) + (compact ? 8 : 10)
+        var h: CGFloat = 10 + shelf
         if place != nil { h += 74 + 10 }
         if target != nil { h += (compact ? 58 : 80) + 10 }
         return h
@@ -191,42 +231,63 @@ struct NearbyMapView: View {
             if let target {
                 trailCard(target, compact: compact).padding(.horizontal, 16)
             }
-            boardsHeading.padding(.horizontal, 16)
-            boards(compact: compact)
+            boardShelf(compact: compact)
         }
-        .padding(.bottom, 12)
+        .padding(.bottom, 10)
     }
 
-    private var boardsHeading: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "rectangle.portrait.on.rectangle.portrait.fill")
-                .foregroundStyle(Theme.neonBand)
-            Text("近くのグラフィティボード")
-                .font(.subheadline.weight(.heavy))
-                .foregroundStyle(Theme.text)
-            if !gates.isEmpty {
-                Text("\(gates.count)")
-                    .font(.caption.weight(.heavy))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 7).padding(.vertical, 2)
-                    .background(Theme.accent, in: Capsule())
+    /// 「近くのグラフィティボード」の棚：すりガラスの板に、光る扉のしるし・見出し・数、その下に横にめくるボード
+    private func boardShelf(compact: Bool) -> some View {
+        VStack(alignment: .leading, spacing: compact ? 8 : 10) {
+            HStack(spacing: 10) {
+                GateMark(size: compact ? 28 : 32, glowing: true)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("近くのグラフィティボード")
+                        .font(.subheadline.weight(.heavy))
+                        .foregroundStyle(Theme.text)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                    Text("半径 100m・着いたら扉を開けられます")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(Theme.textSecondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+                Spacer(minLength: 0)
+                if !gates.isEmpty {
+                    Text("\(gates.count)")
+                        .font(.system(size: 15, weight: .heavy, design: .rounded))
+                        .foregroundStyle(.white)
+                        .frame(minWidth: 32, minHeight: 32)
+                        .padding(.horizontal, 2)
+                        .background(Theme.neonBand, in: Capsule())
+                        .shadow(color: Color(hex: 0xFF3D7F).opacity(0.35), radius: 6, y: 2)
+                        .accessibilityLabel("\(gates.count) 個")
+                }
             }
+            .frame(height: 34)
+            .padding(.horizontal, 16)
+            boards(compact: compact)
         }
-        .padding(.horizontal, 12).padding(.vertical, 7)
-        .background(.regularMaterial, in: Capsule())
+        .padding(.top, compact ? 10 : 14)
+        .padding(.bottom, compact ? 8 : 10)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .overlay(alignment: .top) {
+            // 上の縁に、ネオンの帯（夕焼け → 夜空）
+            Capsule().fill(Theme.neonBand).frame(width: 56, height: 4).padding(.top, 5)
+        }
+        .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).strokeBorder(.white.opacity(0.7), lineWidth: 1))
+        .shadow(color: .black.opacity(0.16), radius: 18, y: 6)
+        .padding(.horizontal, 10)
     }
 
     @ViewBuilder private func boards(compact: Bool) -> some View {
         if location.fixProblem != nil, location.location == nil || location.needsSettings {
             LocationProblemView()
-                .padding(14)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
                 .padding(.horizontal, 16)
         } else if let error {
             NoticeText(text: error)
-                .padding(14)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
                 .padding(.horizontal, 16)
         } else if !loaded {
             HStack(spacing: 10) {
@@ -234,9 +295,7 @@ struct NearbyMapView: View {
                 Text(location.location == nil ? "いまの場所を調べています…" : "近くのグラフィティボードを探しています…")
                     .font(.subheadline).foregroundStyle(Theme.textSecondary)
             }
-            .padding(14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
+            .frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
             .padding(.horizontal, 16)
         } else if gates.isEmpty {
             HStack(spacing: 12) {
@@ -258,9 +317,9 @@ struct NearbyMapView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("ここに GATE を作る")
             }
-            .padding(14)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
-            .padding(.horizontal, 16)
+            .padding(12)
+            .background(Theme.surface.opacity(0.75), in: RoundedRectangle(cornerRadius: 18))
+            .padding(.horizontal, 12)
         } else {
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: 12) {

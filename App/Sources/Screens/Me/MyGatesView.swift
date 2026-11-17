@@ -8,12 +8,20 @@ struct MyGatesView: View {
 
     @State private var selected: UUID?
     @State private var position: MapCameraPosition
+    /// 地図の縮尺（近い印をまとめる）と、重ねた印から選ぶ一覧
+    @State private var metersPerPoint: Double
+    @State private var stack: PinStack?
+    @State private var openGate: UUID?
 
+    private static let mapHeight: CGFloat = 300
     private var placed: [MyGate] { gates.filter { $0.coordinate != nil } }
 
     init(gates: [MyGate]) {
         self.gates = gates
-        _position = State(initialValue: MapFraming.position(gates.compactMap(\.coordinate)))
+        let coords = gates.compactMap(\.coordinate)
+        _position = State(initialValue: MapFraming.position(coords))
+        _metersPerPoint = State(initialValue: MapFraming.region(coords)
+            .map { MapClusters.metersPerPoint($0, height: Self.mapHeight) } ?? 2)
     }
 
     /// 月ごと（新しい月から）
@@ -66,6 +74,10 @@ struct MyGatesView: View {
             }
         }
         .background(Theme.background.ignoresSafeArea())
+        .gateStackSheet($stack, open: $openGate)
+        .navigationDestination(item: $openGate) { id in
+            GateDetailView(gateID: id)
+        }
         .navigationTitle("わたしの GATE")
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -74,28 +86,47 @@ struct MyGatesView: View {
     private var map: some View {
         Map(position: $position) {
             UserAnnotation()
-            ForEach(placed) { gate in
-                if let c = gate.coordinate {
-                    Annotation(gate.title, coordinate: c, anchor: .bottom) {
+            // 同じ・近い所の GATE は 1 つの「重ねた印」にまとめる
+            ForEach(MapClusters.group(MyGate.pins(placed), metersPerPoint: metersPerPoint)) { cluster in
+                if cluster.isSingle, let gate = cluster.items.first {
+                    Annotation(gate.title, coordinate: gate.coordinate, anchor: .bottom) {
                         Button {
                             withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                                 selected = selected == gate.id ? nil : gate.id
                             }
                         } label: {
-                            GatePin(mine: true, selected: selected == gate.id, coverPath: gate.cover_path, showsName: false)
+                            GatePin(mine: true, selected: selected == gate.id, coverPath: gate.cover, showsName: false)
                         }
                         .buttonStyle(.plain)
                     }
                     .annotationTitles(selected == gate.id ? .visible : .hidden)
+                } else {
+                    Annotation("\(cluster.items.count) 個の GATE", coordinate: cluster.coordinate, anchor: .bottom) {
+                        Button {
+                            Haptics.tap()
+                            if let region = MapClusters.zoomRegion(for: cluster) {
+                                withAnimation(.easeInOut(duration: 0.5)) { position = .region(region) }
+                            } else {
+                                stack = PinStack(items: cluster.items)
+                            }
+                        } label: {
+                            GateStackPin(cluster: cluster, selected: cluster.contains(selected))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .annotationTitles(.hidden)
                 }
             }
+        }
+        .onMapCameraChange(frequency: .onEnd) { context in
+            metersPerPoint = MapClusters.metersPerPoint(context.region, height: Self.mapHeight)
         }
         .mapControls {
             MapUserLocationButton()
             MapCompass()
         }
         .safeAreaPadding(EdgeInsets(top: 50, leading: 16, bottom: 8, trailing: 16))
-        .frame(height: 300)
+        .frame(height: Self.mapHeight)
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(Theme.line))
         .overlay(alignment: .topLeading) {
@@ -157,14 +188,19 @@ struct MyGatesMapCard: View {
     private var placed: [MyGate] { gates.filter { $0.coordinate != nil } }
 
     var body: some View {
-        Map(initialPosition: MapFraming.position(placed.compactMap(\.coordinate)), interactionModes: []) {
-            ForEach(placed.prefix(40)) { gate in
-                if let c = gate.coordinate {
-                    Annotation(gate.title, coordinate: c, anchor: .bottom) {
-                        GatePin(mine: true, coverPath: gate.cover_path, showsName: false)
+        let coords = placed.compactMap(\.coordinate)
+        let mpp = MapFraming.region(coords).map { MapClusters.metersPerPoint($0, height: 190) } ?? 2
+        Map(initialPosition: MapFraming.position(coords), interactionModes: []) {
+            // 重なる印はまとめる（さわれない地図なので、数だけ見せる）
+            ForEach(MapClusters.group(MyGate.pins(Array(placed.prefix(40))), metersPerPoint: mpp)) { cluster in
+                Annotation(cluster.items[0].title, coordinate: cluster.coordinate, anchor: .bottom) {
+                    if cluster.isSingle {
+                        GatePin(mine: true, coverPath: cluster.items[0].cover, showsName: false)
+                    } else {
+                        GateStackPin(cluster: cluster)
                     }
-                    .annotationTitles(.hidden)
                 }
+                .annotationTitles(.hidden)
             }
         }
         // 印は場所の上に立つので、上に余白をとって地図に収める（下の札にも重ならないように）
@@ -187,5 +223,15 @@ struct MyGatesMapCard: View {
         }
         .allowsHitTesting(false)
         .contentShape(Rectangle())
+    }
+}
+
+
+extension MyGate {
+    /// 地図の印にする（位置のあるものだけ）
+    static func pins(_ gates: [MyGate]) -> [MapPinItem] {
+        gates.compactMap { gate in
+            gate.coordinate.map { MapPinItem(id: gate.id, title: gate.title, cover: gate.cover_path, coordinate: $0, mine: true) }
+        }
     }
 }

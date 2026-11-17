@@ -207,11 +207,22 @@ enum DemoData {
         case "gf_my_visit_history":
             return [["visited_at": ago(3600)], ["visited_at": ago(9 * 86400)], ["visited_at": ago(40 * 86400)]]
         case "gf_discover_nearby":
+            // 駅前の大時計と同じ所に、ほかの GATE を 2 つ（地図の「重ねた印」の見本）
+            let clock = gates[1]
+            let sameSpot: [[String: Any]] = [
+                ["id": "6A0B1C2D-0000-4000-8000-00000000A001", "title": "駅前のベンチ", "kind": "place",
+                 "owner": misaki.uuidString, "owner_name": names[misaki] ?? "", "distance_m": 60.0,
+                 "approx_lat": clock.lat, "approx_lon": clock.lon, "cover_path": "demo/park.jpg", "visibility": "friends",
+                 "mine": false],
+                ["id": "6A0B1C2D-0000-4000-8000-00000000A002", "title": "時計の下の落書き", "kind": "object",
+                 "owner": me.uuidString, "owner_name": names[me] ?? "", "distance_m": 61.0,
+                 "approx_lat": clock.lat, "approx_lon": clock.lon, "cover_path": NSNull() as Any, "visibility": "friends",
+                 "mine": true]]
             return gates.enumerated().map { i, g in
                 ["id": g.id.uuidString, "title": g.title, "kind": g.kind, "owner": g.owner.uuidString,
                  "owner_name": names[g.owner] ?? "", "distance_m": [24.0, 58.0, 91.0][i], "approx_lat": g.lat, "approx_lon": g.lon,
-                 "cover_path": nn(g.cover), "visibility": "friends", "mine": g.owner == me]
-            }
+                 "cover_path": nn(g.cover), "visibility": "friends", "mine": g.owner == me] as [String: Any]
+            } + sameSpot
         case "gf_nearby_cards":
             return [["id": UUID().uuidString, "gate_id": hill.uuidString, "gate_title": "夕焼けの見える丘", "gate_kind": "view",
                      "author": misaki.uuidString, "author_name": "みさき", "body": "ここから見る夕焼けが一番好き。",
