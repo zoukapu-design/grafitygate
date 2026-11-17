@@ -63,6 +63,8 @@ final class ARExperienceModel: ObservableObject {
     var createKind: GateKind { GateKind(raw: form.kind) }
     /// 扉の大きさ（1 = 人が通る大きさ）。作る人が置くときに選び、サーバーに残して見る人にも同じ大きさで出す
     @Published private(set) var doorScale: Float = 1
+    /// 扉の向こうが回廊（見えない壁で囲んだ世界）か。景色の GATE は額縁なので、中に立たせるのはできない
+    var doorStyleIsPortal: Bool { door?.style == .portal }
     static let doorSizes: [(label: String, scale: Float)] = [("小", 0.3), ("中", 0.6), ("大", 1.0)]
     /// 種類ごとのはじめの大きさ（机の上の物に人の大きさの扉は大きすぎる）
     static func defaultDoorScale(for kind: GateKind) -> Float {
@@ -137,6 +139,8 @@ final class ARExperienceModel: ObservableObject {
     @Published var trailNote: String?
     /// 歩き終えた TRAIL（「ゴール！」を出す）
     @Published var trailGoal: TrailReached?
+    /// 扉をくぐった直後の光（画面いっぱいの白い光と「扉をくぐった！」）
+    @Published var passFlash = false
     /// 扉が出たら光を出す、着いた TRAIL
     private var pendingTrail: [TrailReached] = []
     /// 扉の位置を指で合わせているあいだ（仮の位置に出たとき。動かすのは自分の画面だけ）
@@ -442,6 +446,8 @@ final class ARExperienceModel: ObservableObject {
         do {
             let newDoor = try GateDoor(anchor: anchor, in: stage.arView, style: targetKind == .view ? .window : .portal)
             newDoor.setSize(doorScale)
+            // 扉をくぐる・iPhone を開口部へ入れると、扉が開いて中へ（AR を活かした入り方）
+            newDoor.onPassThrough = { [weak self] in self?.passedThroughDoor() }
             door = newDoor
             hasPlacedDoor = true
             newDoor.appear()
@@ -526,6 +532,22 @@ final class ARExperienceModel: ObservableObject {
         Haptics.open()
         phase = .doorOpen
         revealArtworks()
+    }
+
+    /// 扉をくぐった：閉じていれば開け、光と鐘のあと「扉の中」へ
+    func passedThroughDoor() {
+        guard phase == .doorClosed || phase == .doorOpen, art == nil, !adjustingDoor,
+              presentedGate == nil, !passFlash else { return }
+        if phase == .doorClosed { openDoor() }
+        door?.passFlash()
+        Haptics.success()
+        passFlash = true
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_200_000_000)
+            passFlash = false
+            guard phase == .doorOpen, art == nil, presentedGate == nil else { return }
+            goInside()
+        }
     }
 
     func goInside() {

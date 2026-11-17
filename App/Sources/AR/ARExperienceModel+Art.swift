@@ -36,6 +36,8 @@ extension ARExperienceModel {
         var action: ArtworkAction = .glow
         var visibility: Visibility = .friends
         var scale: Float = 1
+        /// 人物の映像を「扉の中」に立たせる（扉の向こうから手を振る・手まねきする）
+        var insideDoor = false
     }
 
     /// 1 人が 1 つの GATE に置ける AR の飾りの数（サーバーの artworks_per_user_gate と同じ）
@@ -428,13 +430,36 @@ extension ARExperienceModel {
         art = .placing
     }
 
+    /// 人物の映像を、扉の向こう（回廊の中・扉から少し奥）に立たせる／自由に置く
+    func setPersonInsideDoor(_ on: Bool) {
+        guard draft.kind == .person, let scene = artScene else { return }
+        draft.insideDoor = on
+        if on {
+            // 扉の大きさに合わせて小さくし、開口部から全身が見える所に
+            let size = max(0.3, min(1, doorScale))
+            scene.previewPinned = SIMD3<Float>(0, 0, -1.6 * doorScale)
+            setPreviewScale(size)
+        } else {
+            scene.previewPinned = nil
+            setPreviewScale(1)
+        }
+        Trace.log(on ? "人物の映像を扉の中に立たせる" : "人物の映像を自由に置く")
+    }
+
     func setPreviewScale(_ value: Float) {
         draft.scale = value
         artScene?.previewScale = value
     }
 
     /// 決まった形のルール：触れる・押すと選んだ動き（映像・声は流す）、近づく・扉が開くとやわらかく光る
-    static func rules(for action: ArtworkAction, kind: ArtworkKind) -> [ArtworkRule] {
+    static func rules(for action: ArtworkAction, kind: ArtworkKind, insideDoor: Bool = false) -> [ArtworkRule] {
+        // 扉の中に立たせた人物の映像は、扉が開いた・近づいたときにも流れる（向こうから手を振って誘う）
+        if kind == .person && insideDoor {
+            return [ArtworkRule(.touch, .play, cooldownMS: 1200),
+                    ArtworkRule(.tap, .play, cooldownMS: 600),
+                    ArtworkRule(.approach, .play, cooldownMS: 10000),
+                    ArtworkRule(.open, .play)]
+        }
         let action = kind.isMedia ? ArtworkAction.play : (action == .play ? .glow : action)
         return [ArtworkRule(.touch, action, cooldownMS: 1200),
          ArtworkRule(.tap, action, cooldownMS: 600),
@@ -444,6 +469,8 @@ extension ARExperienceModel {
 
     func backFromPlacing() {
         artScene?.endPreview()
+        artScene?.previewPinned = nil
+        draft.insideDoor = false
         if let id = movingArtwork {
             movingArtwork = nil
             art = .selected(id)
@@ -454,6 +481,8 @@ extension ARExperienceModel {
 
     func cancelArt() {
         artScene?.endPreview()
+        artScene?.previewPinned = nil
+        draft.insideDoor = false
         if art == .placing || art == .composing || art == .choosing { discardArtMedia() }
         movingArtwork = nil
         notice = nil
@@ -523,7 +552,7 @@ extension ARExperienceModel {
                 break
             }
             let text = String(draft.text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(Self.artTextLimit))
-            let rules = Self.rules(for: draft.action, kind: draft.kind)
+            let rules = Self.rules(for: draft.action, kind: draft.kind, insideDoor: draft.insideDoor)
             let asDraft = draft.asDraft
             let id = try await api.placeArtwork(visit: visit, kind: draft.kind, body: draft.kind == .text ? text : "",
                                                 photoPath: mainPath, thumbPath: thumbPath, duration: duration,

@@ -55,6 +55,102 @@ enum DoorTextures {
         return make(key: key, ctx: ctx)
     }
 
+    // MARK: 扉の向こうの回廊（2026-11-18 オーナー「写真が貼り付けてあるだけ」→ 中に入りたくなる奥行きのある世界）
+
+    /// 回廊の横の壁：足もとに夕焼けの光、上は星の夜空（横長）
+    static func innerWall() -> TextureResource? {
+        let key = "inner-wall"
+        if let t = cache[key] { return t }
+        let w = 1024, h = 512
+        guard let ctx = context(width: w, height: h) else { return nil }
+        let space = CGColorSpace(name: CGColorSpace.sRGB)
+        let colors = [UIColor(red: 1.00, green: 0.62, blue: 0.42, alpha: 1).cgColor,
+                      UIColor(red: 0.78, green: 0.28, blue: 0.52, alpha: 1).cgColor,
+                      UIColor(red: 0.28, green: 0.17, blue: 0.52, alpha: 1).cgColor,
+                      UIColor(red: 0.07, green: 0.08, blue: 0.24, alpha: 1).cgColor,
+                      UIColor(red: 0.03, green: 0.04, blue: 0.13, alpha: 1).cgColor] as CFArray
+        if let g = CGGradient(colorsSpace: space, colors: colors, locations: [0, 0.1, 0.32, 0.7, 1]) {
+            ctx.drawLinearGradient(g, start: .zero, end: CGPoint(x: 0, y: h), options: [])
+        }
+        stars(ctx, width: w, height: h, count: 170, from: 0.35, seed: 11)
+        return make(key: key, ctx: ctx)
+    }
+
+    /// 回廊の天井：深い夜空に、たくさんの星と天の川
+    static func innerCeiling() -> TextureResource? {
+        let key = "inner-ceiling"
+        if let t = cache[key] { return t }
+        let size = 512
+        guard let ctx = context(size: size) else { return nil }
+        ctx.setFillColor(UIColor(red: 0.04, green: 0.05, blue: 0.15, alpha: 1).cgColor)
+        ctx.fill(CGRect(x: 0, y: 0, width: size, height: size))
+        // 天の川（うすい光の帯）
+        var r = SeededRandom(seed: 23)
+        for i in 0..<26 {
+            let f = CGFloat(i) / 25
+            let x = CGFloat(size) * (0.15 + 0.7 * f) + CGFloat(r.next() - 0.5) * 40
+            let y = CGFloat(size) * (0.2 + 0.6 * f) + CGFloat(r.next() - 0.5) * 40
+            let rad = 40 + 50 * CGFloat(r.next())
+            ctx.setFillColor(UIColor(red: 0.62, green: 0.48, blue: 1.0, alpha: 0.05).cgColor)
+            ctx.fillEllipse(in: CGRect(x: x - rad, y: y - rad, width: rad * 2, height: rad * 2))
+        }
+        stars(ctx, width: size, height: size, count: 220, from: 0, seed: 29)
+        return make(key: key, ctx: ctx)
+    }
+
+    /// 回廊の床：暗い夜の色に細い格子、まん中に奥へ続く光の道と、光る踏み石
+    static func innerFloor() -> TextureResource? {
+        let key = "inner-floor"
+        if let t = cache[key] { return t }
+        let w = 512, h = 1024
+        guard let ctx = context(width: w, height: h) else { return nil }
+        let W = CGFloat(w), H = CGFloat(h)
+        ctx.setFillColor(UIColor(red: 0.08, green: 0.06, blue: 0.18, alpha: 1).cgColor)
+        ctx.fill(CGRect(x: 0, y: 0, width: W, height: H))
+        // 細い格子
+        ctx.setStrokeColor(UIColor(red: 0.62, green: 0.40, blue: 1.0, alpha: 0.18).cgColor)
+        ctx.setLineWidth(2)
+        for i in 1..<8 {
+            let x = W * CGFloat(i) / 8
+            ctx.move(to: CGPoint(x: x, y: 0)); ctx.addLine(to: CGPoint(x: x, y: H))
+        }
+        for i in 1..<16 {
+            let y = H * CGFloat(i) / 16
+            ctx.move(to: CGPoint(x: 0, y: y)); ctx.addLine(to: CGPoint(x: W, y: y))
+        }
+        ctx.strokePath()
+        // まん中の光の道（中は夕焼けの色、ふちは夜空の紫）
+        let space = CGColorSpace(name: CGColorSpace.sRGB)
+        let path = [UIColor(red: 0.62, green: 0.36, blue: 1.0, alpha: 0).cgColor,
+                    UIColor(red: 0.85, green: 0.35, blue: 0.75, alpha: 0.55).cgColor,
+                    UIColor(red: 1.0, green: 0.72, blue: 0.48, alpha: 0.95).cgColor,
+                    UIColor(red: 0.85, green: 0.35, blue: 0.75, alpha: 0.55).cgColor,
+                    UIColor(red: 0.62, green: 0.36, blue: 1.0, alpha: 0).cgColor] as CFArray
+        if let g = CGGradient(colorsSpace: space, colors: path, locations: [0, 0.3, 0.5, 0.7, 1]) {
+            ctx.drawLinearGradient(g, start: CGPoint(x: W * 0.36, y: 0), end: CGPoint(x: W * 0.64, y: 0), options: [])
+        }
+        // 光る踏み石
+        for i in 0..<9 {
+            let y = H * (CGFloat(i) + 0.5) / 9
+            let r: CGFloat = 16
+            ctx.setFillColor(UIColor(white: 1, alpha: 0.9).cgColor)
+            ctx.fillEllipse(in: CGRect(x: W / 2 - r, y: y - r, width: r * 2, height: r * 2))
+        }
+        return make(key: key, ctx: ctx)
+    }
+
+    /// 星をちりばめる（from より上だけ。0＝下〜1＝上）
+    private static func stars(_ ctx: CGContext, width: Int, height: Int, count: Int, from: CGFloat, seed: UInt64) {
+        var r = SeededRandom(seed: seed)
+        for _ in 0..<count {
+            let x = CGFloat(r.next()) * CGFloat(width)
+            let y = CGFloat(height) * (from + (1 - from) * CGFloat(r.next()))
+            let rad = 0.7 + 1.9 * CGFloat(r.next())
+            ctx.setFillColor(UIColor(white: 1, alpha: 0.3 + 0.65 * CGFloat(r.next())).cgColor)
+            ctx.fillEllipse(in: CGRect(x: x - rad, y: y - rad, width: rad * 2, height: rad * 2))
+        }
+    }
+
     /// 扉のネオンの色（アイコンと同じ。t は 0＝足もと〜1＝てっぺん）
     static func neonColor(at t: Float) -> UIColor {
         let stops: [(Float, (CGFloat, CGFloat, CGFloat))] = [
@@ -224,7 +320,11 @@ enum DoorTextures {
     }
 
     private static func context(size: Int) -> CGContext? {
-        CGContext(data: nil, width: size, height: size, bitsPerComponent: 8, bytesPerRow: 0,
+        context(width: size, height: size)
+    }
+
+    private static func context(width: Int, height: Int) -> CGContext? {
+        CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
                   space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
                   bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
     }

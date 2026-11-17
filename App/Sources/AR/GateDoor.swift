@@ -48,6 +48,8 @@ final class GateDoor {
         let speed: Float
         let phase: Float
         let rises: Bool
+        /// 立ちのぼる高さ（ここまで来たら足もとへ戻る）
+        var wrap: Float = 2.1
     }
     private var floaters: [Floater] = []
 
@@ -60,8 +62,24 @@ final class GateDoor {
     private var clock: TimeInterval = 0
     private var subscription: Cancellable?
 
+    /// 扉の向こうの回廊の大きさ（扉の大きさ 1 のときの m）
+    private static let worldHalfWidth: Float = 1.8
+    private static let worldHeight: Float = 3.0
+    private static let worldDeep: Float = 5.5
+    /// 回廊を奥へ流れていく光の輪（中へ誘う）と、いちばん奥の光
+    private var beckonRings: [ModelEntity] = []
+    private var farLight = ModelEntity()
+
+    /// 扉をくぐった（歩いて通った・iPhone を開口部の中へ入れた）ときに呼ぶ
+    var onPassThrough: (() -> Void)?
+    private weak var arView: ARView?
+    /// 前のコマのカメラの位置（扉の座標。くぐったかを見る）
+    private var lastCamLocal: SIMD3<Float>?
+    private var passQuietUntil: TimeInterval = 0
+
     init(anchor: ARAnchor, in arView: ARView, style: Style = .portal) throws {
         self.style = style
+        self.arView = arView
         anchorEntity = AnchorEntity(anchor: anchor)
         try MainWatch.run("扉を組み立てる") {
             try build()
@@ -82,6 +100,7 @@ final class GateDoor {
         nudgePosition = position
         nudgeYaw = yaw
         base.transform = Transform(scale: .one, rotation: simd_quatf(angle: yaw, axis: [0, 1, 0]), translation: position)
+        lastCamLocal = nil
     }
 
     /// 台（扉の足もとの中心）の、世界の中での位置・向き
@@ -270,11 +289,8 @@ final class GateDoor {
     }
 
     private func buildInterior(path: [(p: SIMD2<Float>, n: SIMD2<Float>)]) throws {
-        let halfWidth: Float = 1.5
-        let height: Float = 2.7
-        let deep: Float = 2.6
         if style == .portal {
-            try buildPortalWorld(halfWidth: halfWidth, height: height, deep: deep)
+            try buildPortalWorld(halfWidth: Self.worldHalfWidth, height: Self.worldHeight, deep: Self.worldDeep)
         }
         try buildFloatingMemories()
     }
@@ -302,35 +318,97 @@ final class GateDoor {
         back.position = [0, height / 2, -deep]
         [left, right, top, back].forEach { interior.addChild($0) }
 
-        // 向こうの空
-        if let sky = DoorTextures.memorySky() {
-            var m = UnlitMaterial()
-            m.color = .init(tint: .white, texture: .init(sky))
-            let backdrop = ModelEntity(mesh: .generatePlane(width: halfWidth * 2 - 0.02, height: height - 0.02),
-                                       materials: [m])
-            backdrop.position = [0, height / 2, -deep + 0.03]
-            interior.addChild(backdrop)
+        // 見えない壁のすぐ内側に、回廊の壁・天井・床を張る（扉越しに本物の景色が透けず、奥まで続く世界に見える）
+        let inset: Float = 0.015
+        func unlit(_ texture: TextureResource?, fallback: UIColor) -> UnlitMaterial {
+            var m = UnlitMaterial(color: fallback)
+            if let texture { m.color = .init(tint: .white, texture: .init(texture)) }
+            return m
         }
-        // 光の床
-        if let floorTexture = DoorTextures.radial(key: "floor", rgb: (1.0, 0.93, 0.78), alpha: 0.9) {
+        let wallMaterial = unlit(DoorTextures.innerWall(), fallback: UIColor(red: 0.12, green: 0.09, blue: 0.3, alpha: 1))
+        let innerSide = MeshResource.generatePlane(width: deep, height: height)
+        let leftIn = ModelEntity(mesh: innerSide, materials: [wallMaterial])
+        leftIn.orientation = simd_quatf(angle: .pi / 2, axis: [0, 1, 0])
+        leftIn.position = [-halfWidth + inset, height / 2, -deep / 2]
+        let rightIn = ModelEntity(mesh: innerSide, materials: [wallMaterial])
+        rightIn.orientation = simd_quatf(angle: -.pi / 2, axis: [0, 1, 0])
+        rightIn.position = [halfWidth - inset, height / 2, -deep / 2]
+        let ceiling = ModelEntity(mesh: .generatePlane(width: halfWidth * 2, depth: deep),
+                                  materials: [unlit(DoorTextures.innerCeiling(),
+                                                    fallback: UIColor(red: 0.04, green: 0.05, blue: 0.15, alpha: 1))])
+        ceiling.orientation = simd_quatf(angle: .pi, axis: [1, 0, 0])
+        ceiling.position = [0, height - inset, -deep / 2]
+        let floor = ModelEntity(mesh: .generatePlane(width: halfWidth * 2, depth: deep),
+                                materials: [unlit(DoorTextures.innerFloor(),
+                                                  fallback: UIColor(red: 0.08, green: 0.06, blue: 0.18, alpha: 1))])
+        floor.position = [0, 0.004, -deep / 2]
+        // いちばん奥：夕焼けから夜空へ、まん中に光
+        let backdrop = ModelEntity(mesh: .generatePlane(width: halfWidth * 2, height: height),
+                                   materials: [unlit(DoorTextures.memorySky(),
+                                                     fallback: UIColor(red: 0.45, green: 0.29, blue: 0.74, alpha: 1))])
+        backdrop.position = [0, height / 2, -deep + inset]
+        // 扉の裏（中から振り返ったときの壁。開口部から本物の世界が見える）
+        let frontIn = ModelEntity(mesh: try ArchMesh.wallWithOpening(shape: shape, halfWidth: halfWidth, height: height,
+                                                                     z: -0.02),
+                                  materials: [UnlitMaterial(color: UIColor(red: 0.10, green: 0.07, blue: 0.24, alpha: 1))])
+        frontIn.orientation = simd_quatf(angle: .pi, axis: [0, 1, 0])
+        frontIn.position = [0, 0, -0.04]
+        [leftIn, rightIn, ceiling, floor, backdrop, frontIn].forEach { interior.addChild($0) }
+
+        // 奥へ続くネオンのアーチ（手前は夕焼け、奥ほど夜空の色）
+        let arch = ArchShape(openingWidth: 1.7, legHeight: 1.75)
+        let archPath = arch.openingPath()
+        let archMesh = try ArchMesh.frame(path: archPath, width: 0.04, depth: 0.04, name: "tunnel-arch")
+        let archZ: [Float] = [-1.0, -2.1, -3.2, -4.3]
+        for (i, z) in archZ.enumerated() {
+            let a = ModelEntity(mesh: archMesh,
+                                materials: [UnlitMaterial(color: DoorTextures.neonColor(at: 0.1 + 0.85 * Float(i) / Float(archZ.count - 1)))])
+            a.position = [0, 0, z]
+            interior.addChild(a)
+        }
+
+        // 奥の光（息をするように明るさが変わる）と、そのにじみ
+        farLight = ModelEntity(mesh: .generateSphere(radius: 0.22),
+                               materials: [UnlitMaterial(color: UIColor(red: 1.0, green: 0.93, blue: 0.82, alpha: 1))])
+        farLight.position = [0, 1.45, -deep + 0.7]
+        interior.addChild(farLight)
+        if let haloTexture = DoorTextures.radial(key: "far-halo", rgb: (1.0, 0.78, 0.6), alpha: 0.85) {
             var m = UnlitMaterial()
-            m.color = .init(tint: .white, texture: .init(floorTexture))
+            m.color = .init(tint: .white, texture: .init(haloTexture))
             m.blending = .transparent(opacity: .init(floatLiteral: 1))
-            let floor = ModelEntity(mesh: .generatePlane(width: halfWidth * 2 - 0.1, depth: deep - 0.1), materials: [m])
-            floor.position = [0, 0.006, -deep / 2]
-            interior.addChild(floor)
+            let halo = ModelEntity(mesh: .generatePlane(width: 1.8, height: 1.8), materials: [m])
+            halo.position = [0, 1.45, -deep + 0.5]
+            interior.addChild(halo)
         }
+
+        // 奥へ流れていく光の輪（扉の前の人を、中へ誘う）
+        if let ringTexture = DoorTextures.neonRing() {
+            var m = UnlitMaterial()
+            m.color = .init(tint: .white, texture: .init(ringTexture))
+            m.blending = .transparent(opacity: .init(floatLiteral: 1))
+            for _ in 0..<2 {
+                let r = ModelEntity(mesh: .generatePlane(width: 1.6, height: 1.6), materials: [m])
+                r.position = [0, 1.1, -0.3]
+                interior.addChild(r)
+                beckonRings.append(r)
+            }
+        }
+        Trace.log("扉の向こうの回廊を作りました（奥行き \(deep)m・アーチ \(archZ.count)）")
     }
 
     /// 浮かぶ思い出の写真と、立ちのぼる光の粒（どちらの見え方でも）
     private func buildFloatingMemories() throws {
         // 思い出の写真を浮かべる場所（写真が届いたら入れる）
-        let slots: [(SIMD3<Float>, Float)] = [([-0.42, 1.25, -1.15], 0.18), ([0.38, 1.05, -1.55], -0.14),
-                                              ([0.02, 1.55, -2.05], 0.04)]
+        // 回廊（portal）では奥へ並べ、少し大きく。額縁（window）では扉のすぐ向こう
+        let deepWorld = style == .portal
+        let slots: [(SIMD3<Float>, Float)] = deepWorld
+            ? [([-0.75, 1.35, -1.5], 0.32), ([0.8, 1.15, -2.6], -0.28), ([0.0, 1.8, -3.7], 0.0)]
+            : [([-0.42, 1.25, -1.15], 0.18), ([0.38, 1.05, -1.55], -0.14), ([0.02, 1.55, -2.05], 0.04)]
         for (i, slot) in slots.enumerated() {
             let holder = Entity()
             holder.position = slot.0
             holder.orientation = simd_quatf(angle: slot.1, axis: [0, 1, 0])
+            if deepWorld { holder.scale = .one * 1.35 }
             var backing = PhysicallyBasedMaterial()
             backing.baseColor = .init(tint: .white)
             backing.roughness = .init(floatLiteral: 0.4)
@@ -355,15 +433,18 @@ final class GateDoor {
             m.blending = .transparent(opacity: .init(floatLiteral: 0.85))
             return m
         }
-        let count = Perf.isLowMemoryDevice ? 14 : 22
+        let count = deepWorld ? (Perf.isLowMemoryDevice ? 22 : 36) : (Perf.isLowMemoryDevice ? 14 : 22)
+        let spanX: Float = deepWorld ? 1.5 : 0.9
+        let farZ: Float = deepWorld ? -(Self.worldDeep - 0.4) : -2.2
+        let top: Float = deepWorld ? 2.8 : 2.2
         for i in 0..<count {
             let e = ModelEntity(mesh: mote, materials: [moteMaterials[i % moteMaterials.count]])
-            let base = SIMD3<Float>(Float.random(in: -0.9...0.9), Float.random(in: 0.1...2.2), Float.random(in: -2.2 ... -0.3))
+            let base = SIMD3<Float>(Float.random(in: -spanX...spanX), Float.random(in: 0.1...top), Float.random(in: farZ ... -0.3))
             e.position = base
-            e.scale = .one * Float.random(in: 0.6...1.4)
+            e.scale = .one * Float.random(in: 0.6...1.4) * (deepWorld ? 1.3 : 1)
             interior.addChild(e)
             floaters.append(Floater(entity: e, base: base, amplitude: 0.05, speed: Float.random(in: 0.08...0.18),
-                                    phase: Float(i) * 0.9, rises: true))
+                                    phase: Float(i) * 0.9, rises: true, wrap: top - 0.1))
         }
     }
 
@@ -390,6 +471,7 @@ final class GateDoor {
         let v = min(max(value, 0.2), 1.5)
         size = v
         root.scale = .one * v
+        lastCamLocal = nil
     }
 
     /// 足もとから現れ、ネオンがまたたいて灯る
@@ -437,14 +519,7 @@ final class GateDoor {
             self.neonGlow.scale = .one * (1 + 0.12 * pulse)
         }
         // 扉から光の輪が広がる
-        ring.isEnabled = true
-        animate(1.0) { [weak self] t in
-            guard let self else { return }
-            let e = Self.easeOut(t)
-            self.ring.scale = .one * (0.4 + 2.6 * e)
-            Fade.set(self.ring, 0.95 * (1 - t))
-            if t >= 1 { self.ring.isEnabled = false }
-        }
+        burstRing()
         // 開く音（夕焼けから夜空へ、下から上へ 3 つの音）
         ChimePlayer.shared.play(.warm)
         Task { @MainActor in
@@ -454,6 +529,63 @@ final class GateDoor {
             ChimePlayer.shared.play(.sky)
         }
         Trace.log("扉が開きました")
+    }
+
+    private func burstRing() {
+        ring.isEnabled = true
+        animate(1.0) { [weak self] t in
+            guard let self else { return }
+            let e = Self.easeOut(t)
+            self.ring.scale = .one * (0.4 + 2.6 * e)
+            Fade.set(self.ring, 0.95 * (1 - t))
+            if t >= 1 { self.ring.isEnabled = false }
+        }
+    }
+
+    /// 扉をくぐったときの光：光の輪が広がり、ネオンが強く光り、鐘が上へ鳴る
+    func passFlash() {
+        burstRing()
+        animate(1.2) { [weak self] t in
+            guard let self else { return }
+            let pulse = sin(Float.pi * t)
+            self.setNeon(1)
+            self.neonGlow.scale = .one * (1 + 0.25 * pulse)
+        }
+        let notes: [ArtworkColor] = [.warm, .sakura, .mint, .sky]
+        Task { @MainActor in
+            for (i, note) in notes.enumerated() {
+                if i > 0 { try? await Task.sleep(nanoseconds: 110_000_000) }
+                ChimePlayer.shared.play(note)
+            }
+        }
+        Trace.log("扉をくぐった光を出した")
+    }
+
+    /// カメラ（iPhone）が開口部を手前から奥へ通ったか（扉の座標で見る）
+    private func checkPassThrough() {
+        guard let arView, onPassThrough != nil else { return }
+        let camera = root.convert(position: arView.cameraTransform.translation, from: nil)
+        defer { lastCamLocal = camera }
+        guard let last = lastCamLocal, clock >= passQuietUntil else { return }
+        // AR の座標が直されて 1 コマで大きく飛んだときは、くぐったとしない
+        guard simd_distance(last, camera) * size < 0.6 else { return }
+        guard last.z > 0, camera.z <= 0 else { return }
+        let t = last.z / max(last.z - camera.z, 0.0001)
+        let p = last + (camera - last) * t
+        // 開口部の形（少しゆるめに）の中を通ったか
+        let margin: Float = 0.08
+        let inside: Bool
+        if p.y < -0.15 || p.y > shape.innerHeight + margin {
+            inside = false
+        } else if p.y <= shape.legHeight {
+            inside = abs(p.x) <= shape.radius + margin
+        } else {
+            inside = simd_length(SIMD2<Float>(p.x, p.y - shape.legHeight)) <= shape.radius + margin
+        }
+        guard inside else { return }
+        passQuietUntil = clock + 4
+        Trace.log(String(format: "扉をくぐった（扉の大きさ %.2f・通った所 x %.2f y %.2f）", size, p.x, p.y))
+        onPassThrough?()
     }
 
     /// TRAIL の地点に着いたときの光：扉の足もとから、夕焼けと夜空の色の光の粒が舞い上がる（big＝歩き終えた）
@@ -495,6 +627,8 @@ final class GateDoor {
         anchorEntity.removeFromParent()
         tweens.removeAll()
         floaters.removeAll()
+        beckonRings.removeAll()
+        onPassThrough = nil
     }
 
     private func animate(_ duration: TimeInterval, _ apply: @escaping (Float) -> Void) {
@@ -503,6 +637,7 @@ final class GateDoor {
 
     private func update(dt: TimeInterval) {
         clock += dt
+        checkPassThrough()
         // 進行中の動き
         tweens.removeAll { tween in
             let t = Float(min(max((clock - tween.start) / tween.duration, 0), 1))
@@ -518,10 +653,21 @@ final class GateDoor {
             return
         }
         let time = Float(clock)
+        // 奥へ流れていく光の輪（2 つが交互に。奥ほど小さく、うすく）と、奥の光の息づかい
+        if !beckonRings.isEmpty {
+            let travel = Self.worldDeep - 1.0
+            for (i, r) in beckonRings.enumerated() {
+                let f = (time * 0.32 + Float(i) * 0.5).truncatingRemainder(dividingBy: 1)
+                r.position = [0, 1.1 + 0.3 * f, -0.3 - travel * f]
+                r.scale = .one * (1.0 - 0.45 * f)
+                Fade.set(r, sin(Float.pi * f) * 0.85)
+            }
+            farLight.scale = .one * (1 + 0.12 * sin(time * 1.4))
+        }
         for f in floaters {
             if f.rises {
                 var y = f.base.y + f.speed * time
-                y = 0.1 + (y - 0.1).truncatingRemainder(dividingBy: 2.1)
+                y = 0.1 + (y - 0.1).truncatingRemainder(dividingBy: f.wrap)
                 f.entity.position = [f.base.x + sin(time * 0.7 + f.phase) * f.amplitude, y, f.base.z]
             } else {
                 f.entity.position = f.base + [0, sin(time * f.speed + f.phase) * f.amplitude, 0]

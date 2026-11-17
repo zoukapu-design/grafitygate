@@ -28,6 +28,8 @@ final class ArtworkScene {
     private var previewPosition: SIMD3<Float>?
     private(set) var previewInRange = true
     var previewDistance: Float = 1.0
+    /// 見本をカメラについてこさせず、扉の座標のこの位置に止める（人物の映像を扉の中に立たせるとき）
+    var previewPinned: SIMD3<Float>?
     var previewScale: Float = 1 {
         didSet { preview?.root.scale = .one * previewScale }
     }
@@ -214,7 +216,7 @@ final class ArtworkScene {
         if simd_length(forward) < 0.001 { forward = [0, 0, -1] }
         forward = simd_normalize(forward)
         let worldTarget = camPos + forward * previewDistance
-        let local = container.convert(position: worldTarget, from: nil)
+        let local = previewPinned ?? container.convert(position: worldTarget, from: nil)
         let limit = Self.horizontalLimit
         // 人物の映像は、扉と同じ地面に立たせる（高さは見ている向きに関係なく 0）
         let standsOnGround = preview.artwork.artKind == .person

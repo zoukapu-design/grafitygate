@@ -103,6 +103,13 @@ struct ARExperienceView: View {
             }
         }
         .animation(.spring(response: 0.45, dampingFraction: 0.8), value: model.trailGoal)
+        .overlay {
+            if model.passFlash {
+                PassThroughFlash()
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.35), value: model.passFlash)
         .sheet(item: $model.reportItem) { item in
             ReportSheet(item: item) { model.removeArtworks(of: item.userID) }
                 .environmentObject(session)
@@ -311,8 +318,13 @@ private struct ExperienceCard: View {
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Theme.warm)
                 }
-                Caption(model.placedPrecisely ? "作った人が扉を置いた場所です。扉を押すと開きます。"
-                                              : "GATE の位置の記録が見つからなかったので、仮の位置に出しています。扉を押すと開きます。")
+                Caption(model.placedPrecisely ? "作った人が扉を置いた場所です。扉を押すか、扉をくぐると開きます。"
+                                              : "GATE の位置の記録が見つからなかったので、仮の位置に出しています。扉を押すか、扉をくぐると開きます。")
+                Label(model.doorScale < 0.6 ? "小さな扉は、iPhone を扉の中へそっと入れても開きます"
+                                            : "歩いて扉をくぐると、そのまま中へ入れます",
+                      systemImage: "figure.walk.arrival")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Theme.accent)
                 Button("扉を開く") { model.openDoor() }
                     .buttonStyle(PrimaryButtonStyle())
                 if !model.placedPrecisely {
@@ -719,6 +731,8 @@ private struct DoorOpenCard: View {
                                       : "AR の飾りが \(model.artworkCount) 個あります。近づいたり、画面で押したりすると動きます。")
             }
             if let warning = model.mapWarning { Caption(warning) }
+            Caption(model.doorScale < 0.6 ? "iPhone を扉の中へ入れるか、「中へ」を押すと、扉の中へ。"
+                                          : "扉をくぐるか、「中へ」を押すと、扉の中へ。")
             Button("中へ") { model.goInside() }
                 .buttonStyle(PrimaryButtonStyle())
             if !model.placedPrecisely {
@@ -1136,12 +1150,23 @@ private struct ArtCard: View {
     private var placing: some View {
         VStack(alignment: .leading, spacing: 10) {
             Title(model.movingArtwork == nil ? "置く所を決める" : "置き直す")
-            Caption("置きたい所に iPhone を向けてください。見本がついてきます。歩いて近づいたり離れたりもできます。")
+            if model.draft.kind == .person && model.movingArtwork == nil && model.doorStyleIsPortal {
+                // 扉の向こうから手を振る：扉の中（回廊）に立たせる
+                Picker("置き方", selection: Binding(get: { model.draft.insideDoor },
+                                                  set: { model.setPersonInsideDoor($0) })) {
+                    Text("扉の中に立たせる").tag(true)
+                    Text("好きな所に置く").tag(false)
+                }
+                .pickerStyle(.segmented)
+            }
+            Caption(model.draft.insideDoor
+                    ? "扉の向こうに立ちます。扉が開くと流れて、来た人に中から手を振ります（撮るときに手を振ったり、手まねきしたりするのがおすすめ）。"
+                    : "置きたい所に iPhone を向けてください。見本がついてきます。歩いて近づいたり離れたりもできます。")
             HStack(spacing: 10) {
                 Image(systemName: "minus.magnifyingglass").foregroundStyle(Theme.textSecondary)
                 Slider(value: Binding(get: { Double(model.draft.scale) },
                                       set: { model.setPreviewScale(Float($0)) }),
-                       in: 0.5...2.0)
+                       in: (model.draft.insideDoor ? 0.3 : 0.5)...2.0)
                     .tint(Theme.accent)
                 Image(systemName: "plus.magnifyingglass").foregroundStyle(Theme.textSecondary)
             }
@@ -1344,7 +1369,7 @@ private struct PersonCaptureCard: View {
                 }
                 Caption(recording
                         ? "止めるときは、もう一度押します。10 秒で自動で止まります。"
-                        : "映したい人の頭から足もとまで（全身）が入るように、2〜3m 離れてカメラを向け、赤いボタンで撮り始めます。声も一緒に残ります。足もとまで写すと、その場に立っているように見えます（明るい所・1 人だけが切り抜きやすいです）。")
+                        : "映したい人の頭から足もとまで（全身）が入るように、2〜3m 離れてカメラを向け、赤いボタンで撮り始めます。声も一緒に残ります。足もとまで写すと、その場に立っているように見えます（明るい所・1 人だけが切り抜きやすいです）。手を振ったり手まねきしたりして撮ると、扉の中から来た人を誘えます。")
                 if recording {
                     ProgressView(value: min(recorder.elapsed, ARPersonRecorder.limit), total: ARPersonRecorder.limit)
                         .tint(.red)
@@ -1428,5 +1453,36 @@ struct TrailGoalOverlay: View {
         .onAppear { glow = true }
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(.isModal)
+    }
+}
+
+
+/// 扉をくぐった瞬間：白い光が広がって消え、「扉をくぐった！」
+private struct PassThroughFlash: View {
+    @State private var bloom = false
+
+    var body: some View {
+        ZStack {
+            RadialGradient(colors: [.white.opacity(0.95), Color(hex: 0xFFB37A).opacity(0.55), Color(hex: 0x8A4DF5).opacity(0.25), .clear],
+                           center: .center, startRadius: 0, endRadius: bloom ? 900 : 120)
+                .opacity(bloom ? 0.0 : 1)
+                .animation(.easeOut(duration: 1.4), value: bloom)
+            VStack(spacing: 8) {
+                Text("扉をくぐった！")
+                    .font(.system(size: 34, weight: .heavy))
+                    .foregroundStyle(.white)
+                    .shadow(color: Color(hex: 0x8A4DF5).opacity(0.9), radius: 16)
+                Text("扉の中へ入ります")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(.white.opacity(0.9))
+                    .shadow(color: .black.opacity(0.4), radius: 6)
+            }
+            .scaleEffect(bloom ? 1 : 0.85)
+            .animation(.spring(response: 0.5, dampingFraction: 0.7), value: bloom)
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+        .onAppear { bloom = true }
+        .accessibilityElement(children: .combine)
     }
 }
