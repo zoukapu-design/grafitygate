@@ -35,7 +35,7 @@ struct PinStack: Identifiable {
 
 enum MapClusters {
     /// 印の大きさ（pt）。名前の札まで入れて、これより近いと重なって見える
-    static let pinPoints: Double = 64
+    static let pinPoints: Double = 80
 
     /// 1pt が何 m か（地図の縦の広さと、地図の高さから）
     static func metersPerPoint(_ region: MKCoordinateRegion, height: CGFloat) -> Double {
