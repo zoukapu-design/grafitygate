@@ -5262,6 +5262,21 @@ language sql stable security definer set search_path = public as $$
   select viewer is not null and p.id in (select gf_peek_card_ids(p.gate_id, viewer))
 $$;
 
+-- チラ見せに出す掲示板の話題（題名だけ。ピン留め → 新しく動いた順に 5 つ）
+create or replace function public.gf_peek_thread_ids(p_gate uuid, viewer uuid) returns setof uuid
+language sql stable security definer set search_path = public as $$
+  select t.id from gf_board_threads t join gf_gates g on g.id = t.gate_id
+  where t.gate_id = p_gate and viewer is not null and gf_can_see_gate(g, viewer)
+    and t.deleted_at is null and not gf_blocked(viewer, t.author)
+  order by t.pinned desc, t.last_activity_at desc
+  limit 5
+$$;
+
+create or replace function public.gf_peek_thread_visible(t public.gf_board_threads, viewer uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select viewer is not null and t.id in (select gf_peek_thread_ids(t.gate_id, viewer))
+$$;
+
 -- グラフィティボードに出すもの：鍵を持っているか、チラ見せのカード 3 枚、掲示板の話題の題名 5 つ（本文は出さない）
 create or replace function public.gf_gate_peek(p_gate uuid) returns jsonb
 language plpgsql stable security definer set search_path = public as $$
@@ -5285,9 +5300,7 @@ begin
       select jsonb_agg(jsonb_build_object('id', t.id, 'topic', t.topic, 'title', t.title, 'reply_count', t.reply_count,
                                           'last_activity_at', t.last_activity_at, 'resolved', t.resolved_at is not null)
                        order by t.pinned desc, t.last_activity_at desc)
-      from (select * from gf_board_threads t
-            where t.gate_id = p_gate and t.deleted_at is null and not gf_blocked(me, t.author)
-            order by t.pinned desc, t.last_activity_at desc limit 5) t), '[]'::jsonb),
+      from gf_board_threads t where t.id in (select gf_peek_thread_ids(p_gate, me))), '[]'::jsonb),
     'thread_count', (select count(*) from gf_board_threads t
                      where t.gate_id = p_gate and t.deleted_at is null and not gf_blocked(me, t.author)));
 end $$;
@@ -5439,12 +5452,12 @@ begin
       select g.owner, g.title into who, what from gf_gates g where g.id = p_id and gf_can_see_gate(g, me);
     when 'graffiti' then
       select x.author, x.body into who, what from gf_graffiti x
-      where x.id = p_id and (gf_can_read_graffiti(x, me) or gf_feed_visible(x, me));
+      where x.id = p_id and (gf_can_read_graffiti(x, me) or gf_feed_visible(x, me) or gf_peek_card_visible(x, me));
     when 'artwork' then
       select a.owner, a.kind || ' ' || a.body into who, what from gf_artworks a where a.id = p_id and gf_can_see_artwork(a, me);
     when 'thread' then
       select t.author, t.title || ' ' || t.body into who, what from gf_board_threads t
-      where t.id = p_id and gf_can_read_thread(t, me);
+      where t.id = p_id and (gf_can_read_thread(t, me) or gf_peek_thread_visible(t, me));
     when 'reply' then
       select r.author, r.body into who, what from gf_board_replies r join gf_board_threads t on t.id = r.thread_id
       where r.id = p_id and r.deleted_at is null and gf_can_read_thread(t, me);
@@ -5512,6 +5525,8 @@ revoke all on function public.gf_can_read_graffiti(public.gf_graffiti, uuid) fro
 revoke all on function public.gf_can_read_thread(public.gf_board_threads, uuid) from public, anon;
 revoke all on function public.gf_peek_card_ids(uuid, uuid) from public, anon, authenticated;
 revoke all on function public.gf_peek_card_visible(public.gf_graffiti, uuid) from public, anon, authenticated;
+revoke all on function public.gf_peek_thread_ids(uuid, uuid) from public, anon, authenticated;
+revoke all on function public.gf_peek_thread_visible(public.gf_board_threads, uuid) from public, anon, authenticated;
 grant execute on function public.gf_can_read_graffiti(public.gf_graffiti, uuid) to authenticated;
 grant execute on function public.gf_can_read_thread(public.gf_board_threads, uuid) to authenticated;
 

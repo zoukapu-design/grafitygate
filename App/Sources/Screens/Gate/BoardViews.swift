@@ -1,6 +1,8 @@
 import SwiftUI
 
-/// 掲示板：GATE ごとの話題（思い出話・質問・お知らせ）と返信。読む・書くのは現地で扉を開けているあいだ。
+/// 掲示板：GATE ごとの話題（思い出話・質問・お知らせ）と返信。
+/// 書く・返すのは現地で扉を開けているあいだ。読むのは、扉の中か、一度扉を開けたことのある人（0024）。
+/// まだ開けたことのない人には、話題の題名だけを見せる（チラ見せ）。
 struct BoardSection: View {
     let context: GateContext
     let refreshToken: Int
@@ -10,6 +12,7 @@ struct BoardSection: View {
     @State private var query = ""
     @State private var error: String?
     @State private var showNew = false
+    @State private var report: ReportItem?
 
     init(context: GateContext, refreshToken: Int) {
         self.context = context
@@ -31,24 +34,31 @@ struct BoardSection: View {
                     Label("話題を立てる", systemImage: "square.and.pencil")
                 }
                 .buttonStyle(SecondaryButtonStyle())
-                if threads.count >= 3 {
-                    HStack {
-                        Image(systemName: "magnifyingglass").foregroundStyle(Theme.textSecondary)
-                        TextField("話題を探す", text: $query)
-                    }
-                    .padding(10)
-                    .background(Theme.surfaceElevated, in: RoundedRectangle(cornerRadius: 12))
-                }
-            } else if threads.isEmpty {
-                Text("掲示板は、現地で扉を開けると読めます。思い出話・質問・注意したいことを、ここに来た人どうしで話せます。")
-                    .font(.subheadline).foregroundStyle(Theme.textSecondary)
+            } else if context.opened {
+                Label("一度扉を開けた GATE なので、遠くからも読めます。話題を立てる・返信するのは、扉を開けているあいだにできます。",
+                      systemImage: "key.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Theme.accent)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Theme.accentLight, in: RoundedRectangle(cornerRadius: 14))
             } else {
-                Text("あなたが立てた話題（ほかの人の話題と返信は、現地で読めます）")
-                    .font(.subheadline).foregroundStyle(Theme.textSecondary)
+                peekThreads
+                if !threads.isEmpty {
+                    Text("あなたが立てた話題").font(.headline).foregroundStyle(Theme.text).padding(.top, 4)
+                }
+            }
+            if context.canRead && threads.count >= 3 {
+                HStack {
+                    Image(systemName: "magnifyingglass").foregroundStyle(Theme.textSecondary)
+                    TextField("話題を探す", text: $query)
+                }
+                .padding(10)
+                .background(Theme.surfaceElevated, in: RoundedRectangle(cornerRadius: 12))
             }
             if let error { NoticeText(text: error) }
-            if context.isInside && threads.isEmpty && error == nil {
-                Text("まだ話題はありません。最初の話題を立ててみましょう。")
+            if context.canRead && threads.isEmpty && error == nil {
+                Text(context.isInside ? "まだ話題はありません。最初の話題を立ててみましょう。" : "まだ話題はありません。")
                     .font(.subheadline).foregroundStyle(Theme.textSecondary)
             }
             if !query.trimmingCharacters(in: .whitespaces).isEmpty && filtered.isEmpty && !threads.isEmpty {
@@ -66,11 +76,31 @@ struct BoardSection: View {
                 .buttonStyle(.plain)
             }
         }
-        .task(id: "\(context.isInside)-\(refreshToken)") { await load() }
+        .task(id: "\(context.isInside)-\(context.opened)-\(refreshToken)") { await load() }
         .sheet(isPresented: $showNew) {
             NewThreadSheet(context: context) {
                 Task { await load() }
             }
+        }
+        .sheet(item: $report) { item in ReportSheet(item: item) }
+    }
+
+    /// まだ扉を開けたことのない人へ：話題の題名だけ
+    @ViewBuilder private var peekThreads: some View {
+        if let peek = context.peek, !peek.threads.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                PeekHeading(title: "掲示板の話題 \(peek.thread_count)")
+                ForEach(peek.threads) { thread in
+                    PeekThreadRow(thread: thread) {
+                        report = ReportItem(id: thread.id, target: .thread, userID: nil, userName: nil, label: "掲示板の話題")
+                    }
+                }
+                LockNote(text: "話題の中身と返信は、扉を開けると読めます。一度開ければ、そのあとは遠くからでも読めます。")
+            }
+        } else {
+            LockNote(text: context.peek != nil
+                     ? "まだ話題はありません。扉を開けて、思い出話・質問・注意したいことを話せます。"
+                     : "掲示板は、現地で扉を開けると読めます。一度開ければ、そのあとは遠くからでも読めます。")
         }
     }
 
@@ -317,7 +347,7 @@ struct ThreadView: View {
                 ForEach(shownReplies) { reply in
                     ReplyRow(reply: reply, canDelete: reply.author == session.userID || isGateOwner,
                              isMine: reply.author == session.userID,
-                             canVote: isInvestigation && reply.votes != nil && reply.author != session.userID,
+                             canVote: context.isInside && isInvestigation && reply.votes != nil && reply.author != session.userID,
                              onVote: { Task { await vote(reply) } },
                              onEdit: { editing = .reply(reply) },
                              onDelete: { Task { await deleteReply(reply) } },
@@ -364,6 +394,15 @@ struct ThreadView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
                 .background(.bar)
+            } else {
+                // 遠くから読んでいるとき（一度扉を開けた GATE）
+                Label("返信・なるほどは、現地で扉を開けているあいだにできます。", systemImage: "lock.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Theme.textSecondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(.bar)
             }
         }
         .toolbar {

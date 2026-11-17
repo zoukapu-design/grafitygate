@@ -247,3 +247,135 @@ struct GraffitiBoardCard: View {
         .accessibilityLabel("グラフィティボード「\(gate.title)」\(gate.mine ? "あなたの GATE" : gate.owner_name + " さん")・約 \(Int(gate.distance_m.rounded()))m")
     }
 }
+
+
+// MARK: - チラ見せ（まだ扉を開けたことのない人へ）
+
+/// 「チラ見せ」の見出し
+struct PeekHeading: View {
+    let title: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(title).font(.headline).foregroundStyle(Theme.text)
+            Text("チラ見せ")
+                .font(.caption2.weight(.heavy))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 8).padding(.vertical, 3)
+                .background(Theme.neonBand, in: Capsule())
+            Spacer(minLength: 0)
+        }
+    }
+}
+
+/// 鍵の印つきの一言（扉を開けると読める）
+struct LockNote: View {
+    let text: String
+
+    var body: some View {
+        Label(text, systemImage: "lock.fill")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(Theme.textSecondary)
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.surfaceElevated, in: RoundedRectangle(cornerRadius: 14))
+    }
+}
+
+/// チラ見せのグラフィティカード（写真とひとこと・書いた人。読むだけ）
+struct PeekCardView: View {
+    let card: GatePeek.PeekCard
+    var isMine = false
+    let onReport: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if let path = card.photo_path {
+                RemotePhoto(path: path)
+                    .frame(height: 200)
+                    .frame(maxWidth: .infinity)
+                    .clipped()
+            }
+            VStack(alignment: .leading, spacing: 10) {
+                if !card.body.isEmpty {
+                    Text(card.body)
+                        .font(.body)
+                        .foregroundStyle(Theme.text)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                HStack(spacing: 8) {
+                    NeonAvatar(name: isMine ? "あなた" : card.author_name, size: 24)
+                    Text(isMine ? "あなた" : card.author_name)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.text)
+                        .lineLimit(1)
+                    Text(ServerDate.relative(card.created_at))
+                        .font(.caption)
+                        .foregroundStyle(Theme.textSecondary)
+                    Spacer(minLength: 0)
+                    if !isMine {
+                        Menu {
+                            Button(role: .destructive, action: onReport) {
+                                Label("通報する", systemImage: "exclamationmark.bubble")
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis")
+                                .font(.subheadline.weight(.bold))
+                                .foregroundStyle(Theme.textSecondary)
+                                .frame(width: 36, height: 30)
+                        }
+                        .accessibilityLabel("そのほか")
+                    }
+                }
+            }
+            .padding(14)
+        }
+        .background(Theme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radiusCard))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radiusCard).stroke(Theme.line))
+    }
+}
+
+/// チラ見せの掲示板の話題（題名だけ。開けない）
+struct PeekThreadRow: View {
+    let thread: GatePeek.PeekThread
+    let onReport: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: thread.boardTopic.symbol)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Theme.accent)
+                .frame(width: 34, height: 34)
+                .background(Theme.surfaceElevated, in: RoundedRectangle(cornerRadius: 10))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(thread.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Theme.text)
+                    .lineLimit(2)
+                HStack(spacing: 10) {
+                    Text(ServerDate.relative(thread.last_activity_at))
+                    Label("\(thread.reply_count)", systemImage: "bubble.left")
+                    if thread.resolved { Text("解決しました") }
+                }
+                .font(.caption2)
+                .foregroundStyle(Theme.textSecondary)
+            }
+            Spacer(minLength: 0)
+            Menu {
+                Button(role: .destructive, action: onReport) {
+                    Label("通報する", systemImage: "exclamationmark.bubble")
+                }
+            } label: {
+                Image(systemName: "lock.fill")
+                    .font(.caption)
+                    .foregroundStyle(Theme.textSecondary)
+                    .frame(width: 30, height: 30)
+            }
+            .accessibilityLabel("そのほか（通報する）")
+        }
+        .padding(12)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Theme.line))
+    }
+}

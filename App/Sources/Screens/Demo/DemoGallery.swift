@@ -11,7 +11,7 @@ struct DemoGallery: View {
     /// 「@」より後ろ（下げて撮る場所）は外した、画面の名前
     static var requestedScreen: String? { DemoMode.screen.map { String($0.split(separator: "@").first ?? "") } }
 
-    static let screens = ["home", "gate", "gate-outside", "gate-board", "gate-albums", "gate-letters", "gate-then", "trail",
+    static let screens = ["home", "gate", "gate-outside", "gate-outside-board", "gate-away", "gate-away-board", "gate-board", "gate-albums", "gate-letters", "gate-then", "trail",
                           "me", "map", "profile", "inbox", "messages",
                           "friends", "visited", "saved-cards", "letters", "albums", "settings",
                           "cards", "nearby", "nearby-detail", "chat", "lookback", "goal", "board", "edit-card",
@@ -54,6 +54,12 @@ struct DemoGallery: View {
             NavigationStack { GateDetailView(gateID: DemoData.hill) }
         case "gate-outside":
             NavigationStack { GateDetailView(gateID: DemoData.tree) }
+        case "gate-outside-board":
+            NavigationStack { GateDetailView(gateID: DemoData.tree, tab: .board) }
+        case "gate-away":
+            NavigationStack { GateDetailView(gateID: DemoData.hill) }
+        case "gate-away-board":
+            NavigationStack { GateDetailView(gateID: DemoData.hill, tab: .board) }
         case "gate-board":
             NavigationStack { GateDetailView(gateID: DemoData.hill, tab: .board) }
         case "gate-albums":

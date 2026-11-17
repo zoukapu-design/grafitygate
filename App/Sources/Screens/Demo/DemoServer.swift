@@ -111,6 +111,11 @@ enum DemoData {
              cover: "demo/park.jpg", lat: 35.6572, lon: 139.7029, count: 8),
     ]
 
+    /// 扉の外で見ている見本か（公園の大きな木はいつも外。「gate-away」の見本では全部外）
+    static func outside(_ g: Gate) -> Bool {
+        g.id == tree || (DemoMode.screen ?? "").hasPrefix("gate-away")
+    }
+
     static func gate(_ id: Any?) -> Gate {
         let key = (id as? String).flatMap(UUID.init(uuidString:))
         return gates.first { $0.id == key } ?? gates[0]
@@ -168,9 +173,10 @@ enum DemoData {
             return [["id": g.id.uuidString, "title": g.title, "note": g.note, "kind": g.kind, "owner": g.owner.uuidString,
                      "owner_name": names[g.owner] ?? "", "cover_path": nn(g.cover), "approx_lat": g.lat, "approx_lon": g.lon,
                      "visibility": "friends", "status": "open", "graffiti_count": g.count, "created_at": ago(40 * 86400),
-                     // 公園の大きな木は、扉を開けていない（グラフィティボードだけ見ている）見本
-                     "my_visit": g.id == tree ? NSNull() as Any : visit.uuidString as Any,
-                     "my_visit_expires_at": g.id == tree ? NSNull() as Any : later(15 * 60) as Any]]
+                     // 公園の大きな木は、扉を開けていない（グラフィティボードだけ見ている）見本。
+                     // 「gate-away」の見本では、夕焼けの丘も扉の外（前に開けたことがあるので遠くから読める）
+                     "my_visit": outside(g) ? NSNull() as Any : visit.uuidString as Any,
+                     "my_visit_expires_at": outside(g) ? NSNull() as Any : later(15 * 60) as Any]]
         case "gf_gate_stats":
             let g = gate(params["p_gate"])
             return [["visitor_count": g.id == tree ? 8 : 23, "last_activity_at": ago(3 * 3600), "my_visits": g.id == tree ? 0 : 3]]
@@ -250,6 +256,24 @@ enum DemoData {
                      "last_from_me": true, "unread": 0, "can_send": true, "last_kind": "card"],
                     ["other": kenta.uuidString, "other_name": "けんた", "last_body": "明日あの丘に行かない？", "last_at": ago(7200),
                      "last_from_me": false, "unread": 1, "can_send": true, "last_kind": "text"]]
+        case "gf_gate_peek":
+            let g = gate(params["p_gate"])
+            if g.id == tree {
+                return ["opened": false, "inside": false, "thread_count": 4,
+                        "cards": [
+                            ["id": UUID().uuidString, "author": kenta.uuidString, "author_name": "けんた",
+                             "body": "今年の桜、満開でした。木の下でお弁当を食べました。", "photo_path": "demo/park.jpg",
+                             "created_at": ago(5 * 3600)],
+                            ["id": UUID().uuidString, "author": misaki.uuidString, "author_name": "みさき",
+                             "body": "ここのベンチ、夕方に座るとちょうど木もれ日が当たる。", "photo_path": NSNull(),
+                             "created_at": ago(2 * 86400)]],
+                        "threads": [
+                            ["id": UUID().uuidString, "topic": "question", "title": "この木は何年前からある？", "reply_count": 5,
+                             "last_activity_at": ago(4 * 3600), "resolved": false],
+                            ["id": UUID().uuidString, "topic": "memory", "title": "小学生のころ、ここで木登りした", "reply_count": 2,
+                             "last_activity_at": ago(3 * 86400), "resolved": false]]]
+            }
+            return ["opened": true, "inside": !outside(g), "thread_count": 0, "cards": [Any](), "threads": [Any]()]
         case "gf_keep_open":
             return ["open": true, "expires_at": later(15 * 60), "near": true]
         case "gf_gate_ref_count":

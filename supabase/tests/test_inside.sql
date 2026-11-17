@@ -177,9 +177,16 @@ select t_ok((select target_user from gf_reports where target_id = :'t1') = :'ali
 :as_carol
 select t_ok((select count(*) from gf_reports) = 0, '通報は運営だけが読める');
 select t_throws(format('select gf_report(%L, %L, %L, null)', 'thread', :'t1', 'bad'), 'gf_bad_report', '決まっていない理由では通報できない');
+-- 0024：見えている GATE の話題の題名はチラ見せで見えるので、GATE を見えなくして確かめる
+:as_admin
+select visibility as g4_vis from gf_gates where id = :'g4' \gset
+update gf_gates set visibility = 'private' where id = :'g4';
 :as_dave
 select t_throws(format('select gf_report(%L, %L, %L, null)', 'thread', :'t1', 'spam'), 'gf_not_found',
   '見えないものは通報できない（あることも知らせない）');
+:as_admin
+update gf_gates set visibility = :'g4_vis' where id = :'g4';
+:as_dave
 :as_carol
 select gf_block(:'alice');
 select t_ok((select count(*) from gf_my_blocks()) = 1, 'ブロックした人の一覧に出る');

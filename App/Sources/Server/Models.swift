@@ -1023,3 +1023,36 @@ enum InvestigationProgress: String, CaseIterable, Identifiable {
         }
     }
 }
+
+
+/// グラフィティボードに出すもの（0024・gf_gate_peek）：鍵（一度扉を開けたか）と、チラ見せ
+struct GatePeek: Decodable, Equatable {
+    /// 一度でも扉を開けたことがある＝遠くからも全部読める
+    let opened: Bool
+    let inside: Bool
+    /// 新しいグラフィティカード 3 枚（この GATE の中だけのカードは出ない）
+    let cards: [PeekCard]
+    /// 掲示板の話題の題名（本文は出ない）
+    let threads: [PeekThread]
+    let thread_count: Int
+
+    struct PeekCard: Decodable, Equatable, Identifiable {
+        let id: UUID
+        let author: UUID
+        let author_name: String
+        let body: String
+        let photo_path: String?
+        let created_at: String
+    }
+
+    struct PeekThread: Decodable, Equatable, Identifiable {
+        let id: UUID
+        let topic: String
+        let title: String
+        let reply_count: Int
+        let last_activity_at: String
+        let resolved: Bool
+
+        var boardTopic: BoardTopic { BoardTopic(rawValue: topic) ?? .memory }
+    }
+}

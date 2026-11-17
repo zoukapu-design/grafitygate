@@ -34,8 +34,14 @@ struct GateContext: Equatable {
 
     /// 作った人か、一緒に管理する人（掲示板のピン留め・消す・解決しました）
     var canManage = false
+    /// 一度でも扉を開けたことがある（遠くからもグラフィティカードと掲示板を読める。0024）
+    var opened = false
+    /// まだ開けたことのない人に見せるもの（新しいカード 3 枚・掲示板の題名）
+    var peek: GatePeek?
 
     var isInside: Bool { visit != nil && (visitExpires ?? .distantPast) > Date() }
+    /// 読めるか（扉の中か、一度開けたことがある）。書く・保存・返信・いいねは isInside だけ
+    var canRead: Bool { isInside || opened }
 }
 
 /// GATE の画面。上に表紙、まん中に「カード／アルバム／掲示板／手紙」の切り替え。
@@ -65,6 +71,8 @@ struct GateDetailView: View {
     @State private var trails: [TrailSummary] = []
     @State private var stats: GateStats?
     @State private var health: PlaceMapHealth?
+    /// グラフィティボードに出すもの（鍵とチラ見せ。0024 の前のサーバーでは nil）
+    @State private var peek: GatePeek?
     /// 作った本人には正確な位置
     @State private var exactPlace: CLLocationCoordinate2D?
     /// 自分がこの GATE に来た日
@@ -98,6 +106,7 @@ struct GateDetailView: View {
                                 addLooksButton(summary)
                             }
                             insideHeading(context)
+                                .id("inside")
                             Picker("扉の向こう", selection: $tab) {
                                 ForEach(GateTab.allCases) { t in Text(t.label).tag(t) }
                             }
@@ -120,8 +129,8 @@ struct GateDetailView: View {
         #if DEBUG
         // 画面の見本：下のほう（扉の札から）を撮る
         .onChange(of: summary?.id) { _, id in
-            guard id != nil, DemoMode.scroll == "door" else { return }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { scroller.scrollTo("door", anchor: .top) }
+            guard id != nil, let target = DemoMode.scroll else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { scroller.scrollTo(target, anchor: .top) }
         }
         #endif
         }
@@ -180,7 +189,7 @@ struct GateDetailView: View {
         return GateContext(gateID: s.id, title: s.title, ownerID: s.owner, ownerName: s.owner_name,
                            coverPath: s.cover_path, createdAt: s.created_at,
                            visit: active ? s.my_visit : nil, visitExpires: active ? expires : nil,
-                           canManage: canManage(s))
+                           canManage: canManage(s), opened: peek?.opened ?? false, peek: peek)
     }
 
     private func isOwner(_ s: GateSummary) -> Bool { s.owner == session.userID }
@@ -579,6 +588,10 @@ struct GateDetailView: View {
             }
             trails = (try? await api.trails(including: gateID)) ?? []
             stats = try? await api.gateStats(gateID)
+            if let loaded = try? await api.gatePeek(gateID) {
+                peek = loaded
+                Trace.log("グラフィティボード：鍵\(loaded.opened ? "あり" : "なし")・チラ見せ \(loaded.cards.count) 枚・題名 \(loaded.threads.count)")
+            }
             managers = (try? await api.gateManagers(gateID)) ?? []
             health = summary?.owner == session.userID ? (try? await api.placeMapHealth(gateID)) ?? nil : nil
             if summary?.owner == session.userID {
@@ -787,10 +800,13 @@ struct GraffitiSection: View {
             if context.isInside {
                 composer
             }
-            if context.isInside && graffiti.count > 2 {
+            if !context.isInside {
+                outsideNote
+            }
+            if context.canRead && graffiti.count > 2 {
                 orderBar
             }
-            if context.isInside && graffiti.count > 5 {
+            if context.canRead && graffiti.count > 5 {
                 HStack {
                     Image(systemName: "magnifyingglass").foregroundStyle(Theme.textSecondary)
                     TextField("ことば・名前で探す", text: $cardQuery)
@@ -804,17 +820,18 @@ struct GraffitiSection: View {
                 .padding(10)
                 .background(Theme.surfaceElevated, in: RoundedRectangle(cornerRadius: 12))
             }
-            let shown = context.isInside ? searched(arranged(graffiti)) : graffiti.filter { $0.author == session.userID }
-            if !context.isInside && !shown.isEmpty {
+            let shown = context.canRead ? searched(arranged(graffiti)) : graffiti.filter { $0.author == session.userID }
+            if !context.canRead && !shown.isEmpty {
                 Text("ここに残した自分のグラフィティカード").font(.headline).foregroundStyle(Theme.text)
             }
-            if context.isInside && shown.isEmpty {
-                Text(graffiti.isEmpty ? "まだグラフィティカードはありません。最初の 1 枚を残せます。" : "この並べ方に合うグラフィティカードはありません。")
+            if context.canRead && shown.isEmpty {
+                Text(graffiti.isEmpty
+                     ? (context.isInside ? "まだグラフィティカードはありません。最初の 1 枚を残せます。" : "まだグラフィティカードはありません。")
+                     : "この並べ方に合うグラフィティカードはありません。")
                     .font(.subheadline).foregroundStyle(Theme.textSecondary)
             }
-            if !context.isInside && shown.isEmpty {
-                Text("みんなのグラフィティカードは、現地で扉を開けると読めます。")
-                    .font(.subheadline).foregroundStyle(Theme.textSecondary)
+            if !context.canRead {
+                peekCards
             }
             if let error { NoticeText(text: error) }
             ForEach(shown) { item in
@@ -822,7 +839,10 @@ struct GraffitiSection: View {
                 GraffitiCard(item: item, author: names[item.author] ?? "",
                              isMine: isMine,
                              likeCount: likes[item.id]?.count ?? 0, liked: likes[item.id]?.mine ?? false,
-                             onLike: { Task { await toggleLike(item) } },
+                             onLike: {
+                                 // いいねは扉の中だけ（遠くから読んでいるときは、そう伝える）
+                                 if context.isInside { Task { await toggleLike(item) } } else { insideOnlyHint("いいね") }
+                             },
                              onDelete: { Task { await delete(item) } },
                              onReport: {
                                  onReport(ReportItem(id: item.id, target: .graffiti, userID: item.author,
@@ -837,7 +857,14 @@ struct GraffitiSection: View {
                              commentCount: extras?[item.id]?.comments ?? 0,
                              onComments: extras == nil ? nil : { commenting = item },
                              saved: extras == nil ? nil : (extras?[item.id]?.saved ?? false),
-                             onToggleSave: { Task { await toggleSave(item) } },
+                             onToggleSave: {
+                                 // 保存を付けるのは扉の中だけ（外すのはいつでも）
+                                 if context.isInside || extras?[item.id]?.saved == true {
+                                     Task { await toggleSave(item) }
+                                 } else {
+                                     insideOnlyHint("保存")
+                                 }
+                             },
                              onEdit: isMine ? { editingCard = item } : nil,
                              onSendToFriend: isMine ? { sendingCard = item } : nil)
             }
@@ -872,6 +899,47 @@ struct GraffitiSection: View {
         .task(id: "\(context.isInside)-\(refreshToken)") { await load() }
         .onChange(of: photoItem) { _, item in
             Task { await loadPhoto(item) }
+        }
+    }
+
+    /// 扉の外で見ているときの一言（一度開けた GATE は、遠くからも読める）
+    @ViewBuilder private var outsideNote: some View {
+        if context.opened {
+            Label("一度扉を開けた GATE なので、遠くからも読めます。いいね・保存・返信は、扉を開けているあいだにできます。",
+                  systemImage: "key.fill")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Theme.accent)
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Theme.accentLight, in: RoundedRectangle(cornerRadius: 14))
+        }
+        if let postMessage {
+            NoticeText(text: postMessage.text, isError: postMessage.isError)
+        }
+    }
+
+    private func insideOnlyHint(_ what: String) {
+        postMessage = ("\(what)は、現地で扉を開けているあいだにできます。", false)
+        Haptics.tap()
+    }
+
+    /// まだ扉を開けたことのない人へのチラ見せ（新しいグラフィティカード 3 枚）
+    @ViewBuilder private var peekCards: some View {
+        if let peek = context.peek, !peek.cards.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                PeekHeading(title: "新しいグラフィティカード")
+                ForEach(peek.cards) { card in
+                    PeekCardView(card: card, isMine: card.author == session.userID) {
+                        onReport(ReportItem(id: card.id, target: .graffiti, userID: card.author,
+                                            userName: card.author_name, label: "グラフィティカード"))
+                    }
+                }
+                LockNote(text: "ほかのグラフィティカードと返信は、扉を開けると読めます。一度開ければ、そのあとは遠くからでも読めます。")
+            }
+        } else {
+            LockNote(text: graffiti.isEmpty && context.peek != nil
+                     ? "まだグラフィティカードはありません。扉を開けて、最初の 1 枚を残せます。"
+                     : "みんなのグラフィティカードは、現地で扉を開けると読めます。一度開ければ、そのあとは遠くからでも読めます。")
         }
     }
 

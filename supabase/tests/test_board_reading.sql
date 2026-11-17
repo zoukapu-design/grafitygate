@@ -48,6 +48,15 @@ select t_ok(not gf_can_read_media(:'alice' || '/peek-local.jpg'), '「この GAT
 select t_ok((select count(*) from gf_graffiti where id = :'p_old') = 0, '古いカードは読めない');
 select t_ok((select count(*) from gf_board_list(:'vg') where id = :'th') = 0, '掲示板の本文は読めない');
 select t_throws(format('select * from gf_board_replies_of(%L)', :'th'), 'gf_not_found', '掲示板の返信は読めない');
+select gf_report('graffiti', :'p_a', 'spam', 'チラ見せのカード');
+select gf_report('thread', :'th', 'spam', 'チラ見せの題名');
+select t_throws(format('select gf_report(%L, %L, %L, null)', 'graffiti', :'p_old', 'spam'), 'gf_not_found',
+  'チラ見せに出ていないカードは通報できない（見えていない）');
+:as_admin
+select t_ok((select count(*) from gf_reports where reporter = :'carol' and target_id in (:'p_a', :'th')) = 2,
+  'チラ見せのカードと話題の題名は通報できる');
+delete from gf_reports where reporter = :'carol' and target_id in (:'p_a', :'th');
+delete from gf_rate;
 
 \echo '== 一度扉を開けた人：遠くからも読める（書く・保存・返信・いいねは扉の中だけ）'
 :as_bob

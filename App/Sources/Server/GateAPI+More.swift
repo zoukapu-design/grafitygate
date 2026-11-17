@@ -7,6 +7,15 @@ import Supabase
 extension GateAPI {
     // MARK: カード
 
+    /// グラフィティボードに出すもの（鍵とチラ見せ）。0024 の前のサーバーでは nil
+    func gatePeek(_ gate: UUID) async throws -> GatePeek? {
+        do {
+            return try await client.rpc("gf_gate_peek", params: MoreGateParam(p_gate: gate)).execute().value
+        } catch let error where ErrorText.isMissingFunction(error) {
+            return nil
+        }
+    }
+
     /// GATE の中のカードごとの返信の数と、自分のお気に入りか（0018 の前のサーバーでは nil＝出さない）
     func cardExtras(in gate: UUID) async throws -> [UUID: CardExtra]? {
         do {
