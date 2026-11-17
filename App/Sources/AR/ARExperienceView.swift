@@ -110,6 +110,17 @@ struct ARExperienceView: View {
         .sheet(item: $model.presentedGate, onDismiss: { model.resetToScanning() }) { route in
             NavigationStack {
                 GateDetailView(gateID: route.id)
+                    .toolbar {
+                        // AR から開いた画面には下のタブが無いので、はっきりした「閉じる」を付ける（カメラの画面に戻る）
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button {
+                                model.presentedGate = nil
+                            } label: {
+                                Label("カメラに戻る", systemImage: "xmark")
+                            }
+                            .accessibilityLabel("閉じて、カメラの画面に戻る")
+                        }
+                    }
             }
             .environmentObject(session)
             .environmentObject(location)

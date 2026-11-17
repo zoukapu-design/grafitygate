@@ -38,6 +38,11 @@ final class VisitKeeper: ObservableObject {
         start()
     }
 
+    /// 扉を出た（「扉を出る」）。覚えていた延長を消す
+    func forget(visit: UUID) {
+        entries[visit] = nil
+    }
+
     /// 延びた分を足した、扉が閉じる時刻
     func expires(visit: UUID?) -> Date? {
         visit.flatMap { entries[$0]?.expires }
@@ -95,6 +100,12 @@ struct KeepOpenResult: Decodable {
 }
 
 extension GateAPI {
+    /// 扉を出る（自分の入場をその場で終わらせる。0025）
+    func leaveVisit(_ visit: UUID) async throws {
+        struct Param: Encodable { let p_visit: UUID }
+        try await client.rpc("gf_leave_visit", params: Param(p_visit: visit)).execute()
+    }
+
     func keepOpen(visit: UUID, at location: CLLocation) async throws -> KeepOpenResult {
         try await client.rpc("gf_keep_open",
                              params: KeepOpenParam(p_visit: visit, p_lat: location.coordinate.latitude,

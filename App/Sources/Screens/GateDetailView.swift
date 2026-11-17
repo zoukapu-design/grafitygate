@@ -65,6 +65,8 @@ struct GateDetailView: View {
     @ObservedObject private var keeper = VisitKeeper.shared
     @State private var showManagers = false
     @State private var confirmClose = false
+    /// 「扉を出る」の確かめ
+    @State private var confirmLeave = false
     @State private var report: ReportItem?
     @State private var refreshToken = 0
     @State private var actionMessage: String?
@@ -91,27 +93,29 @@ struct GateDetailView: View {
                     if summary.status == "closed" && isOwner(summary) {
                         closedBanner(summary)
                     }
-                    // グラフィティボード：表紙・名前・作った人 → 紹介と数 → 扉 → いつ・どこで → 扉の向こう
-                    header(summary)
                     TimelineView(.periodic(from: .now, by: 30)) { timeline in
                         let context = makeContext(summary, now: timeline.date)
-                        VStack(alignment: .leading, spacing: 16) {
-                            visitBanner(context, summary: summary, now: timeline.date)
-                                .id("door")
-                            whereWhen(summary)
-                            if !trails.isEmpty {
-                                trailStrip
+                        if context.isInside {
+                            // 扉の中：夜空の画面。ようこそ → ここでできること → 扉を出る → 中のもの
+                            insidePage(summary, context: context, now: timeline.date, scroller: scroller)
+                        } else {
+                            // グラフィティボード：表紙・名前・作った人 → 紹介と数 → 扉 → いつ・どこで → 扉の向こう
+                            VStack(alignment: .leading, spacing: 16) {
+                                header(summary)
+                                visitBanner(context, summary: summary, now: timeline.date)
+                                    .id("door")
+                                whereWhen(summary)
+                                if !trails.isEmpty {
+                                    trailStrip
+                                }
+                                if summary.owner == session.userID {
+                                    addLooksButton(summary)
+                                }
+                                insideHeading(context)
+                                    .id("inside")
+                                tabPicker
+                                section(context)
                             }
-                            if summary.owner == session.userID {
-                                addLooksButton(summary)
-                            }
-                            insideHeading(context)
-                                .id("inside")
-                            Picker("扉の向こう", selection: $tab) {
-                                ForEach(GateTab.allCases) { t in Text(t.label).tag(t) }
-                            }
-                            .pickerStyle(.segmented)
-                            section(context)
                         }
                     }
                 } else if let loadError {
@@ -134,10 +138,18 @@ struct GateDetailView: View {
         }
         #endif
         }
-        .background(Theme.background.ignoresSafeArea())
-        // 扉を開けずに見ているあいだは「グラフィティボード」、扉が開いているあいだは「扉の中」
-        .navigationTitle(summary.map { makeContext($0, now: Date()).isInside ? "扉の中" : "グラフィティボード" } ?? "グラフィティボード")
+        .background {
+            if insideNow { InsideBackground().ignoresSafeArea() } else { Theme.background.ignoresSafeArea() }
+        }
+        // 扉を開けずに見ているあいだは「グラフィティボード」、扉が開いているあいだは「扉の中」（夜空の画面）
+        .navigationTitle(insideNow ? "扉の中" : "グラフィティボード")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarColorScheme(insideNow ? .dark : nil, for: .navigationBar)
+        .confirmationDialog("扉を出ますか？", isPresented: $confirmLeave, titleVisibility: .visible) {
+            Button("扉を出る", role: .destructive) { Task { await leaveDoor() } }
+        } message: {
+            Text("グラフィティカードを残す・いいね・返信などは、扉の中でできます。出たあとも、この GATE のものは遠くから読めます。もう一度入るには、現地で扉を開けます。")
+        }
         .toolbar { toolbar }
         .task { await reload() }
         .refreshable {
@@ -171,10 +183,10 @@ struct GateDetailView: View {
             GateManagersSheet(gateID: gateID, title: summary?.title ?? "") { Task { await reload() } }
                 .environmentObject(session)
         }
-        .confirmationDialog("この GATE を閉じますか？", isPresented: $confirmClose, titleVisibility: .visible) {
-            Button("閉じる", role: .destructive) { Task { await setOpen(false) } }
+        .confirmationDialog("この GATE をお休みにしますか？", isPresented: $confirmClose, titleVisibility: .visible) {
+            Button("お休みにする", role: .destructive) { Task { await setOpen(false) } }
         } message: {
-            Text("ほかの人は見つけられず、入れなくなります。中のグラフィティカードや掲示板は消えず、あとで開け直せます。")
+            Text("ほかの人は見つけられず、入れなくなります（自分が扉から出るだけなら「扉を出る」）。中のグラフィティカードや掲示板は消えず、あとで再開できます。")
         }
         .sheet(isPresented: $showVisits) {
             MyVisitsSheet(gateID: gateID, title: summary?.title ?? "")
@@ -206,14 +218,14 @@ struct GateDetailView: View {
                 .font(.title3)
                 .foregroundStyle(Theme.warm)
             VStack(alignment: .leading, spacing: 6) {
-                Text("この GATE は閉じています").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
+                Text("この GATE はお休み中です").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
                 Text("いまは、あなたにだけ見えています。ほかの人は見つけられず、入れません。中のグラフィティカードや掲示板は消えていません。")
                     .font(.caption).foregroundStyle(Theme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Button {
                     Task { await setOpen(true) }
                 } label: {
-                    Label("開け直す", systemImage: "door.left.hand.open")
+                    Label("再開する", systemImage: "door.left.hand.open")
                         .font(.subheadline.weight(.semibold))
                 }
                 .buttonStyle(.borderedProminent)
@@ -231,11 +243,11 @@ struct GateDetailView: View {
         do {
             try await api.setGateOpen(gateID, open: open)
             Haptics.success()
-            Trace.log("GATE を\(open ? "開け直した" : "閉じた")")
+            Trace.log("GATE を\(open ? "再開した" : "お休みにした")")
             await reload()
         } catch {
             actionMessage = ErrorText.isMissingFunction(error)
-                ? "閉じる・開け直すは、サーバーの準備（setup_all.sql の貼り直し）のあとで使えます。" : ErrorText.of(error)
+                ? "お休み・再開は、サーバーの準備（setup_all.sql の貼り直し）のあとで使えます。" : ErrorText.of(error)
         }
     }
 
@@ -282,13 +294,13 @@ struct GateDetailView: View {
                             Button(role: .destructive) {
                                 confirmClose = true
                             } label: {
-                                Label("GATE を閉じる", systemImage: "door.left.hand.closed")
+                                Label("GATE をお休みにする（ほかの人に見せない）", systemImage: "moon.zzz")
                             }
                         } else {
                             Button {
                                 Task { await setOpen(true) }
                             } label: {
-                                Label("GATE を開け直す", systemImage: "door.left.hand.open")
+                                Label("GATE を再開する", systemImage: "door.left.hand.open")
                             }
                         }
                     } else {
@@ -315,6 +327,113 @@ struct GateDetailView: View {
     }
 
     // MARK: 表紙
+
+    /// いま扉の中か（画面の色・題を変える）
+    private var insideNow: Bool {
+        summary.map { makeContext($0, now: Date()).isInside } ?? false
+    }
+
+    private var tabPicker: some View {
+        Picker("扉の向こう", selection: $tab) {
+            ForEach(GateTab.allCases) { t in Text(t.label).tag(t) }
+        }
+        .pickerStyle(.segmented)
+    }
+
+    /// 扉の中の画面：グラフィティボードとはっきり違う夜空の画面にし、ここでできることを大きく見せる
+    private func insidePage(_ s: GateSummary, context: GateContext, now: Date, scroller: ScrollViewProxy) -> some View {
+        let minutes = context.visitExpires.map { max(1, Int($0.timeIntervalSince(now) / 60 + 0.5)) } ?? 0
+        let near = keeper.entries[context.visit ?? UUID()]?.near
+        return VStack(alignment: .leading, spacing: 22) {
+            InsideWelcome(title: s.title, coverPath: s.cover_path,
+                          ownerLine: s.owner == session.userID ? "あなたの GATE" : "\(s.owner_name) さんの GATE",
+                          status: near == false ? "GATE から離れたので、あと約 \(minutes) 分で扉が閉じます"
+                                                : "その場にいるあいだ、扉は開いたまま",
+                          warning: near == false)
+
+            // ここでできること（押すと、下の「扉の中」のその場所へ）
+            VStack(alignment: .leading, spacing: 12) {
+                Text("扉の中でできること")
+                    .font(.headline.weight(.heavy))
+                    .foregroundStyle(.white)
+                InsideActionTile(symbol: "square.and.pencil", title: "グラフィティカードを残す",
+                                 detail: "この扉の中でだけ残せる 1 枚。写真とひとことを、ここに。", primary: true) {
+                    jump(to: .graffiti, scroller: scroller)
+                }
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
+                    InsideActionTile(symbol: "square.stack.fill", title: "みんなのカード",
+                                     detail: "\(s.graffiti_count) 枚・いいね・返信・保存") { jump(to: .graffiti, scroller: scroller) }
+                    InsideActionTile(symbol: "text.bubble.fill", title: "掲示板",
+                                     detail: "話題を立てる・返す") { jump(to: .board, scroller: scroller) }
+                    InsideActionTile(symbol: "photo.on.rectangle.angled", title: "アルバム",
+                                     detail: "みんなで写真・動画・声を") { jump(to: .memories, scroller: scroller) }
+                    InsideActionTile(symbol: "envelope.fill", title: "手紙",
+                                     detail: "未来のだれかへ・届いた手紙") { jump(to: .letters, scroller: scroller) }
+                    InsideActionTile(symbol: "clock.arrow.circlepath", title: "今と昔",
+                                     detail: "同じ場所の写真を重ねる") { jump(to: .thenNow, scroller: scroller) }
+                    InsideActionTile(symbol: "person.2.fill", title: "来たよ",
+                                     detail: "友達のカードに自分のカードを") { jump(to: .graffiti, scroller: scroller) }
+                }
+            }
+
+            Button {
+                confirmLeave = true
+            } label: {
+                Label("扉を出る", systemImage: "rectangle.portrait.and.arrow.right")
+                    .font(.headline)
+            }
+            .buttonStyle(NightSecondaryButtonStyle())
+            .accessibilityHint("扉の中から出て、グラフィティボードに戻ります")
+
+            // 扉の中のもの（白い紙の上に）
+            VStack(alignment: .leading, spacing: 16) {
+                insideHeading(context)
+                    .id("inside")
+                tabPicker
+                section(context)
+            }
+            .padding(16)
+            .background(Theme.background, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+
+            // この GATE について（グラフィティボードの中身は下に小さく）
+            VStack(alignment: .leading, spacing: 16) {
+                Text("この GATE について")
+                    .font(.headline.weight(.heavy))
+                    .foregroundStyle(.white)
+                header(s)
+                whereWhen(s)
+                if !trails.isEmpty {
+                    trailStrip
+                }
+                if s.owner == session.userID {
+                    addLooksButton(s)
+                }
+            }
+            .padding(.top, 8)
+        }
+    }
+
+    private func jump(to target: GateTab, scroller: ScrollViewProxy) {
+        tab = target
+        Haptics.tap()
+        withAnimation(.easeInOut(duration: 0.35)) { scroller.scrollTo("inside", anchor: .top) }
+    }
+
+    /// 扉を出る（自分の入場をその場で終わらせる。GATE をお休みにするのとは別）
+    private func leaveDoor() async {
+        guard let api = session.api, let visit = summary?.my_visit else { return }
+        do {
+            try await api.leaveVisit(visit)
+            VisitKeeper.shared.forget(visit: visit)
+            Haptics.success()
+            Trace.log("扉を出た")
+            await reload()
+            refreshToken += 1
+        } catch {
+            actionMessage = ErrorText.isMissingFunction(error)
+                ? "「扉を出る」は、サーバーの準備（setup_all.sql の貼り直し）のあとで使えます。" : ErrorText.of(error)
+        }
+    }
 
     private func header(_ s: GateSummary) -> some View {
         VStack(alignment: .leading, spacing: 12) {
