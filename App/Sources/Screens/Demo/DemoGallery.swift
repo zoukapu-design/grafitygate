@@ -15,7 +15,7 @@ struct DemoGallery: View {
                           "me", "map", "profile", "inbox", "messages",
                           "friends", "visited", "saved-cards", "letters", "albums", "settings",
                           "cards", "nearby", "nearby-detail", "chat", "lookback", "goal", "board", "edit-card",
-                          "edit-gate", "progress", "notifications", "onboarding", "my-gates", "gate-stack"]
+                          "edit-gate", "progress", "notifications", "onboarding", "my-gates", "gate-stack", "map-hidden"]
 
     @StateObject private var nearby = NearbyCardsModel()
     @StateObject private var inbox = InboxModel()
@@ -40,7 +40,7 @@ struct DemoGallery: View {
                 switch screen {
                 case "home": nav.tab = .home
                 case "me": nav.tab = .me
-                case "map": nav.tab = .map
+                case "map", "map-hidden": nav.tab = .map
                 default: break
                 }
             }
@@ -50,6 +50,11 @@ struct DemoGallery: View {
         switch screen {
         case "home", "me", "map":
             RootView()
+                .onAppear { UserDefaults.standard.set(false, forKey: "gg.map.boardsHidden") }
+        case "map-hidden":
+            // 近くのグラフィティボードをしまったとき（地図を広く見る）
+            RootView()
+                .onAppear { UserDefaults.standard.set(true, forKey: "gg.map.boardsHidden") }
         case "gate":
             NavigationStack { GateDetailView(gateID: DemoData.hill) }
         case "gate-outside":
