@@ -14,6 +14,10 @@ struct GateCardShowcase: View {
     /// 扉の中で「自分の 1 枚を作る」を押したとき
     var onMake: (() -> Void)?
 
+    /// 並べるカードの大きさ（横に流す欄では高さを決めないと、カードが小さくつぶれる）
+    static let cardWidth: CGFloat = 188
+    static var cardHeight: CGFloat { cardWidth / TradingCard.aspect }
+
     @EnvironmentObject private var session: SessionModel
     @State private var cards: [TradingCardContent] = []
     @State private var authors: [UUID: UUID] = [:]
@@ -41,12 +45,12 @@ struct GateCardShowcase: View {
                     if context.isInside, let onMake {
                         MakeCardSlot(onDark: onDark, action: onMake)
                     }
-                    ForEach(cards) { card in
+                    ForEach(shown) { card in
                         Button {
                             opened = card
                         } label: {
                             TradingCard(content: card)
-                                .frame(width: 188)
+                                .frame(width: Self.cardWidth, height: Self.cardHeight)
                         }
                         .buttonStyle(.plain)
                         .scrollTransition(.interactive, axis: .horizontal) { view, phase in
@@ -56,7 +60,7 @@ struct GateCardShowcase: View {
                         }
                     }
                     if !context.canRead {
-                        LockedCardSlot(onDark: onDark, hasCards: !cards.isEmpty)
+                        LockedCardSlot(onDark: onDark, hasCards: !shown.isEmpty)
                     } else if cards.isEmpty && loaded && !context.isInside {
                         EmptyCardSlot(onDark: onDark)
                     }
@@ -66,7 +70,7 @@ struct GateCardShowcase: View {
             }
             .scrollClipDisabled()
         }
-        .task(id: "\(context.canRead)-\(context.isInside)-\(refreshToken)") { await load() }
+        .task(id: "\(context.canRead)-\(context.isInside)-\(refreshToken)-\(context.peek?.cards.count ?? -1)") { await load() }
         .fullScreenCover(item: $opened) { card in
             TradingCardViewer(content: card, isMine: card.badge == .mine) {
                 onReport(ReportItem(id: card.id, target: .graffiti, userID: authors[card.id],
@@ -75,8 +79,21 @@ struct GateCardShowcase: View {
         }
     }
 
+    /// 並べるカード（まだ読めない人には、サーバーが見せてよいチラ見せの 3 枚。GATE の画面があとから受け取るので、ここで作る）
+    private var shown: [TradingCardContent] {
+        guard !context.canRead else { return cards }
+        let me = session.userID
+        return (context.peek?.cards ?? []).map {
+            TradingCardContent(id: $0.id, photoPath: $0.photo_path, body: $0.body, author: $0.author_name,
+                               gateTitle: context.title, createdAt: $0.created_at,
+                               finish: CardFinish(raw: $0.finish),
+                               badge: $0.author == me ? .mine : .visitor)
+        }
+    }
+
     private var subtitle: String {
         if !context.canRead {
+            let cards = shown
             return cards.isEmpty ? "扉を開けると、ここに残されたカードが見られます" : "新しい \(cards.count) 枚をチラ見せ。扉を開けると全部見られます"
         }
         var parts: [String] = []
@@ -90,15 +107,8 @@ struct GateCardShowcase: View {
         guard let api = session.api else { return }
         let me = session.userID
         if !context.canRead {
-            // チラ見せ（本文と写真は、サーバーが見せてよいと決めた 3 枚だけ）
-            let peek = context.peek?.cards ?? []
-            cards = peek.map {
-                TradingCardContent(id: $0.id, photoPath: $0.photo_path, body: $0.body, author: $0.author_name,
-                                   gateTitle: context.title, createdAt: $0.created_at,
-                                   finish: CardFinish(raw: $0.finish),
-                                   badge: $0.author == me ? .mine : .visitor)
-            }
-            authors = Dictionary(uniqueKeysWithValues: peek.map { ($0.id, $0.author) })
+            // チラ見せは shown がその場で作る（通報のときの「だれのものか」だけ覚えておく）
+            authors = Dictionary(uniqueKeysWithValues: (context.peek?.cards ?? []).map { ($0.id, $0.author) })
             return
         }
         guard let list = try? await api.graffiti(in: context.gateID) else { return }
@@ -151,8 +161,7 @@ private struct MakeCardSlot: View {
                     .multilineTextAlignment(.center)
                     .foregroundStyle(onDark ? .white.opacity(0.7) : Theme.textSecondary)
             }
-            .frame(width: 188)
-            .aspectRatio(TradingCard.aspect, contentMode: .fit)
+            .frame(width: GateCardShowcase.cardWidth, height: GateCardShowcase.cardHeight)
             .background((onDark ? Color.white.opacity(0.08) : Theme.accentLight),
                         in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -185,8 +194,7 @@ private struct LockedCardSlot: View {
                 .multilineTextAlignment(.center)
                 .foregroundStyle(onDark ? .white.opacity(0.7) : Theme.textSecondary)
         }
-        .frame(width: 188)
-        .aspectRatio(TradingCard.aspect, contentMode: .fit)
+        .frame(width: GateCardShowcase.cardWidth, height: GateCardShowcase.cardHeight)
         .background(onDark ? Color.white.opacity(0.08) : Theme.surfaceElevated,
                     in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -210,8 +218,7 @@ private struct EmptyCardSlot: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(onDark ? .white.opacity(0.7) : Theme.textSecondary)
         }
-        .frame(width: 188)
-        .aspectRatio(TradingCard.aspect, contentMode: .fit)
+        .frame(width: GateCardShowcase.cardWidth, height: GateCardShowcase.cardHeight)
         .background(onDark ? Color.white.opacity(0.08) : Theme.surfaceElevated,
                     in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .accessibilityElement(children: .combine)
