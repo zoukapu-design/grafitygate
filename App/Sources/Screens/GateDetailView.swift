@@ -419,7 +419,7 @@ struct GateDetailView: View {
                 .foregroundStyle(Theme.text)
             Spacer(minLength: 8)
             if !context.isInside {
-                Text("扉を開けると読めます・残せます")
+                Text(context.opened ? "読めます・残すのは扉の中で" : "扉を開けると読めます・残せます")
                     .font(.caption)
                     .foregroundStyle(Theme.textSecondary)
                     .lineLimit(1)
