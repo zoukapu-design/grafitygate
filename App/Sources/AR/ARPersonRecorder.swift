@@ -72,7 +72,16 @@ final class ARPersonRecorder: ObservableObject {
         video.expectsMediaDataInRealTime = true
         // ARKit の絵は横向き。縦持ちで見えるように 90° 回して見せる（iPhone のカメラで縦に撮った動画と同じ値。
         // rotationAngle で作ると 0 がわずかにずれ、切り抜きの向きの判定 `PersonCutout.orientation` が外れる）
-        video.transform = CGAffineTransform(a: 0, b: 1, c: -1, d: 0, tx: CGFloat(Self.size.height), ty: 0)
+        // 撮り始めたときの持ち方で、動画の向きを決める（横に持って撮っても、人がまっすぐ立つように）
+        let w = CGFloat(Self.size.width), h = CGFloat(Self.size.height)
+        let holding = stage.arView.session.currentFrame.map { FrameGrab.orientation(of: $0.camera.transform) } ?? .right
+        switch holding {
+        case .up: video.transform = .identity
+        case .down: video.transform = CGAffineTransform(a: -1, b: 0, c: 0, d: -1, tx: w, ty: h)
+        case .left: video.transform = CGAffineTransform(a: 0, b: -1, c: 1, d: 0, tx: 0, ty: w)
+        default: video.transform = CGAffineTransform(a: 0, b: 1, c: -1, d: 0, tx: h, ty: 0)
+        }
+        Trace.log("人物の映像：持ち方 \(holding.rawValue)（1＝横・6＝縦）で撮る")
         let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: video, sourcePixelBufferAttributes: [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
             kCVPixelBufferWidthKey as String: Self.size.width,

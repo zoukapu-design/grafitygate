@@ -240,17 +240,21 @@ final class ARStage: NSObject, ObservableObject {
 
     /// いまのカメラの絵から、写真の特徴（と、頼まれれば写真）を作る
     func grabShot(withPhoto: Bool) async throws -> FrameGrab.Shot {
-        guard let buffer = arView.session.currentFrame?.capturedImage else { throw StageError.noFrame }
+        guard let frame = arView.session.currentFrame else { throw StageError.noFrame }
+        let buffer = frame.capturedImage
+        let orientation = FrameGrab.orientation(of: frame.camera.transform)
         return try await Task.detached(priority: .userInitiated) {
-            try FrameGrab.make(from: buffer, withPhoto: withPhoto)
+            try FrameGrab.make(from: buffer, withPhoto: withPhoto, orientation: orientation)
         }.value
     }
 
     /// いまのカメラの景色を写真にする（AR の飾りは写らない。位置などの付加情報も入らない）
     func grabPhoto() async -> UIImage? {
-        guard let buffer = arView.session.currentFrame?.capturedImage else { return nil }
+        guard let frame = arView.session.currentFrame else { return nil }
+        let buffer = frame.capturedImage
+        let orientation = FrameGrab.orientation(of: frame.camera.transform)
         let data = await Task.detached(priority: .userInitiated) {
-            FrameGrab.photo(from: buffer)
+            FrameGrab.photo(from: buffer, orientation: orientation)
         }.value
         return data.flatMap(UIImage.init(data:))
     }
@@ -408,21 +412,35 @@ enum FrameGrab {
 
     private static let context = CIContext()
 
-    static func make(from buffer: CVPixelBuffer, withPhoto: Bool) throws -> Shot {
+    /// カメラの絵を、まっすぐ立てる向き（iPhone をどう持っていても、重力の向きで決める。2026-11-18：
+    /// 横に持って撮ると、GATE の表紙が横倒しになっていた。縦に持ったときは前と同じ .right）
+    static func orientation(of camera: simd_float4x4) -> CGImagePropertyOrientation {
+        // カメラの x は iPhone の長い辺（前のカメラ → ホームの側）、y はそれと直角。世界の「上」がどちらに近いか
+        let x = SIMD3<Float>(camera.columns.0.x, camera.columns.0.y, camera.columns.0.z)
+        let y = SIMD3<Float>(camera.columns.1.x, camera.columns.1.y, camera.columns.1.z)
+        let ux = x.y, uy = y.y
+        // 真上・真下を向けているときは分からないので、縦に持ったときと同じにする
+        guard max(abs(ux), abs(uy)) > 0.35 else { return .right }
+        if abs(ux) >= abs(uy) { return ux < 0 ? .right : .left }
+        return uy > 0 ? .up : .down
+    }
+
+    static func make(from buffer: CVPixelBuffer, withPhoto: Bool, orientation: CGImagePropertyOrientation = .right) throws -> Shot {
         let request = VNGenerateImageFeaturePrintRequest()
         request.revision = FeaturePrint.revision
-        // 縦に持ったときの背面カメラの絵は、右に 90° 回っている
-        let handler = VNImageRequestHandler(cvPixelBuffer: buffer, orientation: .right, options: [:])
+        // 写真の特徴も、まっすぐ立てた絵で作る（作った人と入る人の持ち方が違っても比べられる）
+        let handler = VNImageRequestHandler(cvPixelBuffer: buffer, orientation: orientation, options: [:])
         try handler.perform([request])
         guard let observation = request.results?.first else { throw FeaturePrint.Failure.noResult }
         let values = observation.floatValues
         guard !values.isEmpty else { throw FeaturePrint.Failure.noResult }
-        return Shot(print: values, jpeg: withPhoto ? photo(from: buffer) : nil)
+        return Shot(print: values, jpeg: withPhoto ? photo(from: buffer, orientation: orientation) : nil)
     }
 
     /// カメラの絵を JPEG にする（位置などの付加情報は入らない）
-    static func photo(from buffer: CVPixelBuffer, maxSide: CGFloat = 1600) -> Data? {
-        var image = CIImage(cvPixelBuffer: buffer).oriented(.right)
+    static func photo(from buffer: CVPixelBuffer, maxSide: CGFloat = 1600,
+                      orientation: CGImagePropertyOrientation = .right) -> Data? {
+        var image = CIImage(cvPixelBuffer: buffer).oriented(orientation)
         let longest = max(image.extent.width, image.extent.height)
         if longest > maxSide {
             let s = maxSide / longest

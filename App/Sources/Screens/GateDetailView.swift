@@ -381,6 +381,7 @@ struct GateDetailView: View {
             } label: {
                 Label("扉を出る", systemImage: "rectangle.portrait.and.arrow.right")
                     .font(.headline)
+                    .frame(maxWidth: .infinity, minHeight: 54)
             }
             .buttonStyle(NightSecondaryButtonStyle())
             .accessibilityHint("扉の中から出て、グラフィティボードに戻ります")
@@ -395,19 +396,23 @@ struct GateDetailView: View {
             .padding(16)
             .background(Theme.background, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
 
-            // この GATE について（グラフィティボードの中身は下に小さく）
-            VStack(alignment: .leading, spacing: 16) {
+            // この GATE について（グラフィティボードの中身は下に）
+            VStack(alignment: .leading, spacing: 12) {
                 Text("この GATE について")
                     .font(.headline.weight(.heavy))
                     .foregroundStyle(.white)
-                header(s)
-                whereWhen(s)
-                if !trails.isEmpty {
-                    trailStrip
+                VStack(alignment: .leading, spacing: 16) {
+                    header(s)
+                    whereWhen(s)
+                    if !trails.isEmpty {
+                        trailStrip
+                    }
+                    if s.owner == session.userID {
+                        addLooksButton(s)
+                    }
                 }
-                if s.owner == session.userID {
-                    addLooksButton(s)
-                }
+                .padding(16)
+                .background(Theme.background, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
             }
             .padding(.top, 8)
         }

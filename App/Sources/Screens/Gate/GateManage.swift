@@ -56,13 +56,29 @@ struct GateEditSheet: View {
                         .frame(height: 170)
                         .frame(maxWidth: .infinity)
                         .clipShape(RoundedRectangle(cornerRadius: 14))
-                        PhotosPicker(selection: $photoItem, matching: .images) {
-                            Label(summary.cover_path == nil && newCover == nil ? "表紙を付ける" : "表紙を変える",
-                                  systemImage: "photo")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 12).padding(.vertical, 8)
-                                .background(.black.opacity(0.55), in: Capsule())
+                        HStack(spacing: 8) {
+                            if summary.cover_path != nil || newCover != nil {
+                                // 横倒しの表紙を、まっすぐにする（押すたびに右へ 90°）
+                                Button {
+                                    Task { await rotateCover() }
+                                } label: {
+                                    Label("回す", systemImage: "rotate.right")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 12).padding(.vertical, 8)
+                                        .background(.black.opacity(0.55), in: Capsule())
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("表紙の写真を右に回す")
+                            }
+                            PhotosPicker(selection: $photoItem, matching: .images) {
+                                Label(summary.cover_path == nil && newCover == nil ? "表紙を付ける" : "表紙を変える",
+                                      systemImage: "photo")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 12).padding(.vertical, 8)
+                                    .background(.black.opacity(0.55), in: Capsule())
+                            }
                         }
                         .padding(10)
                     }
@@ -110,6 +126,20 @@ struct GateEditSheet: View {
             }
             .onChange(of: photoItem) { _, item in Task { await loadPhoto(item) } }
         }
+    }
+
+    /// 表紙を右に 90° 回す（いまの表紙を受け取って回し、保存のときに新しい表紙として送る）
+    private func rotateCover() async {
+        var image = newCover
+        if image == nil, let path = summary.cover_path {
+            image = await session.media?.photo(path: path)
+        }
+        guard let image else {
+            message = "表紙を読めませんでした。少し待ってから、もう一度押してください。"
+            return
+        }
+        newCover = image.rotatedRight()
+        Haptics.tap()
     }
 
     private func loadPhoto(_ item: PhotosPickerItem?) async {
@@ -387,6 +417,22 @@ struct GraffitiEditSheet: View {
         } catch {
             message = ErrorText.isMissingFunction(error)
                 ? "カードを直すのは、サーバーの準備（setup_all.sql の貼り直し）のあとで使えます。" : ErrorText.of(error)
+        }
+    }
+}
+
+
+extension UIImage {
+    /// 右に 90° 回した絵
+    func rotatedRight() -> UIImage {
+        let source = size
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = scale
+        return UIGraphicsImageRenderer(size: CGSize(width: source.height, height: source.width), format: format).image { ctx in
+            let c = ctx.cgContext
+            c.translateBy(x: source.height, y: 0)
+            c.rotate(by: .pi / 2)
+            draw(in: CGRect(origin: .zero, size: source))
         }
     }
 }
