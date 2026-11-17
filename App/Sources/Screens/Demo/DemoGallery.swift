@@ -15,7 +15,7 @@ struct DemoGallery: View {
                           "me", "map", "profile", "inbox", "messages",
                           "friends", "visited", "saved-cards", "letters", "albums", "settings",
                           "cards", "nearby", "nearby-detail", "chat", "lookback", "goal", "board", "edit-card",
-                          "edit-gate", "progress", "notifications", "onboarding"]
+                          "edit-gate", "progress", "notifications", "onboarding", "my-gates", "gate-stack"]
 
     @StateObject private var nearby = NearbyCardsModel()
     @StateObject private var inbox = InboxModel()
@@ -191,10 +191,31 @@ struct DemoGallery: View {
             NavigationStack { NotificationSettingsView() }
         case "onboarding":
             OnboardingView {}
+        case "my-gates":
+            // 同じ所に 2 つ（重ねた印）・少し離れて 1 つ
+            NavigationStack { MyGatesView(gates: Self.myGates) }
+        case "gate-stack":
+            Color.clear.sheet(isPresented: .constant(true)) {
+                GateStackSheet(stack: PinStack(items: MyGate.pins(Self.myGates).map {
+                    MapPinItem(id: $0.id, title: $0.title, cover: $0.cover, coordinate: $0.coordinate,
+                               mine: $0.title.contains("落書き"), ownerName: "みさき")
+                })) { _ in }
+            }
         default:
             List(Self.screens, id: \.self) { Text($0) }
         }
     }
+}
+
+extension DemoGallery {
+    static let myGates: [MyGate] = [
+        MyGate(id: DemoData.clock, title: "駅前の大時計", visibility: "friends", status: "open",
+               created_at: "2026-11-10T09:00:00Z", cover_path: "demo/night.jpg", lat: 35.6581, lon: 139.7016, kind: "object"),
+        MyGate(id: UUID(uuidString: "6A0B1C2D-0000-4000-8000-00000000A002")!, title: "時計の下の落書き", visibility: "friends",
+               status: "open", created_at: "2026-11-12T09:00:00Z", cover_path: nil, lat: 35.6581, lon: 139.7016, kind: "object"),
+        MyGate(id: DemoData.hill, title: "夕焼けの見える丘", visibility: "public", status: "open",
+               created_at: "2026-10-02T09:00:00Z", cover_path: "demo/sunset.jpg", lat: 35.6595, lon: 139.7005, kind: "view"),
+    ]
 }
 
 /// 見本のデータ
