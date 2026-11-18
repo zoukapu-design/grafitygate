@@ -136,7 +136,7 @@ enum DemoData {
          "local_only": false, "created_at": ago(seconds), "in_atlas": author == me ? true : NSNull(),
          "edited_at": id == 3 ? ago(1800) : NSNull(),
          "finish": ["holo", "normal", "neon", "gold"][(id - 1) % 4],
-         "title": id == 1 ? "夕焼けの約束" : (id == 2 ? "雲の日の丘" : NSNull())]
+         "title": nn(id == 1 ? "夕焼けの約束" : (id == 2 ? "雲の日の丘" : nil))]
     }
 
     static var cards: [[String: Any]] {
