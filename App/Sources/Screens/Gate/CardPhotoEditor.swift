@@ -289,7 +289,7 @@ struct CardPhotoEditor: View {
     @State private var working = false
     @State private var frameSize: CGSize = .zero
     /// 重ねるエフェクトの絵（選んだときに 1 回だけ作る。指で動かすたびに作り直さない）
-    @State private var overlay: UIImage?
+    @State private var overlayImage: UIImage?
 
     /// カードの写真の窓の縦横の比（横 0.91・縦 0.62）
     static let aspect: CGFloat = 0.91 / 0.62
@@ -332,8 +332,8 @@ struct CardPhotoEditor: View {
                         .frame(width: fw, height: fh)
                         .scaleEffect(zoom)
                         .offset(offset)
-                    if let overlay {
-                        Image(uiImage: overlay).resizable().frame(width: fw, height: fh).allowsHitTesting(false)
+                    if let overlayImage {
+                        Image(uiImage: overlayImage).resizable().frame(width: fw, height: fh).allowsHitTesting(false)
                     }
                 }
                 .frame(width: fw, height: fh)
@@ -432,7 +432,7 @@ struct CardPhotoEditor: View {
 
     private func refreshOverlay() {
         let size = frameSize == .zero ? CGSize(width: 340, height: 340 / Self.aspect) : frameSize
-        overlay = sparkle.overlay(size: CGSize(width: size.width * 2, height: size.height * 2))
+        overlayImage = sparkle.overlay(size: CGSize(width: size.width * 2, height: size.height * 2))
     }
 
     private func tool(_ symbol: String, _ label: String, action: @escaping () -> Void) -> some View {
@@ -498,7 +498,7 @@ struct CardPhotoEditor: View {
             base = original.downscaled(maxSide: 1600)
             look = .normal
             sparkle = .none
-            overlay = nil
+            overlayImage = nil
             Task { await refreshPreview(); await makeThumbs() }
         }
         zoom = 1
