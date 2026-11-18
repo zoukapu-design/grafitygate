@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 同時に 2 回書き込んでも、ルールが守られるか（run.sh から呼ぶ。test_core.sql のあとの状態を使う）
 #  1) 同じ入場券で同時に 2 枚 → 1 枚だけ
-#  2) 同じ人が別々の入場券で、同じ GATE に同時に 2 枚 → 12 時間のルールで 1 枚だけ
+#  2) 同じ人が別々の入場券で、同じ GATE に同時に 2 枚 → 1 日 1 枚のルールで 1 枚だけ
 set -euo pipefail
 
 carol='00000000-0000-0000-0000-00000000000c'
@@ -41,7 +41,7 @@ else
   exit 1
 fi
 
-# 2) 別々の入場券で同時に 2 枚（12 時間のルール）
+# 2) 別々の入場券で同時に 2 枚（1 日 1 枚のルール）
 q "delete from gf_graffiti where author = '$carol'"
 v1=$(enter)
 v2=$(enter)
@@ -50,8 +50,8 @@ sleep 0.4
 out_d=$(post "$v2" 'D')
 wait
 n=$(q "select count(*) from gf_graffiti where author = '$carol' and gate_id = '$gate'")
-if [ "$n" = "1" ] && echo "$out_d" | grep -q 'gf_repost_cooldown'; then
-  echo "  ok - 別々の入場券で同時に送っても、12 時間のルールで 1 枚だけ"
+if [ "$n" = "1" ] && echo "$out_d" | grep -q 'gf_card_today'; then
+  echo "  ok - 別々の入場券で同時に送っても、1 日 1 枚のルールで 1 枚だけ"
 else
   echo "  FAIL: 別々の入場券の同時書き込み（枚数 $n / 2 つ目の結果: $out_d）" >&2
   exit 1

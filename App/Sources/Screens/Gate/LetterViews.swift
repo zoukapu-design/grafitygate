@@ -1,4 +1,3 @@
-import PhotosUI
 import SwiftUI
 
 /// 手紙・タイムカプセル：未来の自分や友達へ。開く条件（日時・現地）がそろうまで、「手紙がある」ことだけが分かる。
@@ -180,6 +179,7 @@ struct LetterView: View {
     @State private var error: String?
     @State private var revealed = false
     @State private var report: ReportItem?
+    @State private var bigCard: TradingCardContent?
 
     init(info: LetterInfo, onOpened: @escaping () -> Void) {
         self.info = info
@@ -193,6 +193,21 @@ struct LetterView: View {
                     VStack(alignment: .leading, spacing: 14) {
                         Text(info.isToSelf ? "未来の自分へ" : "\(content.recipient_name) さんへ")
                             .font(.headline).foregroundStyle(Theme.text)
+                        if let cardContent = letterCard(content) {
+                            // 添えたグラフィティカード（押すと大きく見る）
+                            Button {
+                                bigCard = cardContent
+                            } label: {
+                                TradingCard(content: cardContent)
+                                    .frame(maxWidth: 240)
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.plain)
+                        } else if content.card_gone == true {
+                            Label("添えてあったカードは、書いた人が消しました。", systemImage: "rectangle.slash")
+                                .font(.caption)
+                                .foregroundStyle(Theme.textSecondary)
+                        }
                         if let path = content.photo_path {
                             RemotePhoto(path: path)
                                 .frame(height: 240)
@@ -259,14 +274,27 @@ struct LetterView: View {
             }
         }
         .sheet(item: $report) { item in ReportSheet(item: item) }
+        .fullScreenCover(item: $bigCard) { card in
+            TradingCardViewer(content: card, isMine: info.sent || info.isToSelf)
+        }
         .task { await open() }
+    }
+
+    /// 手紙に添えたカード（書いた人のカード）
+    private func letterCard(_ content: LetterContent) -> TradingCardContent? {
+        guard let id = content.card_id else { return nil }
+        return TradingCardContent(id: id, photoPath: content.card_photo, body: content.card_body ?? "",
+                                  author: content.author_name, title: content.card_title,
+                                  gateTitle: content.card_gate_title ?? info.gate_title,
+                                  createdAt: content.card_created_at, finish: CardFinish(raw: content.card_finish),
+                                  badge: info.sent || info.isToSelf ? .mine : .friend)
     }
 
     private func open() async {
         guard content == nil, let api = session.api else { return }
         let firstTime = !info.isOpened && !info.sent
         do {
-            content = try await api.openLetter(info.id)
+            content = try await api.openLetterWithCard(info.id)
             if content == nil { error = "手紙が見つかりませんでした。" }
             if firstTime {
                 Haptics.open()
@@ -292,8 +320,9 @@ struct LetterComposer: View {
     @State private var toSelf = true
     @State private var friend: Set<UUID> = []
     @State private var text = ""
-    @State private var photoItem: PhotosPickerItem?
-    @State private var photo: UIImage?
+    /// 添えるグラフィティカード（2026-11-19 オーナー「手紙には写真ではなく、カードを添付」）
+    @State private var card: MyCard?
+    @State private var choosingCard = false
     @State private var onsite = true
     @State private var useDate = false
     @State private var openAt = Calendar.current.date(byAdding: .year, value: 1, to: Date()) ?? Date()
@@ -333,24 +362,44 @@ struct LetterComposer: View {
                 Section {
                     TextField(toSelf ? "いまの気持ち、未来の自分に伝えたいこと" : "伝えたいこと", text: $text, axis: .vertical)
                         .lineLimit(5...12)
-                    if let photo {
-                        HStack {
-                            Image(uiImage: photo).resizable().scaledToFill()
-                                .frame(width: 64, height: 64).clipShape(RoundedRectangle(cornerRadius: 10))
-                            Spacer()
-                            Button("写真を外す", role: .destructive) {
-                                self.photo = nil
-                                photoItem = nil
-                            }
-                        }
-                    }
-                    PhotosPicker(selection: $photoItem, matching: .images) {
-                        Label(photo == nil ? "写真を入れる" : "写真を選び直す", systemImage: "photo")
-                    }
                 } header: {
                     Text("手紙")
                 } footer: {
                     Text("\(text.count)/2000")
+                }
+                Section {
+                    if let card {
+                        HStack(alignment: .top, spacing: 14) {
+                            TradingCard(content: MyCardPicker.content(card, author: session.profile?.display_name ?? "あなた"),
+                                        animated: false)
+                                .frame(width: 110)
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(card.title?.isEmpty == false ? card.title! : card.gate_title)
+                                    .font(.subheadline.weight(.bold))
+                                    .foregroundStyle(Theme.text)
+                                Text("\(card.gate_title)・\(ServerDate.relative(card.created_at))")
+                                    .font(.caption)
+                                    .foregroundStyle(Theme.textSecondary)
+                                Button("ほかのカードにする") { choosingCard = true }
+                                    .font(.footnote.weight(.semibold))
+                                    .buttonStyle(.borderless)
+                                Button("外す", role: .destructive) { self.card = nil }
+                                    .font(.footnote.weight(.semibold))
+                                    .buttonStyle(.borderless)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    } else {
+                        Button {
+                            choosingCard = true
+                        } label: {
+                            Label("グラフィティカードを添える", systemImage: "rectangle.portrait.on.rectangle.portrait.angled")
+                        }
+                    }
+                } header: {
+                    Text("添えるカード")
+                } footer: {
+                    Text("あなたのグラフィティカードを 1 枚添えられます。開いた人には、カードの形で届きます。")
                 }
                 Section {
                     Toggle("ここに来たときだけ開ける", isOn: $onsite).tint(Theme.accent)
@@ -382,13 +431,9 @@ struct LetterComposer: View {
                     .disabled(!canSend || sending)
                 }
             }
-            .onChange(of: photoItem) { _, item in
-                Task {
-                    guard let item else { return }
-                    if let data = try? await item.loadTransferable(type: Data.self), let image = UIImage(data: data) {
-                        photo = image.downscaled(maxSide: 1600)
-                    }
-                }
+            .sheet(isPresented: $choosingCard) {
+                MyCardPicker(preferGate: context.gateID) { picked in card = picked }
+                    .environmentObject(session)
             }
             .onChange(of: text) { _, value in
                 if value.count > 2000 { text = String(value.prefix(2000)) }
@@ -412,21 +457,23 @@ struct LetterComposer: View {
         }
         sending = true
         defer { sending = false }
-        var photoPath: String?
+        let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
         do {
-            if let photo, let media = session.media, let me = session.userID {
-                photoPath = try await media.uploadPhoto(photo, owner: me)
+            do {
+                _ = try await api.writeLetter(visit: visit, to: toSelf ? nil : friend.first, body: body,
+                                              card: card?.id, openAt: useDate ? openAt : nil, onsite: onsite)
+            } catch let error where ErrorText.isMissingFunction(error) && card == nil {
+                // 0030 の前のサーバー：カードなしなら前の書き方で送る
+                _ = try await api.writeLetter(visit: visit, to: toSelf ? nil : friend.first, body: body,
+                                              photoPath: nil, openAt: useDate ? openAt : nil, onsite: onsite)
             }
-            _ = try await api.writeLetter(visit: visit, to: toSelf ? nil : friend.first,
-                                          body: text.trimmingCharacters(in: .whitespacesAndNewlines),
-                                          photoPath: photoPath, openAt: useDate ? openAt : nil, onsite: onsite)
-            Trace.log("手紙を書きました（\(toSelf ? "自分あて" : "友達あて")・現地：\(onsite)・日時：\(useDate)）")
+            Trace.log("手紙を書きました（\(toSelf ? "自分あて" : "友達あて")・現地：\(onsite)・日時：\(useDate)・カード\(card == nil ? "なし" : "あり")）")
             Haptics.success()
             onSent()
             dismiss()
         } catch {
-            if let photoPath { await session.media?.removePhoto(path: photoPath) }
-            message = ErrorText.of(error)
+            message = ErrorText.isMissingFunction(error)
+                ? "カードを添えるのは、サーバーの準備（setup_all.sql の貼り直し）のあとで使えます。" : ErrorText.of(error)
         }
     }
 }

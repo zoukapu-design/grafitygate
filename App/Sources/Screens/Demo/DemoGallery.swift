@@ -16,7 +16,8 @@ struct DemoGallery: View {
                           "friends", "visited", "saved-cards", "letters", "albums", "settings",
                           "cards", "nearby", "nearby-detail", "chat", "lookback", "goal", "board", "edit-card",
                           "edit-gate", "progress", "notifications", "onboarding", "my-gates", "gate-stack", "map-hidden", "trading-cards", "card-viewer", "cover-rotate", "home-empty", "door-designs",
-                          "photo-editor", "story-camera", "story-text", "story-review"]
+                          "photo-editor", "story-camera", "story-text", "story-review",
+                          "gate-posted", "card-maker", "card-maker-photo", "letter-card", "card-picker", "letter-compose"]
 
     @StateObject private var nearby = NearbyCardsModel()
     @StateObject private var inbox = InboxModel()
@@ -235,6 +236,29 @@ struct DemoGallery: View {
                                                           badge: .friend)) {}
         case "cover-rotate":
             CoverRotateSheet(summary: Demo.gate) {}
+        case "gate-posted":
+            NavigationStack { GateDetailView(gateID: DemoData.hill) }
+        case "card-maker", "card-maker-photo":
+            CardMakerView(context: Demo.insideContext, externalARCamera: nil) {}
+                .onAppear {
+                    if screen == "card-maker-photo" {
+                        let draft = CardDraftStore.shared.draft(for: Demo.insideContext.gateID)
+                        draft.setPhoto(Demo.demoPhoto)
+                        draft.title = "夕焼けの約束"
+                        draft.finish = .holo
+                    }
+                }
+        case "letter-card":
+            NavigationStack {
+                LetterView(info: LetterInfo(id: UUID(), gate_id: DemoData.hill, gate_title: "夕焼けの見える丘",
+                                            author: Demo.friend, author_name: "みさき", recipient: Demo.me,
+                                            recipient_name: "あなた", open_at: nil, onsite: true, opened_at: Demo.now,
+                                            created_at: Demo.now, sent: false, time_ok: true, here: true)) {}
+            }
+        case "card-picker":
+            MyCardPicker(preferGate: DemoData.hill) { _ in }
+        case "letter-compose":
+            LetterComposer(context: Demo.insideContext) {}
         case "photo-editor":
             CardPhotoEditor(original: Demo.demoPhoto) { _ in }
         case "story-camera", "story-text", "story-review":
@@ -343,6 +367,13 @@ private enum Demo {
     // MARK: 見本の写真（その場で描く）
 
     private static var seeded = false
+
+    /// 扉の中にいることにした見本の GATE
+    static var insideContext: GateContext {
+        GateContext(gateID: DemoData.hill, title: "夕焼けの見える丘", ownerID: friend, ownerName: "みさき",
+                    coverPath: "demo/sunset.jpg", createdAt: now, visit: UUID(),
+                    visitExpires: Date().addingTimeInterval(1200))
+    }
 
     /// 見本の景色の写真（AR カメラ・写真を整える画面の見本）
     static var demoPhoto: UIImage { scene(top: 0xF59E5B, bottom: 0x7A3E6B, sun: true, city: true) }

@@ -78,6 +78,8 @@ enum ErrorText {
     private static let known: [(String, String)] = [
         ("gf_already_posted", "扉を開けるたびに 1 枚です。もう 1 枚書きました。次は扉を開け直してから書けます。"),
         ("gf_repost_cooldown", "同じ GATE には、前に書いてから 12 時間あけると書けます。"),
+        ("gf_card_today", "この GATE には、今日はもうグラフィティカードを残しました。明日（0 時から）また残せます。"),
+        ("gf_bad_card", "添えられるのは、あなたのグラフィティカードだけです。"),
         ("gf_visit_invalid", "扉が閉じました（GATE から離れたため）。現地でもう一度扉を開けてください。"),
         ("gf_inaccurate", "位置の精度が足りません。空の開けた所で少し待ってから、もう一度お試しください。"),
         ("gf_bad_position", "現在地を確かめられませんでした。"),

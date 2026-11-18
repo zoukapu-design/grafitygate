@@ -508,7 +508,7 @@ struct LetterInfo: Decodable, Identifiable, Hashable {
     }
 }
 
-/// 開いた手紙（gf_open_letter）
+/// 開いた手紙（gf_open_letter・カードつきは gf_open_letter2）
 struct LetterContent: Decodable, Identifiable, Hashable {
     let id: UUID
     let author_name: String
@@ -517,6 +517,35 @@ struct LetterContent: Decodable, Identifiable, Hashable {
     let photo_path: String?
     let created_at: String
     let opened_at: String?
+    /// 添えたグラフィティカード（0030。書いた人が消したら card_gone）
+    var card_id: UUID? = nil
+    var card_title: String? = nil
+    var card_body: String? = nil
+    var card_photo: String? = nil
+    var card_finish: String? = nil
+    var card_gate_id: UUID? = nil
+    var card_gate_title: String? = nil
+    var card_created_at: String? = nil
+    var card_gone: Bool? = nil
+}
+
+/// 今日この GATE にカードを残したか（gf_my_card_today。日本時間の 0 時で切り替え）
+struct CardToday: Decodable, Equatable {
+    let posted: Bool
+    let card_id: UUID?
+    let next_at: String?
+}
+
+/// 自分のグラフィティカード（gf_my_cards。手紙に添えるときに選ぶ）
+struct MyCard: Decodable, Identifiable, Hashable {
+    let id: UUID
+    let gate_id: UUID
+    let gate_title: String
+    let body: String
+    var title: String? = nil
+    let photo_path: String?
+    var finish: String? = nil
+    let created_at: String
 }
 
 /// GATE の思い出（gf_memory_list）

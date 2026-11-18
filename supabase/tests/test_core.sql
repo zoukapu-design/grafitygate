@@ -149,7 +149,7 @@ select t_ok((select count(*) from gf_enter_attempts where result = 'no_match' an
   '記録には写真の特徴の距離が残る（しきい値を決め直すため）');
 
 -- =========================================================
-\echo '== グラフィティ（1 回の入場で 1 枚・12 時間）'
+\echo '== グラフィティ（1 回の入場で 1 枚・同じ GATE は 1 日 1 枚）'
 :as_bob
 select gf_post_graffiti(:'v1', 'また来たよ', :'bob' || '/g1.jpg', 'friends', false) as p1 \gset
 select t_ok(:'p1' is not null, '入場中は書ける');
@@ -157,18 +157,22 @@ select t_throws(format('select gf_post_graffiti(%L, %L, null, null, false)', :'v
   '同じ入場で 2 枚目は書けない');
 select challenge_id as c from gf_request_challenge() \gset
 select gf_enter(:'g1', :'c', :lat50, :glon, 10, :near, 2) ->> 'visit_id' as v2 \gset
-select t_throws(format('select gf_post_graffiti(%L, %L, null, null, false)', :'v2', '入り直し'), 'gf_repost_cooldown',
-  '入り直しても 12 時間たつまで同じ GATE には書けない');
+select t_throws(format('select gf_post_graffiti(%L, %L, null, null, false)', :'v2', '入り直し'), 'gf_card_today',
+  '入り直しても、同じ日には同じ GATE に書けない');
 :as_admin
-update gf_graffiti set created_at = now() - interval '11 hours' where id = :'p1';
+update gf_graffiti set created_at = (gf_card_day(now())::timestamp at time zone 'Asia/Tokyo') where id = :'p1';
 :as_bob
-select t_throws(format('select gf_post_graffiti(%L, %L, null, null, false)', :'v2', '11 時間後'), 'gf_repost_cooldown',
-  '11 時間ではまだ書けない');
+select t_throws(format('select gf_post_graffiti(%L, %L, null, null, false)', :'v2', '同じ日の朝'), 'gf_card_today',
+  '日本時間で同じ日（0 時に書いたもの）なら、まだ書けない');
 :as_admin
+update gf_graffiti set created_at = now() - interval '1 day' where id = :'p1';
+:as_bob
+select gf_post_graffiti(:'v2', '次の日', null, 'friends', true) as p2 \gset
+select t_ok(:'p2' is not null, '次の日には書ける（この 1 枚は「現地だけ」）');
+:as_admin
+-- このあとの新着のテスト（24 時間）のため、1 枚目を「13 時間前」に戻す
 update gf_graffiti set created_at = now() - interval '13 hours' where id = :'p1';
 :as_bob
-select gf_post_graffiti(:'v2', '13 時間後', null, 'friends', true) as p2 \gset
-select t_ok(:'p2' is not null, '12 時間たてば書ける（この 1 枚は「現地だけ」）');
 select t_throws(format('select gf_post_graffiti(%L, %L, %L, null, false)', :'v2', 'x', :'alice' || '/a.jpg'), 'gf_already_posted',
   '入場券 1 枚につき 1 枚（もう書いた入場券では書けない）');
 :as_dave
@@ -273,7 +277,7 @@ select gf_update_gate(:'g1', null, null, 'private', null);
 select t_ok(not exists (select 1 from gf_discover_nearby(:lat50, :glon) where id = :'g1'), '自分だけに変えた GATE は見つからない');
 select t_ok((select count(*) from gf_graffiti where gate_id = :'g1' and author <> :'bob') = 0, '自分だけに変えた GATE の中は、入場券があっても読めない');
 :as_admin
-update gf_graffiti set created_at = now() - interval '13 hours' where author = :'bob';
+update gf_graffiti set created_at = now() - interval '1 day' where author = :'bob';
 :as_bob
 select t_throws(format('select gf_post_graffiti(%L, %L, null, null, false)', :'v3', '非公開後'), 'gf_visit_invalid',
   '自分だけに変えた GATE には、前の入場券でも書けない');

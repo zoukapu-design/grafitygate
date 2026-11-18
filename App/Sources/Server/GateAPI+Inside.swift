@@ -123,6 +123,42 @@ extension GateAPI {
             .execute().value
     }
 
+    /// 手紙を書く（自分のグラフィティカードを添える。0030）
+    func writeLetter(visit: UUID, to recipient: UUID?, body: String, card: UUID?, openAt: Date?,
+                     onsite: Bool) async throws -> UUID {
+        try await client.rpc("gf_write_letter2",
+                             params: LetterCardParams(p_visit: visit, p_recipient: recipient, p_body: body, p_card: card,
+                                                      p_open_at: openAt.map { ISO8601DateFormatter().string(from: $0) },
+                                                      p_onsite: onsite))
+            .execute().value
+    }
+
+    /// 手紙を開く（添えたカードも。0030 の前のサーバーではカードなし）
+    func openLetterWithCard(_ id: UUID) async throws -> LetterContent? {
+        do {
+            let rows: [LetterContent] = try await client.rpc("gf_open_letter2", params: LetterIDParam(p_letter: id))
+                .execute().value
+            return rows.first
+        } catch let error where ErrorText.isMissingFunction(error) {
+            return try await openLetter(id)
+        }
+    }
+
+    /// 今日この GATE にカードを残したか（0030 の前のサーバーでは nil）
+    func myCardToday(_ gate: UUID) async throws -> CardToday? {
+        do {
+            return try await client.rpc("gf_my_card_today", params: InsideGateParam(p_gate: gate)).execute().value
+        } catch let error where ErrorText.isMissingFunction(error) {
+            return nil
+        }
+    }
+
+    /// 自分のグラフィティカード（新しい順）
+    func myCards(limit: Int = 60) async throws -> [MyCard] {
+        struct P: Encodable { let p_limit: Int }
+        return try await client.rpc("gf_my_cards", params: P(p_limit: limit)).execute().value
+    }
+
     func openLetter(_ id: UUID) async throws -> LetterContent? {
         let rows: [LetterContent] = try await client.rpc("gf_open_letter", params: LetterIDParam(p_letter: id))
             .execute().value
@@ -584,6 +620,27 @@ private struct LetterParams: Encodable {
         try c.encode(p_recipient, forKey: .p_recipient)     // nil は null（自分あて）
         try c.encode(p_body, forKey: .p_body)
         try c.encode(p_photo_path, forKey: .p_photo_path)
+        try c.encode(p_open_at, forKey: .p_open_at)
+        try c.encode(p_onsite, forKey: .p_onsite)
+    }
+}
+
+private struct LetterCardParams: Encodable {
+    let p_visit: UUID
+    let p_recipient: UUID?
+    let p_body: String
+    let p_card: UUID?
+    let p_open_at: String?
+    let p_onsite: Bool
+
+    enum CodingKeys: String, CodingKey { case p_visit, p_recipient, p_body, p_card, p_open_at, p_onsite }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(p_visit, forKey: .p_visit)
+        try c.encode(p_recipient, forKey: .p_recipient)     // nil は null（自分あて）
+        try c.encode(p_body, forKey: .p_body)
+        try c.encode(p_card, forKey: .p_card)
         try c.encode(p_open_at, forKey: .p_open_at)
         try c.encode(p_onsite, forKey: .p_onsite)
     }

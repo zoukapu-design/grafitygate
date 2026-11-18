@@ -317,6 +317,27 @@ enum DemoData {
                     ["id": UUID().uuidString, "owner": misaki.uuidString, "owner_name": "みさき", "title": "卒業の日",
                      "note": "", "visibility": "friends", "created_at": ago(400 * 86400), "item_count": 3,
                      "cover_path": NSNull(), "member_count": 2, "is_member": false, "can_add": false]]
+        case "gf_my_card_today":
+            let posted = (DemoMode.screen ?? "").hasPrefix("gate-posted")
+            return ["posted": posted, "card_id": NSNull(), "next_at": later(10 * 3600)]
+        case "gf_my_cards":
+            return [
+                ["id": "00000000-0000-0000-0000-0000000c0002", "gate_id": hill.uuidString, "gate_title": "夕焼けの見える丘",
+                 "body": "今日は雲が多かったけど、それもきれいだった。", "title": "雲の日の丘", "photo_path": "demo/park.jpg",
+                 "finish": "normal", "created_at": ago(5 * 3600)],
+                ["id": UUID().uuidString, "gate_id": clock.uuidString, "gate_title": "駅前の大時計",
+                 "body": "待ち合わせはいつもここ。", "title": NSNull(), "photo_path": "demo/night.jpg",
+                 "finish": "neon", "created_at": ago(9 * 86400)],
+                ["id": UUID().uuidString, "gate_id": tree.uuidString, "gate_title": "公園の大きな木",
+                 "body": "", "title": "満開", "photo_path": "demo/sunset.jpg", "finish": "holo", "created_at": ago(30 * 86400)],
+            ]
+        case "gf_open_letter2", "gf_open_letter":
+            return [["id": UUID().uuidString, "author_name": "みさき", "recipient_name": "あなた",
+                     "body": "1 年前の今日、ここで一緒に夕焼けを見たね。また来ようね。", "photo_path": NSNull(),
+                     "created_at": ago(365 * 86400), "opened_at": ago(60),
+                     "card_id": UUID().uuidString, "card_title": "夕焼けの約束", "card_body": "ここから見る夕焼けが一番好き。",
+                     "card_photo": "demo/sunset.jpg", "card_finish": "holo", "card_gate_id": hill.uuidString,
+                     "card_gate_title": "夕焼けの見える丘", "card_created_at": ago(365 * 86400), "card_gone": false]]
         case "gf_my_letters":
             return [
                 ["id": UUID().uuidString, "gate_id": hill.uuidString, "gate_title": "夕焼けの見える丘", "author": misaki.uuidString,

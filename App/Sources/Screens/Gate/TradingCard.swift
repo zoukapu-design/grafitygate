@@ -133,6 +133,21 @@ enum CardMotion {
     }
 }
 
+/// カードを作るときに、カードの上で直接書く所
+enum CardEditField: Hashable {
+    case title, body
+}
+
+/// カードの上で直接書く（名前・ひとこと）・写真を押す（2026-11-19 オーナー「カードの中の各項目をタップして直接編集」）
+struct TradingCardEditor {
+    var title: Binding<String>
+    var body: Binding<String>
+    /// 名前が空のときに出す字（書いた人の名前）
+    var titlePlaceholder: String
+    var focus: FocusState<CardEditField?>.Binding
+    var onPhotoTap: () -> Void
+}
+
 /// トレーディングカードの形のグラフィティカード（幅に合わせて文字も大きさが変わる）
 struct TradingCard: View {
     let content: TradingCardContent
@@ -140,6 +155,8 @@ struct TradingCard: View {
     var tilt: CGSize = .zero
     /// 光を流すか（一覧で並べるときは控えめに）
     var animated = true
+    /// カードを作るとき：名前・ひとことをカードの上で書く・写真を押す
+    var editor: TradingCardEditor? = nil
 
     static let aspect: CGFloat = 63.0 / 88.0
 
@@ -175,8 +192,8 @@ struct TradingCard: View {
                     radius: finish == .neon ? w * 0.06 : w * 0.035, y: w * 0.02)
         }
         .aspectRatio(Self.aspect, contentMode: .fit)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("グラフィティカード「\(headline)」。\(content.author.isEmpty ? "" : content.author + " さん。")\(content.body)")
+        .accessibilityElement(children: editor == nil ? .ignore : .contain)
+        .accessibilityLabel(editor == nil ? "グラフィティカード「\(headline)」。\(content.author.isEmpty ? "" : content.author + " さん。")\(content.body)" : "作っているグラフィティカード")
     }
 
     /// 上の帯に出す名前（カードの名前。無ければ書いた人の名前）
@@ -193,11 +210,25 @@ struct TradingCard: View {
     private func header(_ w: CGFloat) -> some View {
         HStack(spacing: w * 0.025) {
             NeonAvatar(name: content.author.isEmpty ? "?" : content.author, size: w * 0.085)
-            Text(headline)
-                .font(.system(size: w * 0.062, weight: .heavy))
-                .foregroundStyle(Color(hex: 0x17181F))
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
+            if let editor {
+                TextField("", text: editor.title,
+                          prompt: Text(editor.titlePlaceholder).foregroundStyle(Color(hex: 0x17181F).opacity(0.35)))
+                    .font(.system(size: w * 0.062, weight: .heavy))
+                    .foregroundStyle(Color(hex: 0x17181F))
+                    .focused(editor.focus, equals: .title)
+                    .submitLabel(.next)
+                    .onSubmit { editor.focus.wrappedValue = .body }
+                    .accessibilityLabel("カードの名前（空なら \(editor.titlePlaceholder)）")
+                Image(systemName: "pencil")
+                    .font(.system(size: w * 0.045, weight: .bold))
+                    .foregroundStyle(Theme.accent)
+            } else {
+                Text(headline)
+                    .font(.system(size: w * 0.062, weight: .heavy))
+                    .foregroundStyle(Color(hex: 0x17181F))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+            }
             Spacer(minLength: 0)
             HStack(spacing: w * 0.012) {
                 Image(systemName: "heart.fill")
@@ -211,8 +242,41 @@ struct TradingCard: View {
         .background(Color.white.opacity(0.92), in: RoundedRectangle(cornerRadius: w * 0.03, style: .continuous))
     }
 
-    // まん中：その場の写真（無ければ夜空に扉のしるし）
-    private func art(_ w: CGFloat) -> some View {
+    // まん中：その場の写真（無ければ夜空に扉のしるし）。作るときは押すと撮る・整える
+    @ViewBuilder private func art(_ w: CGFloat) -> some View {
+        if let editor {
+            Button(action: editor.onPhotoTap) {
+                artFace(w)
+                    .overlay {
+                        if content.image == nil && content.photoPath == nil {
+                            VStack(spacing: w * 0.02) {
+                                Image(systemName: "camera.viewfinder")
+                                    .font(.system(size: w * 0.1, weight: .bold))
+                                Text("押して AR カメラで撮る")
+                                    .font(.system(size: w * 0.048, weight: .heavy))
+                            }
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, w * 0.05).padding(.vertical, w * 0.03)
+                            .background(.black.opacity(0.45), in: RoundedRectangle(cornerRadius: w * 0.03, style: .continuous))
+                        } else {
+                            Label("押して整える", systemImage: "slider.horizontal.3")
+                                .font(.system(size: w * 0.038, weight: .heavy))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, w * 0.025).padding(.vertical, w * 0.012)
+                                .background(.black.opacity(0.5), in: Capsule())
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                                .padding(w * 0.025)
+                        }
+                    }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(content.image == nil ? "写真を撮る" : "写真を整える・撮り直す")
+        } else {
+            artFace(w)
+        }
+    }
+
+    private func artFace(_ w: CGFloat) -> some View {
         ZStack(alignment: .topLeading) {
             Group {
                 if let image = content.image {
@@ -264,8 +328,33 @@ struct TradingCard: View {
                     in: RoundedRectangle(cornerRadius: w * 0.02, style: .continuous))
     }
 
-    // ひとこと
-    private func textBox(_ w: CGFloat) -> some View {
+    // ひとこと（作るときは、ここで直接書く）
+    @ViewBuilder private func textBox(_ w: CGFloat) -> some View {
+        if let editor {
+            TextField("", text: editor.body,
+                      prompt: Text("ここを押して、ひとことを書く").foregroundStyle(content.finish.textInk.opacity(0.4)),
+                      axis: .vertical)
+                .font(.system(size: w * 0.055, weight: .semibold))
+                .foregroundStyle(content.finish.textInk)
+                .lineLimit(1...5)
+                .focused(editor.focus, equals: .body)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .padding(w * 0.035)
+                .background(content.finish.textBox, in: RoundedRectangle(cornerRadius: w * 0.025, style: .continuous))
+                .overlay(alignment: .bottomTrailing) {
+                    Image(systemName: "pencil")
+                        .font(.system(size: w * 0.045, weight: .bold))
+                        .foregroundStyle(Theme.accent.opacity(0.8))
+                        .padding(w * 0.03)
+                }
+                .contentShape(Rectangle())
+                .onTapGesture { editor.focus.wrappedValue = .body }
+        } else {
+            readOnlyText(w)
+        }
+    }
+
+    private func readOnlyText(_ w: CGFloat) -> some View {
         Text(content.body.isEmpty ? "（ひとことなし）" : content.body)
             .font(.system(size: w * 0.055, weight: .semibold))
             .foregroundStyle(content.body.isEmpty ? content.finish.textInk.opacity(0.4) : content.finish.textInk)
