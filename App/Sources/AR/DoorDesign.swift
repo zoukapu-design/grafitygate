@@ -237,7 +237,7 @@ final class DoorDecor {
     /// 開く戸（木の扉。ちょうつがいの位置）
     private(set) var leaf: Entity?
 
-    static func pbr(_ color: UIColor, rough: Float, metal: Float = 0, coat: Float = 0, opacity: Float = 1,
+    nonisolated static func pbr(_ color: UIColor, rough: Float, metal: Float = 0, coat: Float = 0, opacity: Float = 1,
                     emissive: UIColor? = nil, glow: Float = 0) -> PhysicallyBasedMaterial {
         var m = PhysicallyBasedMaterial()
         m.baseColor = .init(tint: color)
@@ -255,7 +255,7 @@ final class DoorDecor {
         return m
     }
 
-    static func unlit(_ color: UIColor, opacity: Float = 1) -> UnlitMaterial {
+    nonisolated static func unlit(_ color: UIColor, opacity: Float = 1) -> UnlitMaterial {
         var m = UnlitMaterial(color: color)
         if opacity < 1 { m.blending = .transparent(opacity: .init(floatLiteral: opacity)) }
         return m

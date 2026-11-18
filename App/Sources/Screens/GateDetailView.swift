@@ -106,24 +106,26 @@ struct GateDetailView: View {
                         } else {
                             // グラフィティボード：表紙・名前・作った人 → 紹介と数 → 扉 → いつ・どこで → 扉の向こう
                             VStack(alignment: .leading, spacing: 16) {
+                                // 2026-11-18 オーナー「徹底的に見やすく」：上から 表紙 → みんなのカード → 紹介と数 →
+                                // どこにあるか → 扉の向こう（読めるもの）。いちばん大事な「扉を開ける／ここへ行く」は、
+                                // 画面の下にいつも出す（boardActionBar）
                                 hero(summary)
-                                // 友達・訪れた人のグラフィティカード（まだ開けていなければチラ見せと鍵）。表紙のすぐ下に
                                 GateCardShowcase(context: context, refreshToken: refreshToken,
                                                  onReport: { report = $0 })
                                 statsBox(summary)
-                                visitBanner(context, summary: summary, now: timeline.date)
-                                    .id("door")
                                 whereWhen(summary)
+                                visitBanner(context, summary: summary, now: timeline.date, showActions: false)
+                                    .id("door")
+                                insideHeading(context)
+                                    .id("inside")
+                                tabPicker
+                                section(context)
                                 if !trails.isEmpty {
                                     trailStrip
                                 }
                                 if summary.owner == session.userID {
                                     addLooksButton(summary)
                                 }
-                                insideHeading(context)
-                                    .id("inside")
-                                tabPicker
-                                section(context)
                             }
                         }
                     }
@@ -138,6 +140,12 @@ struct GateDetailView: View {
                 }
             }
             .padding(16)
+        }
+        // グラフィティボード（扉が閉じているとき）は、いちばん大事なボタンを画面の下にいつも出す
+        .safeAreaInset(edge: .bottom) {
+            if let summary, !insideNow, summary.status != "closed" || summary.owner == session.userID {
+                boardActionBar(summary)
+            }
         }
         // AR の画面で「AR ごと撮ってカードにする」をしたら、カードを作る所へ
         .onReceive(CardPhotoInbox.shared.$pending) { pending in
@@ -671,7 +679,8 @@ struct GateDetailView: View {
     }
 
     /// 扉の札：開いているあいだは「扉が開いています」、開ける前は「扉を開ける」（遠いときは、まず現地へ）
-    @ViewBuilder private func visitBanner(_ context: GateContext, summary: GateSummary, now: Date) -> some View {
+    @ViewBuilder private func visitBanner(_ context: GateContext, summary: GateSummary, now: Date,
+                                          showActions: Bool = true) -> some View {
         if let expires = context.visitExpires, context.isInside {
             let minutes = max(1, Int(expires.timeIntervalSince(now) / 60 + 0.5))
             let near = keeper.entries[context.visit ?? UUID()]?.near
@@ -690,6 +699,7 @@ struct GateDetailView: View {
                            detail: far && distance != nil
                                ? "ここから \(TrailGuide.distanceText(distance!))。GATE の近く（120m 以内）まで行くと開けられます。"
                                : "作った人が写した場所・物にカメラを向けて、位置と景色が合うと扉が開きます。") {
+                if showActions {
                 VStack(spacing: 10) {
                     if far, distance != nil {
                         // 遠いとき：まず現地へ（地図アプリで歩く道）
@@ -716,8 +726,75 @@ struct GateDetailView: View {
                         .disabled(session.api == nil)
                     }
                 }
+                }
             }
         }
+    }
+
+    /// グラフィティボードの下にいつも出す、いちばん大事なこと（遠ければ「ここへ行く」、近ければ「扉を開ける」）
+    private func boardActionBar(_ summary: GateSummary) -> some View {
+        let distance = location.location?.distance(from: CLLocation(latitude: summary.approx_lat,
+                                                                     longitude: summary.approx_lon))
+        let far = (distance ?? 0) > 150 && distance != nil
+        return HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(far ? "ここから \(TrailGuide.distanceText(distance ?? 0))" : (distance == nil ? "扉は閉じています" : "近くにいます"))
+                    .font(.subheadline.weight(.heavy))
+                    .foregroundStyle(Theme.text)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Text(far ? "120m 以内まで行くと扉を開けられます" : "カメラを向けて、扉を開けましょう")
+                    .font(.caption2)
+                    .foregroundStyle(Theme.textSecondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+            if far {
+                Button {
+                    showAR = true
+                } label: {
+                    Image(systemName: "door.left.hand.open")
+                        .font(.headline)
+                        .foregroundStyle(Theme.accent)
+                        .frame(width: 46, height: 46)
+                        .background(Theme.accentLight, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("着いたら、扉を開ける")
+                Button {
+                    openWalking(summary)
+                } label: {
+                    Label("ここへ行く", systemImage: "figure.walk")
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 18)
+                        .frame(minHeight: 46)
+                        .background(Theme.neonBand, in: Capsule())
+                }
+                .buttonStyle(.plain)
+            } else {
+                Button {
+                    showAR = true
+                } label: {
+                    Label("扉を開ける", systemImage: "door.left.hand.open")
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 18)
+                        .frame(minHeight: 46)
+                        .background(Theme.neonBand, in: Capsule())
+                        .shadow(color: Color(hex: 0xFF3D7F).opacity(0.35), radius: 8, y: 3)
+                }
+                .buttonStyle(.plain)
+                .disabled(session.api == nil)
+            }
+        }
+        .padding(.leading, 16).padding(.trailing, 10).padding(.vertical, 10)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).strokeBorder(.white.opacity(0.7), lineWidth: 1))
+        .shadow(color: .black.opacity(0.14), radius: 14, y: 4)
+        .padding(.horizontal, 12)
+        .padding(.bottom, 6)
     }
 
     /// 作った本人だけ：別の時間の見え方を足す（夕方・夜・別の季節。景色の GATE で特に大事）
