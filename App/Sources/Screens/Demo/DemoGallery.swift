@@ -15,7 +15,7 @@ struct DemoGallery: View {
                           "me", "map", "profile", "inbox", "messages",
                           "friends", "visited", "saved-cards", "letters", "albums", "settings",
                           "cards", "nearby", "nearby-detail", "chat", "lookback", "goal", "board", "edit-card",
-                          "edit-gate", "progress", "notifications", "onboarding", "my-gates", "gate-stack", "map-hidden", "trading-cards", "card-viewer", "cover-rotate", "home-empty"]
+                          "edit-gate", "progress", "notifications", "onboarding", "my-gates", "gate-stack", "map-hidden", "trading-cards", "card-viewer", "cover-rotate", "home-empty", "door-designs"]
 
     @StateObject private var nearby = NearbyCardsModel()
     @StateObject private var inbox = InboxModel()
@@ -48,6 +48,16 @@ struct DemoGallery: View {
 
     @ViewBuilder private var content: some View {
         switch screen {
+        case "door-designs":
+            // 扉の見た目の一覧（AR はシミュレーターで作れないので、選ぶ画面の絵で確かめる）
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    DoorDesignGrid(selection: .torii) { _ in }
+                    DoorDesignPicker(selection: .magic) { _ in }
+                }
+                .padding(16)
+            }
+            .background(Theme.background)
         case "home-empty":
             // 友達も新着もまだないとき（はじめて使う人のホーム）
             RootView()

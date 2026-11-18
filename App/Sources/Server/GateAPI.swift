@@ -72,6 +72,18 @@ struct GateAPI {
         return door.scale
     }
 
+    /// 扉の大きさと見た目
+    func doorInfo(_ gate: UUID) async throws -> (scale: Float, design: DoorDesign) {
+        let door: DoorInfo = try await client.rpc("gf_gate_door", params: GateParam(p_gate: gate)).execute().value
+        return (door.scale, DoorDesign(raw: door.style))
+    }
+
+    /// 扉の見た目を変える（作った本人だけ）
+    func setDoorStyle(gate: UUID, design: DoorDesign) async throws {
+        struct P: Encodable { let p_gate: UUID; let p_style: String }
+        try await client.rpc("gf_set_door_style", params: P(p_gate: gate, p_style: design.rawValue)).execute()
+    }
+
     func setDoorScale(gate: UUID, scale: Float) async throws {
         try await client.rpc("gf_set_door_scale", params: DoorScaleParams(p_gate: gate, p_scale: scale)).execute()
     }
@@ -561,6 +573,8 @@ private struct AddRefsParams: Encodable {
 
 private struct DoorInfo: Decodable {
     let scale: Float
+    /// 扉の見た目（0028 の前のサーバーでは無い＝ネオン）
+    var style: String? = nil
 }
 
 private struct DoorScaleParams: Encodable {

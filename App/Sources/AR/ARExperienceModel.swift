@@ -77,6 +77,28 @@ final class ARExperienceModel: ObservableObject {
     private var pinchStartScale: Float?
     /// サーバーに残っている扉の大きさ
     private var savedDoorScale: Float = 1
+    /// 扉の見た目（作るときに選ぶ。入るときは作った人が選んだもの）
+    @Published private(set) var doorDesign: DoorDesign = .neon
+
+    /// 扉の見た目を変える（置いている途中なら、その場で扉を作り直して見せる）
+    func setDoorDesign(_ design: DoorDesign) {
+        guard design != doorDesign else { return }
+        doorDesign = design
+        Haptics.tap()
+        Trace.log("扉の見た目を選んだ：\(design.label)")
+        guard phase == .createPlace, let anchor = doorAnchor, let old = door else { return }
+        old.remove()
+        do {
+            let newDoor = try GateDoor(anchor: anchor, in: stage.arView, style: old.style, design: design)
+            newDoor.setSize(doorScale)
+            newDoor.appear()
+            door = newDoor
+        } catch {
+            door = nil
+            hasPlacedDoor = false
+            notice = "扉を表示できませんでした。もう一度地面を押してください。"
+        }
+    }
 
     func setDoorScale(_ value: Float) {
         doorScale = min(max(value, 0.2), 1.5)
@@ -406,8 +428,10 @@ final class ARExperienceModel: ObservableObject {
             isGateOwner = summary.owner == session?.userID
             // 景色の GATE は、扉の向こうに本物の景色が見える額縁にする
             targetKind = GateKind(raw: summary.kind)
-            // 扉の大きさは作った人が決めたもの（前のサーバーでは 1 倍）
-            doorScale = (try? await api.doorScale(gate)) ?? 1
+            // 扉の大きさ・見た目は作った人が決めたもの（前のサーバーでは 1 倍・ネオン）
+            let info = try? await api.doorInfo(gate)
+            doorScale = info?.scale ?? 1
+            doorDesign = info?.design ?? .neon
             savedDoorScale = doorScale
         }
         if let api = session?.api, let media = session?.media, let info = try? await api.placeMap(gate) {
@@ -444,7 +468,8 @@ final class ARExperienceModel: ObservableObject {
         guard let anchor else { return }
         currentAnchor = anchor
         do {
-            let newDoor = try GateDoor(anchor: anchor, in: stage.arView, style: targetKind == .view ? .window : .portal)
+            let newDoor = try GateDoor(anchor: anchor, in: stage.arView, style: targetKind == .view ? .window : .portal,
+                                       design: doorDesign)
             newDoor.setSize(doorScale)
             // 扉をくぐる・iPhone を開口部へ入れると、扉が開いて中へ（AR を活かした入り方）
             newDoor.onPassThrough = { [weak self] in self?.passedThroughDoor() }
@@ -748,7 +773,8 @@ final class ARExperienceModel: ObservableObject {
         clearDoor()
         let anchor = stage.addAnchor(named: "gg.gate", transform: stage.facingCamera(at: floor))
         do {
-            let newDoor = try GateDoor(anchor: anchor, in: stage.arView, style: createKind == .view ? .window : .portal)
+            let newDoor = try GateDoor(anchor: anchor, in: stage.arView, style: createKind == .view ? .window : .portal,
+                                       design: doorDesign)
             newDoor.setSize(doorScale)
             newDoor.appear()
             door = newDoor
@@ -825,6 +851,14 @@ final class ARExperienceModel: ObservableObject {
                                                 heading: location?.heading, coverPath: form.useCover ? uploadedCover : nil,
                                                 prints: shots.map(\.print))
                 createdGate = gate
+                // 扉の見た目（前のサーバーでは無いので、送れなくても続ける）
+                if doorDesign != .neon {
+                    do {
+                        try await api.setDoorStyle(gate: gate, design: doorDesign)
+                    } catch {
+                        Trace.log("扉の見た目を残せませんでした：\(ErrorText.of(error))")
+                    }
+                }
                 // 扉の大きさ（前のサーバーでは無いので、送れなくても続ける）
                 savedDoorScale = 1
                 if abs(doorScale - 1) > 0.01 {

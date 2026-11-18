@@ -366,6 +366,7 @@ private struct ExperienceCard: View {
                 Caption(model.hasPlacedDoor ? "置き直すときは、別の所の地面を押してください。2 本の指でつまむと、扉の大きさが変わります。"
                                             : "扉を置きたい所の地面（机の上の物なら机の上）を、画面で押してください。")
                 if model.hasPlacedDoor {
+                    DoorDesignPicker(selection: model.doorDesign) { model.setDoorDesign($0) }
                     DoorSizePicker(model: model)
                 }
                 Button("ここに置く") { model.confirmPlace() }

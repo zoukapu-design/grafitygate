@@ -295,7 +295,7 @@ enum DemoData {
         case "gf_gate_ref_count":
             return ["count": 3, "max": 12]
         case "gf_gate_door":
-            return ["scale": 1.0, "kind": "view"]
+            return ["scale": 1.0, "kind": "view", "style": "magic"]
         case "gf_my_notify_mutes":
             return ["like"]
         case "gf_trail_stops_of":

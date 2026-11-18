@@ -19,6 +19,9 @@ struct GateEditSheet: View {
     @State private var newCover: UIImage?
     @State private var saving = false
     @State private var message: String?
+    /// 扉の見た目（作った人だけ変えられる。読み込むまでは nil）
+    @State private var design: DoorDesign?
+    @State private var savedDesign: DoorDesign?
 
     init(summary: GateSummary, isOwner: Bool, onSaved: @escaping () -> Void) {
         self.summary = summary
@@ -109,12 +112,32 @@ struct GateEditSheet: View {
                     Text(isOwner ? "「自分だけ」にすると、ほかの人は見つけられず、入れなくなります。"
                                  : "見せる範囲を変えられるのは、GATE を作った人だけです。")
                 }
+                if isOwner, let design {
+                    Section {
+                        DoorDesignGrid(selection: design) { picked in
+                            self.design = picked
+                            Haptics.tap()
+                        }
+                        .padding(.vertical, 4)
+                    } header: {
+                        Text("扉の見た目")
+                    } footer: {
+                        Text("AR で見える扉の形と飾りです。次に AR で開いたときから、入った人にもこの見た目で出ます。")
+                    }
+                }
                 if let message {
                     Section { NoticeText(text: message) }
                 }
             }
             .navigationTitle("GATE を直す")
             .navigationBarTitleDisplayMode(.inline)
+            .task {
+                // 扉の見た目（0028 の前のサーバーではネオン）
+                guard isOwner, design == nil, let api = session.api else { return }
+                let current = (try? await api.doorInfo(summary.id))?.design ?? .neon
+                design = current
+                savedDesign = current
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("やめる") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
@@ -167,6 +190,10 @@ struct GateEditSheet: View {
                                              note: note,
                                              coverPath: uploaded,
                                              visibility: isOwner ? visibility : nil)
+            if isOwner, let design, design != savedDesign {
+                try await api.setDoorStyle(gate: summary.id, design: design)
+                Trace.log("扉の見た目を変えた：\(design.label)")
+            }
             // 差し替えた前の表紙が自分のフォルダのものなら消す
             if let old, old.hasPrefix(me.uuidString.lowercased() + "/") {
                 await session.media?.removePhoto(path: old)
