@@ -27,8 +27,6 @@ struct LetterSection: View {
                     Label("手紙を書く", systemImage: "envelope.badge")
                 }
                 .buttonStyle(SecondaryButtonStyle())
-                Text("未来の自分や友達へ。開く日を決めたり、ここに来たときだけ開けるようにしたりできます。")
-                    .font(.caption).foregroundStyle(Theme.textSecondary)
             } else if letters.isEmpty {
                 Text("手紙は、現地で扉を開けると書けます。あなたあての手紙がここにあれば、ここに出ます。")
                     .font(.subheadline).foregroundStyle(Theme.textSecondary)

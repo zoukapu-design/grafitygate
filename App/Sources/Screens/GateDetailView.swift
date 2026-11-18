@@ -163,9 +163,13 @@ struct GateDetailView: View {
         // AR カメラで撮った写真が届いたら、カードを作る画面へ（AR カメラの画面が閉じてから開く）
         .onReceive(CardPhotoInbox.shared.$pending) { pending in
             guard pending?.gate == gateID, insideNow else { return }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
-                if cardToday?.posted != true { showMaker = true }
+            if cardToday?.posted == true {
+                // 今日はもう残した（1 日 1 枚）：写真は使わず、そう伝える
+                _ = CardPhotoInbox.shared.take(for: gateID)
+                postedNote = "この GATE には今日はもうカードを残しました。明日（0 時から）また作れます。"
+                return
             }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { showMaker = true }
         }
         #if DEBUG
         // 画面の見本：下のほう（扉の札から）を撮る
