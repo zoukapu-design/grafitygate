@@ -10,6 +10,10 @@ on:
         description: "撮る画面（空なら全部。例：cards nearby）"
         type: string
         default: ""
+      runner:
+        description: "使う Mac（空なら Variables の MAC_RUNNER か macos-15-intel）"
+        type: string
+        default: ""
 
 permissions:
   contents: write
@@ -28,7 +32,7 @@ jobs:
             device: "iPhone SE"
           - label: large
             device: "Pro Max"
-    runs-on: ${{ vars.MAC_RUNNER || 'macos-15-intel' }}
+    runs-on: ${{ inputs.runner || vars.MAC_RUNNER || 'macos-15-intel' }}
     timeout-minutes: 50
     env:
       PROJECT_DIR: App

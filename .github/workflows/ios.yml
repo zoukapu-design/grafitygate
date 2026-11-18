@@ -21,6 +21,10 @@ on:
         description: "TestFlight に送る（Secrets が揃っている場合）"
         type: boolean
         default: true
+      runner:
+        description: "使う Mac（空なら Variables の MAC_RUNNER か macos-15-intel。Intel が混んで取りかかれないときは macos-15 など）"
+        type: string
+        default: ""
 
 concurrency:
   group: ios-${{ github.ref }}-${{ github.event_name }}
@@ -40,7 +44,8 @@ jobs:
     needs: sql-tests
     # Apple シリコンの Mac が混んでいて取りかかれないことがあるので、ふだんは Intel の Mac を使う。
     # 変えたいときは、リポジトリの Settings → Variables の MAC_RUNNER に名前（例：macos-15）を入れる。
-    runs-on: ${{ vars.MAC_RUNNER || 'macos-15-intel' }}
+    # 手動で実行するときは、使う Mac をその場で選べる（runner）
+    runs-on: ${{ inputs.runner || vars.MAC_RUNNER || 'macos-15-intel' }}
     timeout-minutes: 60
     env:
       PROJECT_DIR: App
