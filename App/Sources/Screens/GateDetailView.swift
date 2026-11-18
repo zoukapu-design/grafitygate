@@ -72,6 +72,9 @@ struct GateDetailView: View {
     @State private var confirmClose = false
     /// 「扉を出る」の確かめ
     @State private var confirmLeave = false
+    /// AR カメラ（扉・みんなの AR と一緒にカードの写真を撮る）
+    @State private var showARCardCamera = false
+    @Environment(\.openARCardCamera) private var openARCardCamera
     @State private var report: ReportItem?
     @State private var refreshToken = 0
     @State private var actionMessage: String?
@@ -147,7 +150,7 @@ struct GateDetailView: View {
                 boardActionBar(summary)
             }
         }
-        // AR の画面で「AR ごと撮ってカードにする」をしたら、カードを作る所へ
+        // AR カメラで撮った写真が届いたら、カードを作る所へ
         .onReceive(CardPhotoInbox.shared.$pending) { pending in
             guard pending?.gate == gateID else { return }
             tab = .graffiti
@@ -188,6 +191,11 @@ struct GateDetailView: View {
                     await reload()
                     refreshToken += 1
                 }
+            }
+        }
+        .fullScreenCover(isPresented: $showARCardCamera) {
+            ARExperienceView(mode: .cardCamera(gateID, visit: summary?.my_visit)) {
+                showARCardCamera = false
             }
         }
         .fullScreenCover(isPresented: $showAddLooks) {
@@ -424,13 +432,24 @@ struct GateDetailView: View {
                              onReport: { report = $0 },
                              onMake: { jump(to: .graffiti, scroller: scroller) })
 
-            // 3. 次にすることは 1 つだけ大きく
-            Button {
-                jump(to: .graffiti, scroller: scroller)
-            } label: {
-                Label("グラフィティカードを作る", systemImage: "camera.fill")
+            // 3. 次にすることは 1 つだけ大きく：AR カメラでグラフィティカードを作る（扉・みんなの AR と一緒に撮る）
+            VStack(spacing: 10) {
+                Button {
+                    openARCamera()
+                } label: {
+                    Label("AR カメラでカードを作る", systemImage: "camera.viewfinder")
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                Button {
+                    jump(to: .graffiti, scroller: scroller)
+                } label: {
+                    Text("ふつうのカメラ・写真なしで作る")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.8))
+                        .underline()
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(PrimaryButtonStyle())
 
             // 扉の中のもの（白い紙の上に）
             VStack(alignment: .leading, spacing: 16) {
@@ -462,6 +481,13 @@ struct GateDetailView: View {
             }
             .padding(.top, 8)
         }
+    }
+
+    /// AR カメラを開く（AR の画面から開いた扉の中なら、シートを閉じていまの扉のまま）
+    private func openARCamera() {
+        Trace.log("扉の中：AR カメラを開く")
+        if let open = openARCardCamera, open(gateID) { return }
+        showARCardCamera = true
     }
 
     private func jump(to target: GateTab, scroller: ScrollViewProxy) {
@@ -902,9 +928,17 @@ struct GraffitiSection: View {
     @State private var error: String?
 
     @State private var draft = ""
+    /// カードの名前（空なら、書いた人の名前が出る）
+    @State private var draftTitle = ""
     @State private var draftVisibility: Visibility = .friends
     @State private var draftLocalOnly = false
     @State private var photo: UIImage?
+    /// 整える前の写真（整え直すときは、ここから）
+    @State private var photoSource: UIImage?
+    @State private var editingPhoto: PhotoToEdit?
+    /// AR カメラ（扉・みんなの AR・効果・文字と一緒に撮る）
+    @State private var showARCamera = false
+    @Environment(\.openARCardCamera) private var openARCardCamera
     /// カードの仕上げ（ノーマル・キラ・ゴールド・ネオン）
     @State private var draftFinish: CardFinish = .normal
     /// その場で撮るカメラ
@@ -1172,16 +1206,28 @@ struct GraffitiSection: View {
             CardCompareView(request: request).environmentObject(session)
         }
         .task(id: "\(context.isInside)-\(refreshToken)") { await load() }
-        // AR の画面で「AR ごと撮る」をした写真を、カードの写真にする
+        // AR カメラで撮った写真を、カードの写真にする
         .onReceive(inbox.$pending) { pending in
             guard context.isInside, pending?.gate == context.gateID, let image = inbox.take(for: context.gateID) else { return }
             photo = image
-            postMessage = ("AR ごと撮った写真をカードに入れました。ひとことを書いて「残す」を押してください。", false)
+            photoSource = image
+            postMessage = ("AR カメラの写真をカードに入れました。名前・ひとことを書いて「残す」を押してください。", false)
         }
         .fullScreenCover(isPresented: $showCamera) {
             CardCameraView { image in
                 photo = image
+                photoSource = image
                 Trace.log("カード：その場で写真を撮った")
+            }
+        }
+        .fullScreenCover(isPresented: $showARCamera) {
+            ARExperienceView(mode: .cardCamera(context.gateID, visit: context.visit)) {
+                showARCamera = false
+            }
+        }
+        .fullScreenCover(item: $editingPhoto) { item in
+            CardPhotoEditor(original: item.image) { edited in
+                photo = edited
             }
         }
     }
@@ -1235,30 +1281,35 @@ struct GraffitiSection: View {
                 TradingCard(content: TradingCardContent(id: UUID(uuidString: "00000000-0000-0000-0000-0000000000c0")!,
                                                         image: photo, body: draft.trimmingCharacters(in: .whitespacesAndNewlines),
                                                         author: session.profile?.display_name ?? "あなた",
+                                                        title: draftTitle.trimmingCharacters(in: .whitespacesAndNewlines),
                                                         gateTitle: context.title,
                                                         createdAt: ISO8601DateFormatter().string(from: Date()),
                                                         finish: draftFinish, badge: .mine))
                     .frame(maxWidth: 230)
                     .frame(maxWidth: .infinity)
                     .animation(.spring(response: 0.4, dampingFraction: 0.8), value: draftFinish)
-                // 写真はその場で撮る（AR の扉や飾りごと撮るときは、AR の画面の「AR ごと撮る」から）
+                // 写真は、その場の AR カメラで（扉・みんなの AR・効果・文字と一緒に）。ふつうのカメラでも撮れる
+                ARCameraCallout(hasPhoto: photo != nil) {
+                    openARCamera()
+                }
                 HStack(spacing: 10) {
-                    Button {
-                        showCamera = true
-                    } label: {
-                        Label(photo == nil ? "その場で撮る" : "撮り直す", systemImage: "camera.fill")
-                            .font(.subheadline.weight(.bold))
-                            .foregroundStyle(Theme.accent)
-                            .padding(.horizontal, 14)
-                            .frame(minHeight: 40)
-                            .background(Theme.accentLight, in: Capsule())
-                    }
-                    .buttonStyle(.plain)
                     if photo != nil {
                         Button {
-                            photo = nil
+                            if let source = photoSource ?? photo { editingPhoto = PhotoToEdit(image: source) }
                         } label: {
-                            Label("写真を外す", systemImage: "xmark")
+                            Label("整える", systemImage: "slider.horizontal.3")
+                                .font(.subheadline.weight(.bold))
+                                .foregroundStyle(Theme.accent)
+                                .padding(.horizontal, 14)
+                                .frame(minHeight: 40)
+                                .background(Theme.accentLight, in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        Button {
+                            photo = nil
+                            photoSource = nil
+                        } label: {
+                            Label("外す", systemImage: "xmark")
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(Theme.textSecondary)
                                 .padding(.horizontal, 12)
@@ -1268,11 +1319,23 @@ struct GraffitiSection: View {
                         .buttonStyle(.plain)
                     }
                     Spacer(minLength: 0)
+                    Button {
+                        showCamera = true
+                    } label: {
+                        Label("ふつうに撮る", systemImage: "camera")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(Theme.textSecondary)
+                            .frame(minHeight: 40)
+                    }
+                    .buttonStyle(.plain)
                 }
-                Text("AR の扉や飾りと一緒に撮るときは、AR の画面で扉を開けて「AR ごと撮る」を押します。")
-                    .font(.caption)
-                    .foregroundStyle(Theme.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("カードの名前").font(.caption.weight(.bold)).foregroundStyle(Theme.textSecondary)
+                    TextField("空なら「\(session.profile?.display_name ?? "あなたの名前")」", text: $draftTitle)
+                        .onChange(of: draftTitle) { _, v in if v.count > 30 { draftTitle = String(v.prefix(30)) } }
+                        .padding(12)
+                        .background(Theme.surfaceElevated, in: RoundedRectangle(cornerRadius: 12))
+                }
                 TextField("ひとこと（この場所で思ったこと・メッセージ）", text: $draft, axis: .vertical)
                     .lineLimit(2...5)
                     .padding(12)
@@ -1313,6 +1376,13 @@ struct GraffitiSection: View {
                 }
             }
         }
+    }
+
+    /// AR カメラを開く（AR の画面から開いた扉の中なら、シートを閉じていまの扉のまま。そうでなければ AR カメラの画面）
+    private func openARCamera() {
+        Trace.log("カード：AR カメラを開く")
+        if let open = openARCardCamera, open(context.gateID) { return }
+        showARCamera = true
     }
 
     private func load() async {
@@ -1374,9 +1444,20 @@ struct GraffitiSection: View {
                     Trace.log("カードの仕上げを付けられませんでした：\(ErrorText.of(error))")
                 }
             }
-            Trace.log("カード：残した（写真\(photoPath == nil ? "なし" : "あり")・仕上げ \(draftFinish.rawValue)）")
+            // カードの名前（0029 の前のサーバーでは付けない＝書いた人の名前が出る）
+            let title = draftTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !title.isEmpty {
+                do {
+                    try await api.setCardTitle(newID, title: title)
+                } catch {
+                    Trace.log("カードの名前を付けられませんでした：\(ErrorText.of(error))")
+                }
+            }
+            Trace.log("カード：残した（写真\(photoPath == nil ? "なし" : "あり")・仕上げ \(draftFinish.rawValue)・名前\(title.isEmpty ? "なし" : "あり")）")
             draft = ""
+            draftTitle = ""
             photo = nil
+            photoSource = nil
             draftFinish = .normal
             postMessage = ("残しました。", false)
             Haptics.success()
@@ -1539,7 +1620,7 @@ struct GraffitiCard: View {
     /// トレーディングカードの形にする中身
     private var tradingContent: TradingCardContent {
         TradingCardContent(id: item.id, photoPath: item.photo_path, body: item.body,
-                           author: isMine ? (session.profile?.display_name ?? "あなた") : author,
+                           author: isMine ? (session.profile?.display_name ?? "あなた") : author, title: item.title,
                            gateTitle: gateTitle, createdAt: item.created_at, likes: likeCount,
                            finish: CardFinish(raw: item.finish), badge: isMine ? .mine : nil)
     }

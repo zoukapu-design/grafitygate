@@ -1,5 +1,7 @@
 -- ホームの友達の新着に、カードの仕上げ（0026）も返す（2026-11-18 オーナー「ホームをもっとオシャレに」）。
 -- 見せてよいかの決まりは gf_friend_feed と同じ（gf_feed_visible）。前の gf_friend_feed は残す（古いアプリ用）。
+-- あとの段（0029）で返す形を変えるので、作り直せるように一度消す（何度貼っても大丈夫なように）
+drop function if exists public.gf_friend_feed2();
 create or replace function public.gf_friend_feed2()
 returns table (id uuid, author uuid, author_name text, gate_id uuid, gate_title text,
                approx_lat double precision, approx_lon double precision,

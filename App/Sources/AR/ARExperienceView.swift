@@ -12,9 +12,30 @@ struct ARExperienceView: View {
     @State private var trailTarget: TrailGuide.Target?
     private let onClose: (() -> Void)?
 
+    @State private var gateTitle = ""
+
     init(mode: ARExperienceModel.Mode, onClose: (() -> Void)? = nil) {
         _model = StateObject(wrappedValue: ARExperienceModel(mode: mode))
         self.onClose = onClose
+    }
+
+    /// AR カメラの道具を出しているか（AR の飾りを置いている・人を撮っているあいだは、そちらのカードを出す）
+    private var storyShown: Bool {
+        model.story.isOn && model.art == nil && !model.capturingPerson && model.phase == .doorOpen
+    }
+
+    /// AR カメラで、文字を指で動かせるとき
+    private var storyGestures: Bool {
+        storyShown && model.story.canManipulate
+    }
+
+    /// AR カメラの「AR を残す」：GATE に残る AR の飾りを置く（置けないときは、理由を知らせる）
+    private func leaveArt() {
+        model.startArt()
+        if model.art == nil, let notice = model.notice {
+            model.notice = nil
+            model.showToast(notice)
+        }
     }
 
     var body: some View {
@@ -24,24 +45,49 @@ struct ARExperienceView: View {
                 .onTapGesture(coordinateSpace: .local) { point in
                     model.handleTap(at: point)
                 }
-                // 扉の位置を合わせるあいだだけ：なぞって動かす・2 本指で回す
+                // 扉の位置を合わせるあいだ：なぞって動かす・2 本指で回す。
+                // AR カメラのあいだ：文字をなぞって動かす・2 本指で傾ける・つまんで大きさ
                 .gesture(DragGesture(minimumDistance: 6, coordinateSpace: .local)
-                    .onChanged { value in model.dragDoor(to: value.location) },
-                         including: model.adjustingDoor ? .all : .none)
+                    .onChanged { value in
+                        if storyGestures {
+                            model.story.drag(from: value.startLocation, to: value.location)
+                        } else {
+                            model.dragDoor(to: value.location)
+                        }
+                    }
+                    .onEnded { _ in model.story.endDrag() },
+                         including: (model.adjustingDoor || storyGestures) ? .all : .none)
                 .simultaneousGesture(RotateGesture()
-                    .onChanged { value in model.rotateDoor(by: value.rotation.radians) }
-                    .onEnded { _ in model.endRotate() },
-                                     including: model.adjustingDoor ? .all : .none)
+                    .onChanged { value in
+                        if storyGestures { model.story.rotate(by: value.rotation.radians) } else { model.rotateDoor(by: value.rotation.radians) }
+                    }
+                    .onEnded { _ in
+                        if storyGestures { model.story.endRotate() } else { model.endRotate() }
+                    },
+                                     including: (model.adjustingDoor || storyGestures) ? .all : .none)
                 // 扉の大きさ：2 本の指でつまむ（置くとき・作った本人が合わせるとき）
                 .simultaneousGesture(MagnifyGesture()
-                    .onChanged { value in model.pinchDoor(by: value.magnification) }
-                    .onEnded { _ in model.endPinch() },
-                                     including: model.canResizeDoor ? .all : .none)
+                    .onChanged { value in
+                        if storyGestures { model.story.pinch(by: value.magnification) } else { model.pinchDoor(by: value.magnification) }
+                    }
+                    .onEnded { _ in
+                        if storyGestures { model.story.endPinch() } else { model.endPinch() }
+                    },
+                                     including: (model.canResizeDoor || storyGestures) ? .all : .none)
             if model.showsReticle {
                 Reticle()
                     .allowsHitTesting(false)
             }
             HandCursorView(hand: model.hand)
+            if storyShown {
+                // AR カメラ（扉・みんなの AR と一緒に、グラフィティカードの写真を撮る）
+                StoryCameraControls(story: model.story, gateTitle: gateTitle, artworkCount: model.artworkCount,
+                                    canLeaveArt: model.visitID != nil, toast: model.toast ?? model.artCaption,
+                                    onClose: { model.endStoryCamera() },
+                                    onLeaveArt: { leaveArt() },
+                                    onUse: { model.useStoryPhoto($0) })
+                    .transition(.opacity)
+            } else {
             VStack(spacing: 12) {
                 ARTopBar(model: model, stage: model.stage, onClose: onClose)
                 if model.phase == .scanning {
@@ -72,6 +118,13 @@ struct ARExperienceView: View {
             .animation(.easeInOut(duration: 0.2), value: model.toast)
             .padding(.horizontal, 16)
             .padding(.bottom, 12)
+            }
+        }
+        .animation(.easeInOut(duration: 0.25), value: storyShown)
+        .task(id: model.enteredGate) {
+            // AR カメラの上に出す GATE の名前
+            guard let gate = model.enteredGate, let api = session.api else { return }
+            gateTitle = (try? await api.summary(gate))?.title ?? ""
         }
         .onAppear {
             model.attach(session: session, location: location)
@@ -114,9 +167,11 @@ struct ARExperienceView: View {
             ReportSheet(item: item) { model.removeArtworks(of: item.userID) }
                 .environmentObject(session)
         }
-        .sheet(item: $model.presentedGate, onDismiss: { model.resetToScanning() }) { route in
+        .sheet(item: $model.presentedGate, onDismiss: { model.sheetDismissed() }) { route in
             NavigationStack {
                 GateDetailView(gateID: route.id)
+                    // カードを作る画面の「AR カメラ」は、シートを閉じて、いまの扉のまま撮る
+                    .environment(\.openARCardCamera, { gate in model.openStoryFromSheet(gate: gate) })
                     .toolbar {
                         // AR から開いた画面には下のタブが無いので、はっきりした「閉じる」を付ける（カメラの画面に戻る）
                         ToolbarItem(placement: .topBarLeading) {
@@ -414,7 +469,7 @@ private struct ExperienceCard: View {
         case .failed(let message):
             VStack(alignment: .leading, spacing: 10) {
                 NoticeText(text: message)
-                Button("もう一度") { model.resetToScanning() }
+                Button("もう一度") { model.retry() }
                     .buttonStyle(SecondaryButtonStyle())
             }
         }
@@ -736,11 +791,11 @@ private struct DoorOpenCard: View {
                                           : "扉をくぐるか、「中へ」を押すと、扉の中へ。")
             Button("中へ") { model.goInside() }
                 .buttonStyle(PrimaryButtonStyle())
-            // AR の扉や飾りが写った写真を、そのままグラフィティカードに
+            // AR カメラ：扉・みんなの AR・効果・文字と一緒に撮って、グラフィティカードに
             Button {
-                model.captureCardPhoto()
+                model.startStoryCamera()
             } label: {
-                Label("AR ごと撮ってカードにする", systemImage: "camera.viewfinder")
+                Label("AR カメラでカードを撮る", systemImage: "camera.viewfinder")
             }
             .buttonStyle(SecondaryButtonStyle())
             if !model.placedPrecisely {

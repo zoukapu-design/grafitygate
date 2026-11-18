@@ -85,6 +85,8 @@ struct TradingCardContent: Identifiable {
     var image: UIImage?
     var body: String
     var author: String
+    /// カードの名前（書いた本人が付けたもの。無ければ書いた人の名前を出す）
+    var title: String? = nil
     var gateTitle: String
     var createdAt: String?
     var likes: Int = 0
@@ -174,14 +176,24 @@ struct TradingCard: View {
         }
         .aspectRatio(Self.aspect, contentMode: .fit)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("グラフィティカード。\(content.author.isEmpty ? "" : content.author + " さん。")\(content.body)")
+        .accessibilityLabel("グラフィティカード「\(headline)」。\(content.author.isEmpty ? "" : content.author + " さん。")\(content.body)")
     }
 
-    // 上：書いた人と、いいねの数
+    /// 上の帯に出す名前（カードの名前。無ければ書いた人の名前）
+    private var headline: String {
+        if let t = content.title?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty { return t }
+        return content.author.isEmpty ? "だれか" : content.author
+    }
+
+    private var hasTitle: Bool {
+        !(content.title?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+    }
+
+    // 上：カードの名前（無ければ書いた人）と、いいねの数
     private func header(_ w: CGFloat) -> some View {
         HStack(spacing: w * 0.025) {
             NeonAvatar(name: content.author.isEmpty ? "?" : content.author, size: w * 0.085)
-            Text(content.author.isEmpty ? "だれか" : content.author)
+            Text(headline)
                 .font(.system(size: w * 0.062, weight: .heavy))
                 .foregroundStyle(Color(hex: 0x17181F))
                 .lineLimit(1)
@@ -265,10 +277,15 @@ struct TradingCard: View {
             .background(content.finish.textBox, in: RoundedRectangle(cornerRadius: w * 0.025, style: .continuous))
     }
 
-    // 下：日付と星
+    // 下：日付（名前を付けたカードは、書いた人も）と星
     private func footer(_ w: CGFloat) -> some View {
-        HStack {
+        HStack(spacing: w * 0.02) {
             Text(content.dateText)
+            if hasTitle, !content.author.isEmpty {
+                Text("by \(content.author)")
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
             Spacer(minLength: 0)
             Text(content.finish.stars)
         }

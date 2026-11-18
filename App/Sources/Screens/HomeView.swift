@@ -350,7 +350,7 @@ private struct FeedPost: View {
     let onReport: () -> Void
 
     static func content(_ card: FeedCard, me: UUID?) -> TradingCardContent {
-        TradingCardContent(id: card.id, photoPath: card.photo_path, body: card.body, author: card.author_name,
+        TradingCardContent(id: card.id, photoPath: card.photo_path, body: card.body, author: card.author_name, title: card.title,
                            gateTitle: card.gate_title, createdAt: card.created_at,
                            finish: CardFinish(raw: card.finish), badge: card.author == me ? .mine : .friend)
     }

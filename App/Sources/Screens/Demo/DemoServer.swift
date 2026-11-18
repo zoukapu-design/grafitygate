@@ -135,7 +135,8 @@ enum DemoData {
          "author": author.uuidString, "body": body, "photo_path": nn(photo), "visibility": "friends",
          "local_only": false, "created_at": ago(seconds), "in_atlas": author == me ? true : NSNull(),
          "edited_at": id == 3 ? ago(1800) : NSNull(),
-         "finish": ["holo", "normal", "neon", "gold"][(id - 1) % 4]]
+         "finish": ["holo", "normal", "neon", "gold"][(id - 1) % 4],
+         "title": id == 1 ? "夕焼けの約束" : (id == 2 ? "雲の日の丘" : NSNull())]
     }
 
     static var cards: [[String: Any]] {
@@ -163,7 +164,7 @@ enum DemoData {
                 ["id": UUID().uuidString, "author": misaki.uuidString, "author_name": "みさき", "gate_id": hill.uuidString,
                  "gate_title": "夕焼けの見える丘", "approx_lat": 35.66, "approx_lon": 139.70,
                  "body": "ここから見る夕焼けが一番好き。ベンチに座って待ってみて。", "photo_path": "demo/sunset.jpg", "created_at": ago(3 * 3600),
-                 "finish": "holo"],
+                 "finish": "holo", "title": "夕焼けの約束"],
                 ["id": UUID().uuidString, "author": kenta.uuidString, "author_name": "けんた", "gate_id": tree.uuidString,
                  "gate_title": "公園の大きな木", "approx_lat": 35.657, "approx_lon": 139.703,
                  "body": "春になったら、またみんなで来よう。", "photo_path": NSNull(), "created_at": ago(8 * 3600),
@@ -279,7 +280,7 @@ enum DemoData {
                         "cards": [
                             ["id": UUID().uuidString, "author": kenta.uuidString, "author_name": "けんた",
                              "body": "今年の桜、満開でした。木の下でお弁当を食べました。", "photo_path": "demo/park.jpg",
-                             "created_at": ago(5 * 3600), "finish": "holo"],
+                             "created_at": ago(5 * 3600), "finish": "holo", "title": "満開の木の下で"],
                             ["id": UUID().uuidString, "author": misaki.uuidString, "author_name": "みさき",
                              "body": "ここのベンチ、夕方に座るとちょうど木もれ日が当たる。", "photo_path": NSNull(),
                              "created_at": ago(2 * 86400)]],

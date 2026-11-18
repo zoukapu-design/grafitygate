@@ -147,6 +147,8 @@ struct FeedCard: Decodable, Identifiable, Hashable {
     let created_at: String
     /// カードの仕上げ（0027 の前のサーバーでは無い＝ふつう）
     var finish: String? = nil
+    /// カードの名前（0029 の前のサーバーでは無い）
+    var title: String? = nil
 }
 
 /// グラフィティ（表 gf_graffiti。見てよいものだけがサーバーから返る）
@@ -165,6 +167,8 @@ struct Graffiti: Decodable, Identifiable, Hashable {
     var edited_at: String? = nil
     /// カードの仕上げ（normal／holo／gold／neon。0026 の前のサーバーでは無い＝ふつう）
     var finish: String? = nil
+    /// カードの名前（書いた本人が付ける。無ければ書いた人の名前を出す。0029 の前のサーバーでは無い）
+    var title: String? = nil
 }
 
 /// 自分の GATE（表 gf_gates。自分のものだけ読める）
@@ -1048,6 +1052,7 @@ struct GatePeek: Decodable, Equatable {
         let photo_path: String?
         let created_at: String
         var finish: String? = nil
+        var title: String? = nil
     }
 
     struct PeekThread: Decodable, Equatable, Identifiable {

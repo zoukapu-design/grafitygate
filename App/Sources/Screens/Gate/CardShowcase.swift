@@ -85,7 +85,7 @@ struct GateCardShowcase: View {
         let me = session.userID
         return (context.peek?.cards ?? []).map {
             TradingCardContent(id: $0.id, photoPath: $0.photo_path, body: $0.body, author: $0.author_name,
-                               gateTitle: context.title, createdAt: $0.created_at,
+                               title: $0.title, gateTitle: context.title, createdAt: $0.created_at,
                                finish: CardFinish(raw: $0.finish),
                                badge: $0.author == me ? .mine : .visitor)
         }
@@ -127,7 +127,7 @@ struct GateCardShowcase: View {
         cards = sorted.map { g in
             let badge: TradingCardContent.Badge = g.author == me ? .mine : (friends.contains(g.author) ? .friend : .visitor)
             let name = g.author == me ? (session.profile?.display_name ?? "あなた") : (names[g.author] ?? "")
-            return TradingCardContent(id: g.id, photoPath: g.photo_path, body: g.body, author: name,
+            return TradingCardContent(id: g.id, photoPath: g.photo_path, body: g.body, author: name, title: g.title,
                                       gateTitle: context.title, createdAt: g.created_at,
                                       likes: liked[g.id]?.count ?? 0, finish: CardFinish(raw: g.finish), badge: badge)
         }
@@ -225,7 +225,7 @@ private struct EmptyCardSlot: View {
     }
 }
 
-/// AR の画面で「AR ごと撮った」写真を、GATE の画面のカード作りへ渡す（端末の中だけ）
+/// AR カメラで撮った写真を、GATE の画面のカード作りへ渡す（端末の中だけ）
 @MainActor
 final class CardPhotoInbox: ObservableObject {
     static let shared = CardPhotoInbox()
@@ -233,7 +233,7 @@ final class CardPhotoInbox: ObservableObject {
 
     func put(_ image: UIImage, gate: UUID) {
         pending = (gate, image)
-        Trace.log("カードの写真：AR ごと撮った写真を預かった")
+        Trace.log("カードの写真：AR カメラの写真を預かった")
     }
 
     /// その GATE の写真があれば受け取る（受け取ったら空にする）

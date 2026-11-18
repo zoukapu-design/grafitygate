@@ -109,6 +109,14 @@ final class GateDoor {
         lastCamLocal = nil
     }
 
+    /// 扉を隠す・出す（グラフィティカードを撮るとき。AR の飾りは台に付いているので、そのまま見える）
+    func setHidden(_ hidden: Bool) {
+        root.isEnabled = !hidden
+        lastCamLocal = nil
+    }
+
+    var isHidden: Bool { !root.isEnabled }
+
     /// 台（扉の足もとの中心）の、世界の中での位置・向き
     var baseWorldTransform: simd_float4x4 { base.transformMatrix(relativeTo: nil) }
 
@@ -600,7 +608,7 @@ final class GateDoor {
 
     /// カメラ（iPhone）が開口部を手前から奥へ通ったか（扉の座標で見る）
     private func checkPassThrough() {
-        guard let arView, onPassThrough != nil else { return }
+        guard let arView, onPassThrough != nil, root.isEnabled else { return }
         let camera = root.convert(position: arView.cameraTransform.translation, from: nil)
         defer { lastCamLocal = camera }
         guard let last = lastCamLocal, clock >= passQuietUntil else { return }

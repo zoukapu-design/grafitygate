@@ -15,6 +15,8 @@ final class ARExperienceModel: ObservableObject {
         case enter(UUID)
         /// 作った本人が、別の時間の見え方（見本の写真の特徴）を足す
         case addLooks(UUID)
+        /// 扉の中から開く AR カメラ（扉・みんなの AR の飾り・効果・文字と一緒に、グラフィティカードの写真を撮る）
+        case cardCamera(UUID, visit: UUID?)
     }
 
     enum Phase: Equatable {
@@ -172,6 +174,11 @@ final class ARExperienceModel: ObservableObject {
     /// ちょっとした知らせ（数秒で消える）
     @Published private(set) var toast: String?
     let hand = HandTouch()
+    /// AR カメラ（扉の中でカードの写真を撮る。効果・文字は写真だけのもの）
+    let story = StoryCamera()
+    private var storyWatch: AnyCancellable?
+    /// 扉の中の画面（シート）から AR カメラを開くとき：シートを閉じてから始める
+    private var storyAfterSheet = false
 
     let stage = ARStage()
     let mode: Mode
@@ -210,6 +217,8 @@ final class ARExperienceModel: ObservableObject {
 
     init(mode: Mode) {
         self.mode = mode
+        // AR カメラの様子が変わったら、画面も描き直す
+        storyWatch = story.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
     }
 
     func attach(session: SessionModel, location: LocationModel) {
@@ -244,7 +253,7 @@ final class ARExperienceModel: ObservableObject {
         }
         switch mode {
         case .explore: return nearby.contains { $0.kind == GateKind.view.rawValue }
-        case .enter, .addLooks: return targetKind == .view
+        case .enter, .addLooks, .cardCamera: return targetKind == .view
         }
     }
 
@@ -256,10 +265,38 @@ final class ARExperienceModel: ObservableObject {
         case .explore: Trace.log("AR の画面を開く（撮る）")
         case .enter: Trace.log("AR の画面を開く（GATE に入る）")
         case .addLooks: Trace.log("AR の画面を開く（見え方を足す）")
+        case .cardCamera: Trace.log("AR の画面を開く（AR カメラ）")
         }
         resetToScanning()
+        if case .cardCamera(let gate, let visit) = mode {
+            startCardCamera(gate: gate, visit: visit)
+            return
+        }
         Task { await refreshNearby() }
         Task { await loadTargetKind() }
+    }
+
+    /// AR カメラ：扉を出して開け、カメラの道具を出す（扉の中にいる人だけが開く）
+    private func startCardCamera(gate: UUID, visit: UUID?) {
+        enteredGate = gate
+        visitID = visit
+        phase = .working("扉を出しています…")
+        Task {
+            await showDoor(for: gate)
+            guard enteredGate == gate, door != nil else { return }
+            if phase == .doorClosed { openDoor() }
+            startStoryCamera()
+        }
+    }
+
+    /// うまくいかなかったときの「もう一度」
+    func retry() {
+        if case .cardCamera(let gate, let visit) = mode {
+            resetToScanning()
+            startCardCamera(gate: gate, visit: visit)
+        } else {
+            resetToScanning()
+        }
     }
 
     /// 入る・見え方を足す GATE の種類と、見本の数（作った本人だけ）
@@ -279,10 +316,14 @@ final class ARExperienceModel: ObservableObject {
         case .addLooks(let gate):
             targetKind = GateKind(raw: try? await api.summary(gate)?.kind)
             if let c = try? await api.gateRefCount(gate) { refCount = (c.count, c.max) }
+        case .cardCamera:
+            // 扉を出すときに種類も受け取る（showDoor）
+            return
         }
     }
 
     func stop() {
+        story.end()
         personRecorder.cancel()
         capturingPerson = false
         ChimePlayer.shared.stop()
@@ -315,6 +356,7 @@ final class ARExperienceModel: ObservableObject {
     }
 
     private func clearDoor() {
+        if story.isOn { story.end() }
         hand.stop()
         artScene?.removeAll()
         artScene = nil
@@ -371,7 +413,7 @@ final class ARExperienceModel: ObservableObject {
             let shot = try await stage.grabShot(withPhoto: false)
             lastPrint = shot.print
             switch mode {
-            case .enter(let gate), .addLooks(let gate):
+            case .enter(let gate), .addLooks(let gate), .cardCamera(let gate, _):
                 await enter(gate, fix: fix, print: shot.print)
             case .explore:
                 let list = try await api.candidates(fix, print: shot.print)
@@ -559,30 +601,61 @@ final class ARExperienceModel: ObservableObject {
         revealArtworks()
     }
 
-    /// AR の扉・飾りごと、いまの景色を撮って、グラフィティカードの写真にする（扉の中の「カードを作る」へ渡す）
-    func captureCardPhoto() {
+    // MARK: AR カメラ（扉の中でカードの写真を撮る）
+
+    /// AR カメラを始める（扉が出ているとき。閉じていれば開ける）
+    func startStoryCamera() {
+        guard door != nil, enteredGate != nil else { return }
+        if phase == .doorClosed { openDoor() }
+        guard phase == .doorOpen else { return }
+        art = nil
+        notice = nil
+        story.doorBase = { [weak self] in self?.door?.base }
+        story.doorScale = doorScale
+        story.onDoorHidden = { [weak self] hidden in self?.door?.setHidden(hidden) }
+        story.begin(arView: stage.arView)
+    }
+
+    /// 扉の中の画面（シート）から AR カメラを開く：シートを閉じてから、いまの扉のまま始める
+    func openStoryFromSheet(gate: UUID) -> Bool {
+        guard gate == enteredGate, door != nil, presentedGate != nil else { return false }
+        storyAfterSheet = true
+        presentedGate = nil
+        return true
+    }
+
+    /// シートが閉じたあと（AR カメラへ行くなら扉はそのまま、そうでなければ初めから）
+    func sheetDismissed() {
+        if storyAfterSheet {
+            storyAfterSheet = false
+            startStoryCamera()
+        } else {
+            resetToScanning()
+        }
+    }
+
+    /// AR カメラを閉じる（AR カメラだけの画面なら、画面ごと閉じる）
+    func endStoryCamera() {
+        story.end()
+        if case .cardCamera = mode { onFinished?() }
+    }
+
+    /// 撮った写真をグラフィティカードに使う（扉の中の「カードを作る」へ渡す）
+    func useStoryPhoto(_ image: UIImage) {
         guard let gate = enteredGate else { return }
-        Haptics.tap()
-        stage.arView.snapshot(saveToHDR: false) { [weak self] image in
-            DispatchQueue.main.async {
-                MainActor.assumeIsolated {
-                    guard let self, let image else {
-                        self?.showToast("撮れませんでした。もう一度押してください。")
-                        return
-                    }
-                    CardPhotoInbox.shared.put(image.downscaled(maxSide: 1600), gate: gate)
-                    Haptics.success()
-                    Trace.log("カード：AR ごと撮った")
-                    self.goInside()
-                }
-            }
+        CardPhotoInbox.shared.put(image, gate: gate)
+        Trace.log("カード：AR カメラの写真を使う（\(Int(image.size.width))×\(Int(image.size.height))）")
+        story.end()
+        switch mode {
+        case .cardCamera: onFinished?()
+        default: goInside()
         }
     }
 
     /// 扉をくぐった：閉じていれば開け、光と鐘のあと「扉の中」へ
     func passedThroughDoor() {
         guard phase == .doorClosed || phase == .doorOpen, art == nil, !adjustingDoor,
-              presentedGate == nil, !passFlash else { return }
+              presentedGate == nil, !passFlash, !story.isOn else { return }
         if phase == .doorClosed { openDoor() }
         door?.passFlash()
         Haptics.success()
@@ -599,12 +672,21 @@ final class ARExperienceModel: ObservableObject {
         guard let gate = enteredGate else { return }
         switch mode {
         case .explore: presentedGate = GateRoute(id: gate)
-        case .enter, .addLooks: onFinished?()
+        case .enter, .addLooks, .cardCamera: onFinished?()
         }
     }
 
     func handleTap(at point: CGPoint) {
         guard !adjustingDoor else { return }
+        // AR カメラ：文字を選ぶ。みんなの AR の飾りは、押すと動く（だれのものかの札は出さない＝撮るのをじゃましない）
+        if story.isOn && art == nil {
+            if story.shot != nil || story.textDraft != nil { return }
+            if story.tap(at: point) { return }
+            if let scene = artScene, let id = scene.artworkID(at: stage.arView.entity(at: point)) {
+                if scene.fire(.tap, on: id) { Haptics.tap() }
+            }
+            return
+        }
         switch phase {
         case .doorClosed:
             if door?.isHit(stage.arView.entity(at: point)) == true { openDoor() }

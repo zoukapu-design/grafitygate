@@ -133,6 +133,12 @@ struct GateAPI {
             .execute().value
     }
 
+    /// カードの名前を付ける・直す（書いた本人だけ。空なら名前なし）
+    func setCardTitle(_ id: UUID, title: String) async throws {
+        struct P: Encodable { let p_card: UUID; let p_title: String }
+        try await client.rpc("gf_set_card_title", params: P(p_card: id, p_title: title)).execute()
+    }
+
     /// カードの仕上げを変える（書いた本人だけ）
     func setCardFinish(_ id: UUID, finish: CardFinish) async throws {
         struct P: Encodable { let p_card: UUID; let p_finish: String }
@@ -145,6 +151,16 @@ struct GateAPI {
 
     /// GATE の中のグラフィティ（入場中なら友達のものも、そうでなければ自分のものだけが返る）
     func graffiti(in gate: UUID) async throws -> [Graffiti] {
+        do {
+            return try await client.from("gf_graffiti")
+                .select("id,gate_id,author,body,photo_path,visibility,local_only,created_at,in_atlas,edited_at,finish,title")
+                .eq("gate_id", value: gate.uuidString)
+                .order("created_at", ascending: false)
+                .limit(200)
+                .execute().value
+        } catch let error where ErrorText.isMissingColumn(error) {
+            // 0029 の前のサーバー（カードの名前の欄が無い）
+        }
         do {
             return try await client.from("gf_graffiti")
                 .select("id,gate_id,author,body,photo_path,visibility,local_only,created_at,in_atlas,edited_at,finish")

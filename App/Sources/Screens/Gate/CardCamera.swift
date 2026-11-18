@@ -94,3 +94,55 @@ struct CardCameraView: View {
         Haptics.success()
     }
 }
+
+/// カードを作る画面の「AR カメラで撮る」（いちばん目立つ入口。夜空の札に、できることを並べる）
+struct ARCameraCallout: View {
+    let hasPhoto: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .strokeBorder(AngularGradient(colors: [Color(hex: 0xFF9A3D), Color(hex: 0xFF3D7F), Color(hex: 0x9B5CFF),
+                                                               Color(hex: 0x3DC8FF), Color(hex: 0xFF9A3D)],
+                                                      center: .center), lineWidth: 3)
+                    Image(systemName: "camera.viewfinder")
+                        .font(.system(size: 22, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+                .frame(width: 52, height: 52)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(hasPhoto ? "AR カメラで撮り直す" : "AR カメラで撮る")
+                        .font(.headline.weight(.heavy))
+                        .foregroundStyle(.white)
+                    Text("扉・みんなの AR・キラキラや文字と一緒に")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.78))
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 8) {
+                        ForEach(["door.left.hand.open", "person.2.wave.2.fill", "sparkles", "textformat", "heart.fill"], id: \.self) { s in
+                            Image(systemName: s)
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.85))
+                        }
+                    }
+                    .padding(.top, 2)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.7))
+            }
+            .padding(14)
+            .background(
+                LinearGradient(colors: [Color(hex: 0x2A1650), Color(hex: 0x1B1235)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Theme.neonBand, lineWidth: 1.5))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(hasPhoto ? "AR カメラで撮り直す" : "AR カメラで撮る")
+    }
+}

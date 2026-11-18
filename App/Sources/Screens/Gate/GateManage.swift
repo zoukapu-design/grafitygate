@@ -360,6 +360,7 @@ struct GraffitiEditSheet: View {
     @EnvironmentObject private var session: SessionModel
     @Environment(\.dismiss) private var dismiss
     @State private var text: String
+    @State private var title: String
     @State private var visibility: Visibility
     @State private var localOnly: Bool
     @State private var saving = false
@@ -371,14 +372,18 @@ struct GraffitiEditSheet: View {
         self.item = item
         self.onSaved = onSaved
         _text = State(initialValue: item.body)
+        _title = State(initialValue: item.title ?? "")
         _visibility = State(initialValue: Visibility(rawValue: item.visibility) ?? .friends)
         _localOnly = State(initialValue: item.local_only)
     }
 
     private var trimmed: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
-    private var changed: Bool {
+    private var trimmedTitle: String { title.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var titleChanged: Bool { trimmedTitle != (item.title ?? "") }
+    private var bodyChanged: Bool {
         trimmed != item.body || visibility.rawValue != item.visibility || localOnly != item.local_only
     }
+    private var changed: Bool { bodyChanged || titleChanged }
 
     var body: some View {
         NavigationStack {
@@ -393,6 +398,14 @@ struct GraffitiEditSheet: View {
                     } footer: {
                         Text("写真は変えられません（その日に撮った写真のため）。")
                     }
+                }
+                Section {
+                    TextField("空なら、あなたの名前が出ます", text: $title)
+                        .onChange(of: title) { _, v in if v.count > 30 { title = String(v.prefix(30)) } }
+                } header: {
+                    Text("カードの名前")
+                } footer: {
+                    Text("カードの上の帯に出ます（30 文字まで）。")
                 }
                 Section {
                     TextField("ひとこと", text: $text, axis: .vertical)
@@ -438,8 +451,13 @@ struct GraffitiEditSheet: View {
         saving = true
         defer { saving = false }
         do {
-            try await api.editGraffiti(item.id, body: trimmed, visibility: visibility, localOnly: localOnly)
-            Trace.log("カード：直した（文\(trimmed == item.body ? "そのまま" : "を変えた")・\(visibility.rawValue)）")
+            if bodyChanged {
+                try await api.editGraffiti(item.id, body: trimmed, visibility: visibility, localOnly: localOnly)
+            }
+            if titleChanged {
+                try await api.setCardTitle(item.id, title: trimmedTitle)
+            }
+            Trace.log("カード：直した（文\(trimmed == item.body ? "そのまま" : "を変えた")・名前\(titleChanged ? "を変えた" : "そのまま")・\(visibility.rawValue)）")
             Haptics.success()
             onSaved()
             dismiss()

@@ -15,7 +15,8 @@ struct DemoGallery: View {
                           "me", "map", "profile", "inbox", "messages",
                           "friends", "visited", "saved-cards", "letters", "albums", "settings",
                           "cards", "nearby", "nearby-detail", "chat", "lookback", "goal", "board", "edit-card",
-                          "edit-gate", "progress", "notifications", "onboarding", "my-gates", "gate-stack", "map-hidden", "trading-cards", "card-viewer", "cover-rotate", "home-empty", "door-designs"]
+                          "edit-gate", "progress", "notifications", "onboarding", "my-gates", "gate-stack", "map-hidden", "trading-cards", "card-viewer", "cover-rotate", "home-empty", "door-designs",
+                          "photo-editor", "story-camera", "story-text", "story-review"]
 
     @StateObject private var nearby = NearbyCardsModel()
     @StateObject private var inbox = InboxModel()
@@ -217,7 +218,8 @@ struct DemoGallery: View {
                         TradingCard(content: TradingCardContent(
                             id: UUID(), photoPath: ["demo/sunset.jpg", "demo/park.jpg", "demo/night.jpg", nil][i],
                             body: ["ここから見る夕焼けが一番好き。", "初めて来た。坂がきつい！でも来てよかった。", "夜の駅前。", ""][i],
-                            author: ["みさき", "けんた", "ゆい", "あなた"][i], gateTitle: "夕焼けの見える丘",
+                            author: ["みさき", "けんた", "ゆい", "あなた"][i],
+                            title: ["夕焼けの約束", nil, "夜の待ち合わせ", nil][i], gateTitle: "夕焼けの見える丘",
                             createdAt: "2026-11-17T09:00:00Z", likes: [12, 3, 8, 0][i], finish: finish,
                             badge: [.friend, .visitor, .friend, .mine][i]))
                     }
@@ -233,6 +235,15 @@ struct DemoGallery: View {
                                                           badge: .friend)) {}
         case "cover-rotate":
             CoverRotateSheet(summary: Demo.gate) {}
+        case "photo-editor":
+            CardPhotoEditor(original: Demo.demoPhoto) { _ in }
+        case "story-camera", "story-text", "story-review":
+            // AR カメラの道具（AR そのものはシミュレーターで作れないので、景色の絵の上に重ねる）
+            ZStack {
+                Image(uiImage: Demo.demoPhoto).resizable().scaledToFill().ignoresSafeArea()
+                StoryCameraControls(story: Demo.demoStory(screen), gateTitle: "夕焼けの見える丘", artworkCount: 3,
+                                    canLeaveArt: true, toast: nil, onClose: {}, onLeaveArt: {}, onUse: { _ in })
+            }
         case "my-gates":
             // 同じ所に 2 つ（重ねた印）・少し離れて 1 つ
             NavigationStack { MyGatesView(gates: Self.myGates) }
@@ -330,6 +341,23 @@ private enum Demo {
     // MARK: 見本の写真（その場で描く）
 
     private static var seeded = false
+
+    /// 見本の景色の写真（AR カメラ・写真を整える画面の見本）
+    static var demoPhoto: UIImage { scene(top: 0xF59E5B, bottom: 0x7A3E6B, sun: true, city: true) }
+
+    @MainActor static func demoStory(_ screen: String) -> StoryCamera {
+        let story = StoryCamera()
+        story.setEffect(.sparkle)
+        switch screen {
+        case "story-text":
+            story.textDraft = StoryTextDraft(text: "また来ようね", ink: .pink, style: .neon)
+        case "story-review":
+            story.shot = demoPhoto.rotatedRight()
+        default:
+            break
+        }
+        return story
+    }
 
     static func seedPhotos() {
         guard !seeded else { return }
