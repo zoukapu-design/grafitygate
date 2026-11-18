@@ -15,7 +15,7 @@ struct DemoGallery: View {
                           "me", "map", "profile", "inbox", "messages",
                           "friends", "visited", "saved-cards", "letters", "albums", "settings",
                           "cards", "nearby", "nearby-detail", "chat", "lookback", "goal", "board", "edit-card",
-                          "edit-gate", "progress", "notifications", "onboarding", "my-gates", "gate-stack", "map-hidden", "trading-cards", "card-viewer", "cover-rotate"]
+                          "edit-gate", "progress", "notifications", "onboarding", "my-gates", "gate-stack", "map-hidden", "trading-cards", "card-viewer", "cover-rotate", "home-empty"]
 
     @StateObject private var nearby = NearbyCardsModel()
     @StateObject private var inbox = InboxModel()
@@ -38,7 +38,7 @@ struct DemoGallery: View {
                 location.start()
                 MainWatch.shared.start()
                 switch screen {
-                case "home": nav.tab = .home
+                case "home", "home-empty": nav.tab = .home
                 case "me": nav.tab = .me
                 case "map", "map-hidden": nav.tab = .map
                 default: break
@@ -48,6 +48,9 @@ struct DemoGallery: View {
 
     @ViewBuilder private var content: some View {
         switch screen {
+        case "home-empty":
+            // 友達も新着もまだないとき（はじめて使う人のホーム）
+            RootView()
         case "home", "me", "map":
             RootView()
                 .onAppear { UserDefaults.standard.set(false, forKey: "gg.map.boardsHidden") }

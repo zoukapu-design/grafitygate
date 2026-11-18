@@ -157,17 +157,21 @@ enum DemoData {
             return ["accepted": 1, "current": 1]
         case "gf_unread_counts":
             return [["notifications": 2, "messages": 1]]
-        case "gf_friend_feed":
+        case "gf_friend_feed", "gf_friend_feed2":
+            if DemoMode.screen == "home-empty" { return [] }
             return [
                 ["id": UUID().uuidString, "author": misaki.uuidString, "author_name": "みさき", "gate_id": hill.uuidString,
                  "gate_title": "夕焼けの見える丘", "approx_lat": 35.66, "approx_lon": 139.70,
-                 "body": "ここから見る夕焼けが一番好き。ベンチに座って待ってみて。", "photo_path": "demo/sunset.jpg", "created_at": ago(3 * 3600)],
+                 "body": "ここから見る夕焼けが一番好き。ベンチに座って待ってみて。", "photo_path": "demo/sunset.jpg", "created_at": ago(3 * 3600),
+                 "finish": "holo"],
                 ["id": UUID().uuidString, "author": kenta.uuidString, "author_name": "けんた", "gate_id": tree.uuidString,
                  "gate_title": "公園の大きな木", "approx_lat": 35.657, "approx_lon": 139.703,
-                 "body": "春になったら、またみんなで来よう。", "photo_path": NSNull(), "created_at": ago(8 * 3600)],
+                 "body": "春になったら、またみんなで来よう。", "photo_path": NSNull(), "created_at": ago(8 * 3600),
+                 "finish": "neon"],
                 ["id": UUID().uuidString, "author": misaki.uuidString, "author_name": "みさき", "gate_id": clock.uuidString,
                  "gate_title": "駅前の大時計", "approx_lat": 35.658, "approx_lon": 139.702,
-                 "body": "待ち合わせ、ここにしよう。", "photo_path": "demo/night.jpg", "created_at": ago(20 * 3600)],
+                 "body": "待ち合わせ、ここにしよう。", "photo_path": "demo/night.jpg", "created_at": ago(20 * 3600),
+                 "finish": "gold"],
             ]
         case "gf_gate_summary":
             let g = gate(params["p_gate"])

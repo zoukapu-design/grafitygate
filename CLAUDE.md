@@ -81,6 +81,7 @@
 - アイコン・しるし（2026-11-14 オーナーが見本から選んだ）：G の形の扉をネオンにし、扉の中と足もとに光がもれる。ネオンは下の夕焼け（だいだい・ピンク）から上の夜空（むらさき・水色）へ縦に移る。元は `tools/icon/make_icon.py`（SVG）→ `node tools/icon/render.js` で `AppIcon.png`・`BrandMark.png`。アプリの中のしるしは `GateMark`（同じ絵）と `Wordmark`（同じ色の文字・`Brand.neonOnLight`）。前の石のアーチの絵は使わない。
 - 画面の色（2026-11-14 オーナーが見本 B「ネオンの帯」を選んだ）：白基調のまま、強調は夜空のむらさき（`Theme.accent`）、いちばん大事なボタンだけ夕焼け→夜空の帯（`PrimaryButtonStyle`＝`Theme.neonBand`）、自分のもの・TRAIL は夕焼けのだいだい（`Theme.warm`）。前の緑は使わない。
 - 友達を足すのは QR（見せる・読む）と ID を送る（`AddFriendButtons`）。リンク `grafitygate://friend/<ID>` で開くと、その人の画面が出る（`AppNavigator`）。タブの切り替えも `AppNavigator.tab`。
+- ホーム（`HomeView`、2026-11-18 オーナー「シンプルすぎる・オシャレに」）：新着があるときは、上に新しいカードを残した友達の丸（`FriendRing`・ネオンの輪・押すとその人のカードへ）、その下に 1 枚ずつ `FeedPost`（書いた人・時間・トレーディングカード・GATE へ・並べる・「…」に通報）。仕上げは `gf_friend_feed2`（`0027`・前の `gf_friend_feed` は古いアプリ用に残す）。新着が無いときは `HomeWelcome`（夜空の窓に「見本」のカードを扇に広げ、何が届くかを見せる・「友達を足す」・近くを探す・作る）。List の中の NavigationLink は「>」が二重に出るので、ボタン＋`navigationDestination(isPresented:)` で開く。
 - 画面は白基調（`Theme`）。下のタブは「ホーム／地図／撮る／わたし」の 4 つ。ホームは友達の新着だけ。分かりやすさを最優先にし、ボタンや文字を詰め込まない。
 - エフェクトは最初は数種類。仕組みが固まってから増やす。
 - ユーザーへの説明は日本語で、専門用語を避けて分かりやすく。直したときは、何をどう直したかをまとめて伝える。

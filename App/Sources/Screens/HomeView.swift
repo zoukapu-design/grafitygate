@@ -16,54 +16,63 @@ struct HomeView: View {
     @State private var comparing: CardCompareRequest?
     @Environment(\.scenePhase) private var scenePhase
 
+    /// 友達を足す画面へ（List の中の NavigationLink は「>」が 2 つ出るので、ボタンから開く）
+    @State private var showFriends = false
+    /// 大きく見るカード
+    @State private var opened: FeedCard?
+
     var body: some View {
         NavigationStack {
             ScreenScaffold(title: "ホーム") {
-                List {
-                    if let error {
-                        NoticeText(text: error)
-                            .listRowBackground(Color.clear)
-                    }
-                    if !loaded && error == nil && (session.state == .starting || session.state == .signedIn) {
-                        // 読み込み中：カードの形だけ先に出す（白い画面で待たせない）
-                        ForEach(0..<2, id: \.self) { _ in
-                            FeedRowPlaceholder()
-                                .listRowBackground(Color.clear)
-                                .listRowSeparator(.hidden)
-                        }
-                    }
-                    if loaded && cards.isEmpty {
-                        HomeStartGuide(friendCount: friendCount ?? 0) { tab in nav.tab = tab }
-                            .listRowBackground(Color.clear)
-                            .listRowSeparator(.hidden)
-                            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-                    }
-                    ForEach(cards) { card in
-                        NavigationLink(value: GateRoute(id: card.gate_id)) {
-                            FeedRow(card: card,
-                                    onCompare: myCardGates.contains(card.gate_id) ? { Task { await compare(card) } } : nil)
-                        }
-                        .contextMenu {
-                            if myCardGates.contains(card.gate_id) {
-                                Button {
-                                    Task { await compare(card) }
-                                } label: {
-                                    Label("あなたのカードと並べる", systemImage: "rectangle.split.2x1")
+                ScrollViewReader { scroller in
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 18) {
+                            if let error {
+                                NoticeText(text: error)
+                            }
+                            if !loaded && error == nil && (session.state == .starting || session.state == .signedIn) {
+                                // 読み込み中：カードの形だけ先に出す（白い画面で待たせない）
+                                ForEach(0..<2, id: \.self) { _ in FeedRowPlaceholder() }
+                            }
+                            if loaded && cards.isEmpty {
+                                HomeWelcome(friendCount: friendCount ?? 0,
+                                            openFriends: { showFriends = true },
+                                            go: { tab in nav.tab = tab })
+                            }
+                            if !cards.isEmpty {
+                                // 新しいカードを残した友達（押すと、その人のカードへ）
+                                FriendRing(cards: cards) { id in
+                                    withAnimation(.easeInOut(duration: 0.4)) { scroller.scrollTo(id, anchor: .top) }
+                                }
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("友達の新着グラフィティカード")
+                                        .font(.title3.weight(.heavy))
+                                        .foregroundStyle(Theme.text)
+                                    Text("友達が GATE に残したカードが、24 時間だけ届きます")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(Theme.textSecondary)
+                                }
+                                ForEach(cards) { card in
+                                    FeedPost(card: card,
+                                             onOpen: { opened = card },
+                                             onCompare: myCardGates.contains(card.gate_id) ? { Task { await compare(card) } } : nil,
+                                             onReport: { report = reportItem(card) })
+                                        .id(card.id)
                                 }
                             }
-                            Button {
-                                report = ReportItem(id: card.id, target: .graffiti, userID: card.author,
-                                                    userName: card.author_name, label: "\(card.author_name) さんのグラフィティカード")
-                            } label: {
-                                Label("通報する", systemImage: "exclamationmark.bubble")
-                            }
                         }
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 4)
+                        .padding(.bottom, 28)
                     }
+                    .refreshable { await load() }
                 }
-                .listStyle(.plain)
-                .refreshable { await load() }
+            }
+            .navigationDestination(isPresented: $showFriends) { FriendsView() }
+            .fullScreenCover(item: $opened) { card in
+                TradingCardViewer(content: FeedPost.content(card, me: session.userID)) {
+                    report = reportItem(card)
+                }
             }
             .sheet(item: $comparing) { request in
                 CardCompareView(request: request).environmentObject(session)
@@ -94,6 +103,11 @@ struct HomeView: View {
             }
             .sheet(item: $report, onDismiss: { Task { await load() } }) { item in ReportSheet(item: item) }
         }
+    }
+
+    private func reportItem(_ card: FeedCard) -> ReportItem {
+        ReportItem(id: card.id, target: .graffiti, userID: card.author,
+                   userName: card.author_name, label: "\(card.author_name) さんのグラフィティカード")
     }
 
     /// 友達の新着のカードと、同じ GATE の自分のカードを並べる
@@ -164,33 +178,55 @@ private struct FeedRowPlaceholder: View {
     }
 }
 
-/// 新着がないとき：次にすること（友達を足す・近くを探す・作る）
-private struct HomeStartGuide: View {
+/// 新着がないとき：夜空の窓にカードの見本を扇に広げ、何が届くのかを見せる。その下に次にすること
+private struct HomeWelcome: View {
     let friendCount: Int
+    let openFriends: () -> Void
     let go: (AppNavigator.Tab) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 16) {
+            ZStack {
+                InsideBackground()
+                // 見本のカード（だれのものでもない、飾りの 3 枚）
+                ZStack {
+                    sample(.neon, body: "待ち合わせ、ここにしよう。")
+                        .rotationEffect(.degrees(-13))
+                        .offset(x: -88, y: 14)
+                    sample(.gold, body: "ここから見る夕焼けが好き。")
+                        .rotationEffect(.degrees(13))
+                        .offset(x: 88, y: 14)
+                    sample(.holo, body: "また来ようね。")
+                        .offset(y: -6)
+                }
+                .padding(.top, 10)
+            }
+            .frame(height: 280)
+            .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+            .overlay(alignment: .topLeading) {
+                Text("見本")
+                    .font(.caption2.weight(.heavy))
+                    .foregroundStyle(.white.opacity(0.8))
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(.white.opacity(0.15), in: Capsule())
+                    .padding(14)
+            }
             VStack(alignment: .leading, spacing: 6) {
-                Text(friendCount == 0 ? "はじめよう" : "友達の新着はまだありません")
-                    .font(.title3.weight(.bold))
+                Text(friendCount == 0 ? "友達のグラフィティカードが、ここに届く" : "友達の新着は、まだありません")
+                    .font(.title3.weight(.heavy))
                     .foregroundStyle(Theme.text)
                 Text(friendCount == 0
-                     ? "友達が GATE に残した記録が、24 時間ここに届きます。まずは友達を足すか、近くの GATE を探してみましょう。"
-                     : "友達がどこかの GATE に記録を残すと、24 時間ここに出ます。")
+                     ? "友達が GATE に残したカードが、24 時間ここに並びます。キラやゴールドのカードも。まずは友達を足しましょう。"
+                     : "友達がどこかの GATE でカードを残すと、24 時間ここに並びます。あなたも近くの GATE で 1 枚残してみましょう。")
                     .font(.subheadline)
                     .foregroundStyle(Theme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(.bottom, 4)
             if friendCount == 0 {
-                NavigationLink {
-                    FriendsView()
-                } label: {
-                    GuideRow(systemImage: "person.badge.plus", title: "友達を足す",
-                             detail: "QR を見せる・読むだけ。お互いにフォローすると友達になります。")
+                Button(action: openFriends) {
+                    Label("友達を足す", systemImage: "person.badge.plus")
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PrimaryButtonStyle())
             }
             Button { go(.map) } label: {
                 GuideRow(systemImage: "map", title: "近くの GATE を探す", detail: "地図で、100m 以内の扉を見られます。")
@@ -202,7 +238,15 @@ private struct HomeStartGuide: View {
             }
             .buttonStyle(.plain)
         }
-        .padding(.top, 8)
+        .padding(.top, 4)
+    }
+
+    private func sample(_ finish: CardFinish, body: String) -> some View {
+        TradingCard(content: TradingCardContent(id: UUID(), body: body, author: "友達", gateTitle: "あなたの街の GATE",
+                                                createdAt: nil, likes: 0, finish: finish),
+                    animated: finish == .holo)
+            .frame(width: 140, height: 140 / TradingCard.aspect)
+            .accessibilityHidden(true)
     }
 }
 
@@ -233,65 +277,147 @@ private struct GuideRow: View {
     }
 }
 
-private struct FeedRow: View {
-    let card: FeedCard
-    /// 同じ GATE に自分のカードがあるときだけ
-    var onCompare: (() -> Void)?
+/// 新しいカードを残した友達の丸（ネオンの輪。押すと、その人のいちばん新しいカードへ）
+private struct FriendRing: View {
+    let cards: [FeedCard]
+    let jump: (UUID) -> Void
+
+    private struct Person: Identifiable {
+        let id: UUID
+        let name: String
+        let first: UUID
+        var count: Int
+    }
+
+    private var people: [Person] {
+        var seen: [UUID: Int] = [:]
+        var list: [Person] = []
+        for card in cards {
+            if let i = seen[card.author] {
+                list[i].count += 1
+            } else {
+                seen[card.author] = list.count
+                list.append(Person(id: card.author, name: card.author_name, first: card.id, count: 1))
+            }
+        }
+        return list
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if let path = card.photo_path {
-                RemotePhoto(path: path)
-                    .frame(height: 260)
-                    .frame(maxWidth: .infinity)
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 16) {
+                ForEach(people) { person in
+                    Button {
+                        jump(person.first)
+                    } label: {
+                        VStack(spacing: 6) {
+                            PersonBadge(name: person.name, size: 56)
+                                .padding(4)
+                                .overlay(Circle().strokeBorder(Theme.neonBand, lineWidth: 3))
+                                .overlay(alignment: .bottomTrailing) {
+                                    if person.count > 1 {
+                                        Text("\(person.count)")
+                                            .font(.system(size: 11, weight: .heavy, design: .rounded))
+                                            .foregroundStyle(.white)
+                                            .frame(minWidth: 20, minHeight: 20)
+                                            .background(Theme.accent, in: Circle())
+                                            .overlay(Circle().stroke(.white, lineWidth: 2))
+                                    }
+                                }
+                            Text(person.name)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(Theme.text)
+                                .lineLimit(1)
+                                .frame(maxWidth: 72)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(person.name) さんの新しいカード \(person.count) 枚")
+                }
             }
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 10) {
-                    PersonBadge(name: card.author_name, size: 32)
-                    Text(card.author_name).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
-                    Spacer()
+            .padding(.vertical, 4)
+            .padding(.horizontal, 2)
+        }
+        .scrollClipDisabled()
+    }
+}
+
+/// 友達の新着 1 枚：上に書いた人と時間、まん中にカード（押すと大きく）、下に GATE と「並べる」
+private struct FeedPost: View {
+    let card: FeedCard
+    let onOpen: () -> Void
+    var onCompare: (() -> Void)?
+    let onReport: () -> Void
+
+    static func content(_ card: FeedCard, me: UUID?) -> TradingCardContent {
+        TradingCardContent(id: card.id, photoPath: card.photo_path, body: card.body, author: card.author_name,
+                           gateTitle: card.gate_title, createdAt: card.created_at,
+                           finish: CardFinish(raw: card.finish), badge: card.author == me ? .mine : .friend)
+    }
+
+    @EnvironmentObject private var session: SessionModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                PersonBadge(name: card.author_name, size: 34)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(card.author_name).font(.subheadline.weight(.bold)).foregroundStyle(Theme.text)
                     Text(ServerDate.relative(card.created_at)).font(.caption).foregroundStyle(Theme.textSecondary)
                 }
-                if !card.body.isEmpty {
-                    Text(card.body).font(.body).foregroundStyle(Theme.text)
-                        .fixedSize(horizontal: false, vertical: true)
+                Spacer()
+                Menu {
+                    if let onCompare {
+                        Button(action: onCompare) {
+                            Label("あなたのカードと並べる", systemImage: "rectangle.split.2x1")
+                        }
+                    }
+                    Button(role: .destructive, action: onReport) {
+                        Label("通報する", systemImage: "exclamationmark.bubble")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(Theme.textSecondary)
+                        .frame(width: 36, height: 36)
                 }
-                // GATE の名前と「あなたのカードと並べる」は行を分ける（小さい iPhone でも名前を切らない）
-                VStack(alignment: .leading, spacing: 8) {
-                    gateChip
-                    compareButton
+                .accessibilityLabel("そのほか")
+            }
+            Button(action: onOpen) {
+                TradingCard(content: Self.content(card, me: session.userID))
+                    .frame(maxWidth: 300)
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("押すと大きく見られます")
+            HStack(spacing: 10) {
+                NavigationLink(value: GateRoute(id: card.gate_id)) {
+                    Label(card.gate_title, systemImage: "door.left.hand.open")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(Theme.accent)
+                        .lineLimit(1)
+                        .padding(.horizontal, 12)
+                        .frame(minHeight: 34)
+                        .background(Theme.accentLight, in: Capsule())
                 }
+                .buttonStyle(.plain)
+                if let onCompare {
+                    Button(action: onCompare) {
+                        Label("並べる", systemImage: "rectangle.split.2x1")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(Theme.warm)
+                            .padding(.horizontal, 12)
+                            .frame(minHeight: 34)
+                            .background(Theme.warm.opacity(0.12), in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+                Spacer(minLength: 0)
             }
-            .padding(16)
         }
-        .background(Theme.surface)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.radiusCard))
-        .overlay(RoundedRectangle(cornerRadius: Theme.radiusCard).stroke(Theme.line))
-        .padding(.vertical, 4)
-    }
-
-    private var gateChip: some View {
-        Label(card.gate_title, systemImage: "door.left.hand.open")
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(Theme.accent)
-            .lineLimit(2)
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(Theme.accentLight, in: Capsule())
-    }
-
-    @ViewBuilder private var compareButton: some View {
-        if let onCompare {
-            // ここに自分のカードもある：ふたりのグラフィティカードを並べる
-            Button(action: onCompare) {
-                Label("あなたのカードと並べる", systemImage: "rectangle.split.2x1")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Theme.warm)
-                    .lineLimit(1)
-            }
-            .buttonStyle(.borderless)
-        }
+        .padding(16)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radiusCard, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radiusCard, style: .continuous).stroke(Theme.line))
     }
 }
 

@@ -18,7 +18,12 @@ struct GateAPI {
     }
 
     func friendFeed() async throws -> [FeedCard] {
-        try await client.rpc("gf_friend_feed").execute().value
+        do {
+            return try await client.rpc("gf_friend_feed2").execute().value
+        } catch let error where ErrorText.isMissingFunction(error) {
+            // 0027 の前のサーバー（仕上げなし）
+            return try await client.rpc("gf_friend_feed").execute().value
+        }
     }
 
     func candidates(_ location: CLLocation, print: [Float]) async throws -> [MatchCandidate] {

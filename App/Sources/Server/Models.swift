@@ -145,6 +145,8 @@ struct FeedCard: Decodable, Identifiable, Hashable {
     let body: String
     let photo_path: String?
     let created_at: String
+    /// カードの仕上げ（0027 の前のサーバーでは無い＝ふつう）
+    var finish: String? = nil
 }
 
 /// グラフィティ（表 gf_graffiti。見てよいものだけがサーバーから返る）

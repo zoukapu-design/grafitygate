@@ -19,3 +19,10 @@ select gf_set_card_finish(:'card', 'holo');
 select t_ok((select finish = 'holo' from gf_graffiti where id = :'card'), '書いた本人は「キラ」にできる');
 :as_alice
 select gf_set_card_finish(:'card', 'normal');
+
+\echo '== 友達の新着（仕上げつき）'
+:as_bob
+select t_ok((select count(*) from gf_friend_feed2()) = (select count(*) from gf_friend_feed()),
+            '新着の 2 番目の形は、前の形と同じカードを返す');
+select t_ok((select bool_and(finish in ('normal', 'holo', 'gold', 'neon')) from gf_friend_feed2()) is not false,
+            '新着に仕上げが付く');
