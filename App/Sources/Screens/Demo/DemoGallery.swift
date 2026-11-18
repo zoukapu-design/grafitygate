@@ -239,11 +239,13 @@ struct DemoGallery: View {
             CardPhotoEditor(original: Demo.demoPhoto) { _ in }
         case "story-camera", "story-text", "story-review":
             // AR カメラの道具（AR そのものはシミュレーターで作れないので、景色の絵の上に重ねる）
-            ZStack {
-                Image(uiImage: Demo.demoPhoto).resizable().scaledToFill().ignoresSafeArea()
-                StoryCameraControls(story: Demo.demoStory(screen), gateTitle: "夕焼けの見える丘", artworkCount: 3,
-                                    canLeaveArt: true, toast: nil, onClose: {}, onLeaveArt: {}, onUse: { _ in })
-            }
+            // 景色の絵は後ろに敷くだけ（画面の大きさを広げない＝本物の AR の画面と同じ並びになる）
+            StoryCameraControls(story: Demo.demoStory(screen), gateTitle: "夕焼けの見える丘", artworkCount: 3,
+                                canLeaveArt: true, toast: nil, onClose: {}, onLeaveArt: {}, onUse: { _ in })
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background {
+                    Image(uiImage: Demo.demoPhoto).resizable().scaledToFill().ignoresSafeArea()
+                }
         case "my-gates":
             // 同じ所に 2 つ（重ねた印）・少し離れて 1 つ
             NavigationStack { MyGatesView(gates: Self.myGates) }

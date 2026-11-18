@@ -38,7 +38,8 @@ struct StoryCameraControls: View {
             if let shot = story.shot {
                 review(shot)
                     .transition(.opacity)
-            } else {
+            } else if story.textDraft == nil {
+                // 文字を書いているあいだは、カメラの道具を隠す（書く所だけを見せる）
                 camera
             }
             if let draft = story.textDraft {
@@ -378,7 +379,7 @@ private struct StoryTextComposer: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.55).ignoresSafeArea()
+            Color.black.opacity(0.6).ignoresSafeArea()
                 .onTapGesture { story.commitText() }
             VStack(spacing: 18) {
                 HStack {
