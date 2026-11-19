@@ -206,7 +206,6 @@ enum MemoryDraftLoader {
         case .photo: return "写真"
         case .video: return "動画"
         case .voice: return "声"
-        case .card: return "グラフィティカード"
         }
     }
 }
@@ -608,6 +607,7 @@ struct MemoryDetailView: View {
         case .photo: return "写真"
         case .video: return "動画"
         case .voice: return "声"
+        case .card: return "グラフィティカード"
         }
     }
 
