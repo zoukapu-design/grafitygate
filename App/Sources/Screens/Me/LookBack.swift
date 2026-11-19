@@ -134,20 +134,19 @@ struct SavedCardsView: View {
     @State private var loaded = false
     @State private var message: String?
 
-    private let columns = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
+    private let columns = [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)]
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                Text("GATE の中で「保存」したグラフィティカードです。写真・場所・日付はいつでも、ひとことは現地で読めます。")
-                    .font(.subheadline).foregroundStyle(Theme.textSecondary)
+                ScreenIntro(text: "GATE の中で「保存」したグラフィティカードです。押すと、そのカードがある GATE を開きます。")
                 if let message { NoticeText(text: message) }
                 if loaded && cards.isEmpty && message == nil {
                     EmptyNote(title: "まだ保存したカードはありません",
                               message: "GATE の中のカードの 🔖 を押すと、ここに集まります。",
                               systemImage: "bookmark")
                 }
-                LazyVGrid(columns: columns, spacing: 10) {
+                LazyVGrid(columns: columns, spacing: 18) {
                     ForEach(cards) { card in
                         NavigationLink {
                             GateDetailView(gateID: card.gate_id)
@@ -174,46 +173,18 @@ struct SavedCardsView: View {
         .refreshable { await load() }
     }
 
+    /// トレーディングカードの形（ひとことが読めないときは鍵の案内）と、その下に場所
     private func tile(_ card: SavedCard) -> some View {
-        ZStack(alignment: .bottomLeading) {
-            Group {
-                if let path = card.photo_path {
-                    RemotePhoto(path: path)
-                } else {
-                    ZStack {
-                        LinearGradient(colors: [Theme.accentLight, Theme.surface], startPoint: .top, endPoint: .bottom)
-                        VStack(spacing: 6) {
-                            Image(systemName: "text.quote").font(.title3).foregroundStyle(Theme.accent)
-                            Text(card.body ?? "ひとことは現地で")
-                                .font(.caption)
-                                .foregroundStyle(Theme.text)
-                                .multilineTextAlignment(.center)
-                                .lineLimit(4)
-                                .padding(.horizontal, 10)
-                        }
-                    }
-                }
-            }
-            .aspectRatio(3 / 4, contentMode: .fit)
-            .frame(maxWidth: .infinity)
-            LinearGradient(colors: [.clear, .black.opacity(0.7)], startPoint: .center, endPoint: .bottom)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(card.gate_title).font(.caption.weight(.bold)).foregroundStyle(.white).lineLimit(1)
-                Text("\(card.mine ? "あなた" : card.author_name)・\(GateDates.shortText(card.created_at))")
-                    .font(.caption2).foregroundStyle(.white.opacity(0.85)).lineLimit(1)
+        VStack(alignment: .leading, spacing: 6) {
+            TradingCard(content: card.tradingContent, animated: false)
+            HStack(spacing: 4) {
+                Image(systemName: "bookmark.fill").foregroundStyle(Theme.warm)
                 PlaceNameText(lat: card.approx_lat, lon: card.approx_lon, font: .caption2)
-                    .foregroundStyle(.white.opacity(0.85))
+                    .foregroundStyle(Theme.textSecondary)
+                    .lineLimit(1)
             }
-            .padding(10)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .overlay(alignment: .topTrailing) {
-            Image(systemName: "bookmark.fill")
-                .font(.caption)
-                .foregroundStyle(.white)
-                .padding(6)
-                .background(Theme.warm, in: Circle())
-                .padding(8)
+            .font(.caption2)
+            .padding(.horizontal, 4)
         }
     }
 

@@ -888,6 +888,17 @@ struct DMMessage: Decodable, Identifiable, Hashable {
     var card_created_at: String? = nil
     /// 添えたカードを書いた人が消した
     var card_gone: Bool? = nil
+    /// 添えたカードの名前と仕上げ（0032 の前のサーバーでは無い）
+    var card_title: String? = nil
+    var card_finish: String? = nil
+
+    /// 添えたカードをトレーディングカードの形で見せる中身（カードが無ければ nil）
+    func cardContent(author: String) -> TradingCardContent? {
+        guard let card_id else { return nil }
+        return TradingCardContent(id: card_id, photoPath: card_photo, body: card_body ?? "", author: author,
+                                  title: card_title, gateTitle: card_gate_title ?? "GATE", createdAt: card_created_at,
+                                  finish: CardFinish(raw: card_finish))
+    }
 }
 
 /// GATE の位置の記録の置き場所（gf_place_map）
@@ -1032,6 +1043,17 @@ struct AtlasCard: Decodable, Identifiable, Hashable {
     let approx_lat: Double
     let approx_lon: Double
     let created_at: String
+    /// カードの名前と仕上げ（0032 の前のサーバーでは無い）
+    var title: String? = nil
+    var finish: String? = nil
+
+    /// トレーディングカードの形で見せる中身（ひとことの文は現地だけ）
+    func tradingContent(author: String) -> TradingCardContent {
+        var c = TradingCardContent(id: id, photoPath: photo_path, body: "", author: author, title: title,
+                                   gateTitle: gate_title, createdAt: created_at, finish: CardFinish(raw: finish))
+        c.bodyNote = "ひとことは、現地で扉を開けると読めます"
+        return c
+    }
 }
 
 /// 「来たよ」カード（gf_my_card_links）：友達のカードに、自分がその GATE で残したカードを添えて送ったもの

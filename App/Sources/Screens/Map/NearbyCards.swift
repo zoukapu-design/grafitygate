@@ -202,13 +202,8 @@ struct NearbyCardsView: View {
     // MARK: 部品
 
     private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("今日、近くにある友達のグラフィティカード").font(.headline).foregroundStyle(Theme.text)
-                Text("いまいる所から 300m 以内の GATE に、友達が残したものです")
-                    .font(.caption).foregroundStyle(Theme.textSecondary)
-            }
-            Spacer()
+        SectionHeader(title: "近くの友達のカード",
+                      subtitle: "いまいる所から 300m 以内の GATE に、友達が残したもの。右へはらうとくわしく見られます") {
             if !model.deck.isEmpty {
                 Text("あと \(model.deck.count) 枚")
                     .font(.caption.weight(.bold))
@@ -253,7 +248,7 @@ struct NearbyCardsView: View {
         let rest = Array(model.deck.dropFirst().prefix(2))
         return ZStack {
             ForEach(Array(rest.enumerated().reversed()), id: \.element.id) { index, card in
-                NearbyCardFace(card: card)
+                NearbyCardFace(card: card, behind: true)
                     .scaleEffect(1 - CGFloat(index + 1) * 0.04)
                     .offset(y: CGFloat(index + 1) * 12)
                     .allowsHitTesting(false)
@@ -405,56 +400,38 @@ struct NearbyCardsView: View {
 
 struct NearbyCardFace: View {
     let card: NearbyCard
+    /// 後ろに重ねたカード（道のりの札は見せない。大きさは前のカードとそろえる）
+    var behind = false
 
     private var walkMinutes: Int { max(1, Int((card.distance_m / 75).rounded())) }
 
     var body: some View {
-        ZStack(alignment: .bottomLeading) {
-            if let path = card.photo_path {
-                RemotePhoto(path: path)
-            } else {
-                ZStack {
-                    LinearGradient(colors: [Color(hex: 0x140F3A), Color(hex: 0x3A1530), Color(hex: 0xF0702A).opacity(0.8)],
-                                   startPoint: .top, endPoint: .bottom)
-                    Text(card.body)
-                        .font(.title2.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .multilineTextAlignment(.center)
-                        .lineLimit(6)
-                        .padding(32)
-                }
-            }
-            LinearGradient(colors: [.black.opacity(0), .black.opacity(0.75)], startPoint: .center, endPoint: .bottom)
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 10) {
-                    NeonAvatar(name: card.author_name, size: 38)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(card.author_name).font(.headline).foregroundStyle(.white)
-                        Text(ServerDate.relative(card.created_at)).font(.caption).foregroundStyle(.white.opacity(0.8))
-                    }
-                }
-                Label(card.gate_title, systemImage: (GateKind(rawValue: card.gate_kind) ?? .place).symbol)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
+        VStack(spacing: 10) {
+            TradingCard(content: card.tradingContent, animated: false)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // その GATE までの道のり（おおよそ）
+            HStack(spacing: 8) {
+                Image(systemName: (GateKind(rawValue: card.gate_kind) ?? .place).symbol)
+                    .foregroundStyle(Theme.accent)
+                Text(card.gate_title)
+                    .foregroundStyle(Theme.text)
                     .lineLimit(1)
-                Label("\(TrailGuide.distanceText(card.distance_m))・歩いて約 \(walkMinutes) 分", systemImage: "figure.walk")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.9))
+                Text("・")
+                    .foregroundStyle(Theme.textSecondary)
+                Image(systemName: "figure.walk")
+                    .foregroundStyle(Theme.warm)
+                Text("\(TrailGuide.distanceText(card.distance_m))・約 \(walkMinutes) 分")
+                    .foregroundStyle(Theme.textSecondary)
+                    .lineLimit(1)
             }
-            .padding(20)
+            .font(.footnote.weight(.semibold))
+            .padding(.horizontal, 14)
+            .frame(height: 34)
+            .background(Theme.surface, in: Capsule())
+            .overlay(Capsule().stroke(Theme.line))
+            .minimumScaleFactor(0.8)
+            .opacity(behind ? 0 : 1)
         }
-        .overlay(alignment: .topLeading) {
-            Label("友達のカード", systemImage: "person.2.fill")
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 10).padding(.vertical, 5)
-                .background(.black.opacity(0.35), in: Capsule())
-                .padding(14)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(.white.opacity(0.6), lineWidth: 1))
-        .shadow(color: .black.opacity(0.18), radius: 16, y: 8)
     }
 }
 
@@ -473,31 +450,22 @@ struct NearbyCardDetail: View {
     @State private var saving = false
     @State private var message: String?
     @State private var report: ReportItem?
-    @State private var viewer: PhotoViewerItem?
+    @State private var big: TradingCardContent?
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    if let path = card.photo_path {
-                        Button {
-                            viewer = PhotoViewerItem(path: path, caption: card.body)
-                        } label: {
-                            RemotePhoto(path: path)
-                                .frame(height: 320)
-                                .frame(maxWidth: .infinity)
-                                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("写真を大きく見る")
+                    Button {
+                        big = card.tradingContent
+                    } label: {
+                        TradingCard(content: card.tradingContent)
+                            .frame(maxWidth: 300)
+                            .frame(maxWidth: .infinity)
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("押すと大きく見られます")
                     authorRow
-                    if !card.body.isEmpty {
-                        Text(card.body)
-                            .font(.title3)
-                            .foregroundStyle(Theme.text)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
                     actions
                     if let message { NoticeText(text: message) }
                     Divider()
@@ -525,9 +493,11 @@ struct NearbyCardDetail: View {
                 }
             }
             .sheet(item: $report) { item in ReportSheet(item: item) }
-            .fullScreenCover(item: $viewer) { item in
-                PhotoViewer(path: item.path, caption: item.caption)
-                    .environmentObject(session)
+            .fullScreenCover(item: $big) { content in
+                TradingCardViewer(content: content) {
+                    report = ReportItem(id: card.id, target: .nearby_card, userID: card.author,
+                                        userName: card.author_name, label: "友達のカード")
+                }
             }
             .task { await loadRoute() }
         }

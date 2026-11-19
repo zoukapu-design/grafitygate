@@ -150,9 +150,9 @@ struct DemoGallery: View {
                             .padding(.horizontal, 14).padding(.vertical, 9)
                             .foregroundStyle(.white)
                             .background(Theme.accent, in: RoundedRectangle(cornerRadius: 18))
-                        ChatCardBubble(message: Demo.cardMessage)
+                        ChatCardBubble(message: Demo.cardMessage, authorName: "あなた")
                         HStack {
-                            ChatCardBubble(message: Demo.goneMessage(friend: true))
+                            ChatCardBubble(message: Demo.goneMessage(friend: true), authorName: "みさき")
                             Spacer()
                         }
                     }
@@ -332,10 +332,11 @@ private enum Demo {
     static let nearbyCards: [NearbyCard] = [
         NearbyCard(id: UUID(), gate_id: gateID, gate_title: "夕焼けの見える丘", gate_kind: "view", author: friend,
                    author_name: "みさき", body: "ここから見る夕焼けが一番好き。ベンチに座って待ってみて。",
-                   photo_path: "demo/sunset.jpg", created_at: now, approx_lat: 35.659, approx_lon: 139.700, distance_m: 180),
+                   photo_path: "demo/sunset.jpg", created_at: now, approx_lat: 35.659, approx_lon: 139.700, distance_m: 180,
+                   title: "夕焼けの約束", finish: "holo"),
         NearbyCard(id: UUID(), gate_id: UUID(), gate_title: "駅前の大時計", gate_kind: "object", author: UUID(),
                    author_name: "けんた", body: "待ち合わせはいつもここ。", photo_path: "demo/night.jpg", created_at: now,
-                   approx_lat: 35.658, approx_lon: 139.701, distance_m: 260),
+                   approx_lat: 35.658, approx_lon: 139.701, distance_m: 260, finish: "neon"),
         NearbyCard(id: UUID(), gate_id: UUID(), gate_title: "公園の大きな木", gate_kind: "place", author: UUID(),
                    author_name: "ゆい", body: "春になったら、またみんなで来よう。", photo_path: nil, created_at: now,
                    approx_lat: 35.657, approx_lon: 139.702, distance_m: 90),
@@ -344,7 +345,7 @@ private enum Demo {
     static let cardMessage = DMMessage(id: UUID(), sender: me, body: "", photo_path: nil, created_at: now, read_at: nil,
                                        card_id: UUID(), card_body: "夕焼けがきれいだった。", card_photo: "demo/sunset.jpg",
                                        card_gate_id: gateID, card_gate_title: "夕焼けの見える丘", card_created_at: now,
-                                       card_gone: false)
+                                       card_gone: false, card_title: "夕焼けの約束", card_finish: "gold")
 
     static func goneMessage(friend: Bool) -> DMMessage {
         DMMessage(id: UUID(), sender: friend ? Demo.friend : me, body: "", photo_path: nil, created_at: now, read_at: nil,

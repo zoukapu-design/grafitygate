@@ -44,14 +44,8 @@ struct HomeView: View {
                                 FriendRing(cards: cards) { id in
                                     withAnimation(.easeInOut(duration: 0.4)) { scroller.scrollTo(id, anchor: .top) }
                                 }
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("友達の新着グラフィティカード")
-                                        .font(.title3.weight(.heavy))
-                                        .foregroundStyle(Theme.text)
-                                    Text("友達が GATE に残したカードが、24 時間だけ届きます")
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundStyle(Theme.textSecondary)
-                                }
+                                SectionHeader(title: "友達の新着", count: cards.count,
+                                              subtitle: "友達が GATE に残したグラフィティカードが、24 時間だけ届きます")
                                 ForEach(cards) { card in
                                     FeedPost(card: card,
                                              onOpen: { opened = card },
@@ -66,8 +60,11 @@ struct HomeView: View {
                         .padding(.bottom, 28)
                     }
                     .refreshable { await load() }
+                    // 上：しるしと、メッセージ・お知らせ（ナビゲーションの帯の代わり。スクロールしても残る）
+                    .safeAreaInset(edge: .top, spacing: 0) { homeHeader }
                 }
             }
+            .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(isPresented: $showFriends) { FriendsView() }
             .fullScreenCover(item: $opened) { card in
                 TradingCardViewer(content: FeedPost.content(card, me: session.userID)) {
@@ -85,23 +82,28 @@ struct HomeView: View {
             .onChange(of: nav.tab) { _, tab in
                 if tab == .home { Task { await loadIfStale() } }
             }
-            .toolbar {
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    NavigationLink {
-                        MessagesView()
-                    } label: {
-                        BadgedIcon(systemImage: "bubble.left.and.bubble.right", count: inbox.messages)
-                    }
-                    .accessibilityLabel(inbox.messages > 0 ? "メッセージ（新しい \(inbox.messages) 件）" : "メッセージ")
-                    NavigationLink {
-                        NotificationsView()
-                    } label: {
-                        BadgedIcon(systemImage: "bell", count: inbox.notifications)
-                    }
-                    .accessibilityLabel(inbox.notifications > 0 ? "お知らせ（新しい \(inbox.notifications) 件）" : "お知らせ")
-                }
-            }
             .sheet(item: $report, onDismiss: { Task { await load() } }) { item in ReportSheet(item: item) }
+        }
+    }
+
+    private var homeHeader: some View {
+        TabHeader {
+            BrandHeaderMark()
+        } trailing: {
+            NavigationLink {
+                MessagesView()
+            } label: {
+                HeaderIcon(systemImage: "paperplane", count: inbox.messages)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(inbox.messages > 0 ? "メッセージ（新しい \(inbox.messages) 件）" : "メッセージ")
+            NavigationLink {
+                NotificationsView()
+            } label: {
+                HeaderIcon(systemImage: "bell", count: inbox.notifications)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(inbox.notifications > 0 ? "お知らせ（新しい \(inbox.notifications) 件）" : "お知らせ")
         }
     }
 
@@ -418,26 +420,5 @@ private struct FeedPost: View {
         .padding(16)
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radiusCard, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: Theme.radiusCard, style: .continuous).stroke(Theme.line))
-    }
-}
-
-/// 右上に数の印が付くアイコン
-struct BadgedIcon: View {
-    let systemImage: String
-    let count: Int
-
-    var body: some View {
-        Image(systemName: systemImage)
-            .overlay(alignment: .topTrailing) {
-                if count > 0 {
-                    Text(count > 99 ? "99+" : "\(count)")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 4)
-                        .frame(minWidth: 16, minHeight: 16)
-                        .background(Theme.alert, in: Capsule())
-                        .offset(x: 10, y: -8)
-                }
-            }
     }
 }

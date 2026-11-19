@@ -32,7 +32,12 @@ extension GateAPI {
     }
 
     func mySavedCards() async throws -> [SavedCard] {
-        try await client.rpc("gf_my_saved_cards").execute().value
+        do {
+            // 0032：カードの名前と仕上げつき（カードの形で見せる）
+            return try await client.rpc("gf_my_saved_cards2").execute().value
+        } catch let error where ErrorText.isMissingFunction(error) {
+            return try await client.rpc("gf_my_saved_cards").execute().value
+        }
     }
 
     func cardComments(_ card: UUID) async throws -> [CardComment] {
@@ -88,11 +93,15 @@ extension GateAPI {
 
     /// いまいる所から 300m 以内の GATE にある、友達のカード（近いもの・新しいものから）
     func nearbyCards(at location: CLLocation) async throws -> [NearbyCard] {
-        try await client.rpc("gf_nearby_cards",
-                             params: NearbyCardsParam(p_lat: location.coordinate.latitude,
-                                                      p_lon: location.coordinate.longitude,
-                                                      p_accuracy: Float(max(location.horizontalAccuracy, 0))))
-            .execute().value
+        let params = NearbyCardsParam(p_lat: location.coordinate.latitude,
+                                      p_lon: location.coordinate.longitude,
+                                      p_accuracy: Float(max(location.horizontalAccuracy, 0)))
+        do {
+            // 0032：カードの名前と仕上げつき
+            return try await client.rpc("gf_nearby_cards2", params: params).execute().value
+        } catch let error where ErrorText.isMissingFunction(error) {
+            return try await client.rpc("gf_nearby_cards", params: params).execute().value
+        }
     }
 
     // MARK: 自分の訪問・お知らせの設定
@@ -150,6 +159,18 @@ struct SavedCard: Decodable, Identifiable, Hashable {
     let saved_at: String
     let approx_lat: Double
     let approx_lon: Double
+    /// カードの名前と仕上げ（0032 の前のサーバーでは無い）
+    var title: String? = nil
+    var finish: String? = nil
+
+    /// トレーディングカードの形で見せる中身（ひとことが読めないときは「現地で」と出す）
+    var tradingContent: TradingCardContent {
+        var c = TradingCardContent(id: id, photoPath: photo_path, body: body ?? "", author: mine ? "あなた" : author_name,
+                                   title: title, gateTitle: gate_title, createdAt: created_at,
+                                   finish: CardFinish(raw: finish), badge: mine ? .mine : nil)
+        if body == nil { c.bodyNote = "ひとことは、この GATE の扉を開けると読めます" }
+        return c
+    }
 }
 
 /// 名前で探した GATE（gf_search_gates）。場所はおおよそだけ
@@ -184,8 +205,17 @@ struct NearbyCard: Decodable, Identifiable, Hashable {
     let approx_lat: Double
     let approx_lon: Double
     let distance_m: Double
+    /// カードの名前と仕上げ（0032 の前のサーバーでは無い）
+    var title: String? = nil
+    var finish: String? = nil
 
     var gateCoordinate: CLLocationCoordinate2D { CLLocationCoordinate2D(latitude: approx_lat, longitude: approx_lon) }
+
+    /// トレーディングカードの形で見せる中身（友達のカード）
+    var tradingContent: TradingCardContent {
+        TradingCardContent(id: id, photoPath: photo_path, body: body, author: author_name, title: title,
+                           gateTitle: gate_title, createdAt: created_at, finish: CardFinish(raw: finish), badge: .friend)
+    }
 }
 
 private struct NearbyCardsParam: Encodable { let p_lat: Double; let p_lon: Double; let p_accuracy: Float }

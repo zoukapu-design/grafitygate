@@ -27,44 +27,35 @@ struct ProfileView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 if let profile {
-                    // 「わたし」と同じ形のプロフィール（数は、友達が見せているカード図鑑の数だけ）
-                    HStack(spacing: 16) {
-                        NeonAvatar(name: profile.display_name, size: 72)
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(profile.display_name).font(.title2.weight(.bold)).foregroundStyle(Theme.text).lineLimit(1)
-                            Text("ID：\(profile.handle)").font(.subheadline).foregroundStyle(Theme.textSecondary)
-                            if !isMe {
-                                Label(relationText, systemImage: isFriend ? "person.2.fill" : "person")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(isFriend ? Theme.accent : Theme.textSecondary)
-                                    .padding(.horizontal, 8).padding(.vertical, 3)
-                                    .background(isFriend ? Theme.accentLight : Theme.surfaceElevated, in: Capsule())
-                            }
-                        }
-                        Spacer(minLength: 0)
-                    }
+                    // 「わたし」と同じ形のプロフィール（夜空の窓）
+                    ProfileBanner(name: profile.display_name, handle: profile.handle,
+                                  relation: isMe ? nil : relationText)
                     if !isMe && !blocked {
-                        Button {
-                            // 友達をやめるのは、ひと呼吸おいてから（友達向けの GATE が見えなくなる）
-                            if following && isFriend {
-                                confirmUnfollow = true
-                            } else {
-                                Task { await toggleFollow() }
+                        // フォロー・メッセージは横に並べる小さなボタン
+                        HStack(spacing: 8) {
+                            Button {
+                                // 友達をやめるのは、ひと呼吸おいてから（友達向けの GATE が見えなくなる）
+                                if following && isFriend {
+                                    confirmUnfollow = true
+                                } else {
+                                    Task { await toggleFollow() }
+                                }
+                            } label: {
+                                Label(following ? (isFriend ? "友達" : "フォロー中") : (followsMe ? "フォローを返す" : "フォローする"),
+                                      systemImage: following ? "checkmark" : "person.badge.plus")
                             }
-                        } label: {
-                            Label(following ? "フォローをやめる" : (followsMe ? "フォローを返す（友達になる）" : "フォローする"),
-                                  systemImage: following ? "person.badge.minus" : "person.badge.plus")
+                            .buttonStyle(CompactButtonStyle(prominent: !following))
+                            .disabled(busy)
+                            .accessibilityHint(following ? "押すとフォローをやめられます" : "")
+                            if isFriend {
+                                NavigationLink {
+                                    ChatView(other: userID, name: profile.display_name)
+                                } label: {
+                                    Label("メッセージ", systemImage: "paperplane")
+                                }
+                                .buttonStyle(CompactButtonStyle())
+                            }
                         }
-                        .buttonStyle(following ? AnyButtonStyle(SecondaryButtonStyle()) : AnyButtonStyle(PrimaryButtonStyle()))
-                        .disabled(busy)
-                    }
-                    if isFriend && !blocked {
-                        NavigationLink {
-                            ChatView(other: userID, name: profile.display_name)
-                        } label: {
-                            Label("メッセージを送る", systemImage: "bubble.left")
-                        }
-                        .buttonStyle(SecondaryButtonStyle())
                     }
                     if blocked {
                         Card {

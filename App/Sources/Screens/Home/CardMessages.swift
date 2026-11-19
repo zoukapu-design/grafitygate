@@ -5,75 +5,41 @@ import SwiftUI
 /// メッセージに添えられたグラフィティカード（送った人のカード）。押すと大きく見られる
 struct ChatCardBubble: View {
     let message: DMMessage
+    /// カードを書いた人（送った人）の名前
+    var authorName: String = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ZStack(alignment: .bottomLeading) {
-                if let photo = message.card_photo {
-                    RemotePhoto(path: photo)
-                } else {
-                    LinearGradient(colors: [Color(hex: 0x140F3A), Color(hex: 0x3A1530)], startPoint: .top, endPoint: .bottom)
-                    Text(message.card_body ?? "")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .lineLimit(4)
-                        .padding(14)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-                Label("グラフィティカード", systemImage: "rectangle.portrait.on.rectangle.portrait")
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 8).padding(.vertical, 4)
-                    .background(.black.opacity(0.4), in: Capsule())
-                    .padding(8)
-            }
-            .frame(width: 220, height: 170)
-            .clipped()
-            VStack(alignment: .leading, spacing: 3) {
-                Text(message.card_gate_title ?? "GATE")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Theme.text)
-                    .lineLimit(1)
-                if let date = message.card_created_at {
-                    Text(GateDates.shortText(date)).font(.caption2).foregroundStyle(Theme.textSecondary)
-                }
-                if message.card_photo != nil, let body = message.card_body, !body.isEmpty {
-                    Text(body).font(.caption).foregroundStyle(Theme.text).lineLimit(2)
-                }
-            }
-            .padding(10)
-            .frame(width: 220, alignment: .leading)
+        if let content = message.cardContent(author: authorName) {
+            TradingCard(content: content, animated: false)
+                .frame(width: 176)
+                .padding(.vertical, 4)
         }
-        .background(Theme.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.warm.opacity(0.45), lineWidth: 1.5))
     }
 }
 
-/// 添えられたグラフィティカードを大きく見る：写真・ひとこと・GATE（GATE の中は現地だけのまま）
+/// 添えられたグラフィティカードを大きく見る：トレーディングカードの形・書いた人・GATE（GATE の中は現地だけのまま）
 struct ChatCardSheet: View {
     let message: DMMessage
     let senderName: String
 
     @EnvironmentObject private var session: SessionModel
     @Environment(\.dismiss) private var dismiss
-    @State private var viewer: PhotoViewerItem?
+    @State private var big: TradingCardContent?
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    if let photo = message.card_photo {
+                VStack(alignment: .leading, spacing: 18) {
+                    if let content = message.cardContent(author: senderName) {
                         Button {
-                            viewer = PhotoViewerItem(path: photo, caption: message.card_body ?? "")
+                            big = content
                         } label: {
-                            RemotePhoto(path: photo)
-                                .frame(height: 340)
+                            TradingCard(content: content)
+                                .frame(maxWidth: 300)
                                 .frame(maxWidth: .infinity)
-                                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel("写真を大きく見る")
+                        .accessibilityHint("押すと大きく見られます")
                     }
                     HStack(spacing: 10) {
                         NeonAvatar(name: senderName, size: 36)
@@ -84,26 +50,27 @@ struct ChatCardSheet: View {
                             }
                         }
                     }
-                    if let body = message.card_body, !body.isEmpty {
-                        Text(body).font(.title3).foregroundStyle(Theme.text).fixedSize(horizontal: false, vertical: true)
-                    }
                     if let gate = message.card_gate_id {
                         NavigationLink {
                             GateDetailView(gateID: gate)
                         } label: {
-                            HStack(spacing: 10) {
-                                Image(systemName: "door.left.hand.open").foregroundStyle(Theme.accent)
+                            HStack(spacing: 12) {
+                                Image(systemName: "door.left.hand.open")
+                                    .font(.system(size: 17, weight: .semibold))
+                                    .foregroundStyle(Theme.accent)
+                                    .frame(width: 40, height: 40)
+                                    .background(Theme.accentLight, in: Circle())
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(message.card_gate_title ?? "GATE").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
                                     Text("この GATE の場所と、ほかのグラフィティカード（現地で）")
                                         .font(.caption).foregroundStyle(Theme.textSecondary)
                                 }
                                 Spacer()
-                                Image(systemName: "chevron.right").font(.caption).foregroundStyle(Theme.textSecondary)
+                                Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(Theme.textSecondary)
                             }
                             .padding(14)
-                            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16))
-                            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Theme.line))
+                            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18))
+                            .overlay(RoundedRectangle(cornerRadius: 18).stroke(Theme.line))
                         }
                         .buttonStyle(.plain)
                     }
@@ -116,9 +83,8 @@ struct ChatCardSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("閉じる") { dismiss() } }
             }
-            .fullScreenCover(item: $viewer) { item in
-                PhotoViewer(path: item.path, caption: item.caption)
-                    .environmentObject(session)
+            .fullScreenCover(item: $big) { content in
+                TradingCardViewer(content: content)
             }
         }
     }

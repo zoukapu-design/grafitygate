@@ -433,6 +433,12 @@ extension GateAPI {
     /// メッセージ（写真つき。0019 の前のサーバーでは文だけ）
     func dmMessages(with other: UUID) async throws -> [DMMessage] {
         do {
+            // 0032：添えたカードの名前と仕上げつき
+            return try await client.rpc("gf_dm_messages_with4", params: OtherParam(p_other: other)).execute().value
+        } catch let error where ErrorText.isMissingFunction(error) {
+            // 0032 の前
+        }
+        do {
             return try await client.rpc("gf_dm_messages_with3", params: OtherParam(p_other: other)).execute().value
         } catch let error where ErrorText.isMissingFunction(error) {
             // 0022 の前：カードなし

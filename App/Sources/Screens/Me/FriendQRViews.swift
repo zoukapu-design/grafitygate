@@ -5,19 +5,39 @@ import VisionKit
 
 /// 友達を足す 3 つの入口：QR を見せる・QR を読む・ID を送る
 struct AddFriendButtons: View {
+    /// わたしの画面では、横 1 列の小さなボタンにする（友達の一覧では大きな札）
+    var compact = false
     @EnvironmentObject private var session: SessionModel
     @State private var showingQR = false
     @State private var scanning = false
 
     var body: some View {
-        HStack(spacing: 10) {
-            tile("QR を見せる", systemImage: "qrcode") { showingQR = true }
-            tile("QR を読む", systemImage: "qrcode.viewfinder") { scanning = true }
-            if let handle = session.profile?.handle {
-                ShareLink(item: FriendShare.text(handle: handle, name: session.profile?.display_name ?? "")) {
-                    tileLabel("ID を送る", systemImage: "square.and.arrow.up")
+        Group {
+            if compact {
+                HStack(spacing: 8) {
+                    Button { showingQR = true } label: { Label("わたしの QR", systemImage: "qrcode") }
+                        .buttonStyle(CompactButtonStyle())
+                    Button { scanning = true } label: { Label("QR を読む", systemImage: "qrcode.viewfinder") }
+                        .buttonStyle(CompactButtonStyle())
+                    if let handle = session.profile?.handle {
+                        ShareLink(item: FriendShare.text(handle: handle, name: session.profile?.display_name ?? "")) {
+                            Label("ID を送る", systemImage: "square.and.arrow.up")
+                        }
+                        .buttonStyle(CompactButtonStyle())
+                    }
                 }
-                .buttonStyle(.plain)
+                .labelStyle(CompactLabelStyle())
+            } else {
+                HStack(spacing: 10) {
+                    tile("QR を見せる", systemImage: "qrcode") { showingQR = true }
+                    tile("QR を読む", systemImage: "qrcode.viewfinder") { scanning = true }
+                    if let handle = session.profile?.handle {
+                        ShareLink(item: FriendShare.text(handle: handle, name: session.profile?.display_name ?? "")) {
+                            tileLabel("ID を送る", systemImage: "square.and.arrow.up")
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
             }
         }
         .sheet(isPresented: $showingQR) { MyQRSheet() }

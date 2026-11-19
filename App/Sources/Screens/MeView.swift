@@ -23,14 +23,16 @@ struct MeView: View {
         NavigationStack {
             ScreenScaffold(title: "わたし") {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
-                        ProfileHeader(name: session.profile?.display_name ?? "",
-                                      handle: session.profile?.handle,
-                                      gateCount: loaded ? gates.count : nil,
-                                      visitedCount: visitedCount,
-                                      friendCount: friendCount,
-                                      onEditName: { editingName = true })
-                        AddFriendButtons()
+                    VStack(alignment: .leading, spacing: 26) {
+                        VStack(spacing: 12) {
+                            ProfileBanner(name: session.profile?.display_name ?? "",
+                                          handle: session.profile?.handle,
+                                          stats: [(loaded ? gates.count : nil, "作った GATE"),
+                                                  (visitedCount, "訪れた"),
+                                                  (friendCount, "友達")],
+                                          onEditName: { editingName = true })
+                            AddFriendButtons(compact: true)
+                        }
                         if let onThisDay {
                             OnThisDayCard(pick: onThisDay)
                         }
@@ -44,22 +46,25 @@ struct MeView: View {
                         }
                     }
                     .padding(.horizontal, 16)
+                    .padding(.top, 4)
                     .padding(.bottom, 28)
                 }
                 .refreshable { await load() }
-            }
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    NavigationLink {
-                        MySettingsView()
-                    } label: {
-                        Image(systemName: "gearshape")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(Theme.text)
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    TabHeader {
+                        TabTitle(text: "わたし")
+                    } trailing: {
+                        NavigationLink {
+                            MySettingsView()
+                        } label: {
+                            HeaderIcon(systemImage: "gearshape")
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("設定")
                     }
-                    .accessibilityLabel("設定")
                 }
             }
+            .toolbar(.hidden, for: .navigationBar)
             .task(id: session.state) { await load() }
             .sheet(isPresented: $editingName) {
                 NameEditSheet(current: session.profile?.display_name ?? "") { newName in
@@ -73,16 +78,9 @@ struct MeView: View {
     /// わたしの GATE：地図と、新しいものから 3 つ（いつ・どこで）。まだ無いときは作る入口
     @ViewBuilder private var myGatesSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("わたしの GATE").font(.title3.weight(.bold)).foregroundStyle(Theme.text)
-                if !gates.isEmpty {
-                    Text("\(gates.count)").font(.subheadline.weight(.bold)).foregroundStyle(Theme.warm)
-                }
-                Spacer()
+            SectionHeader(title: "わたしの GATE", count: gates.count) {
                 if !gates.isEmpty {
                     NavigationLink("すべて") { MyGatesView(gates: gates) }
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Theme.accent)
                 }
             }
             if gates.isEmpty && loaded {
@@ -125,10 +123,7 @@ struct MeView: View {
     /// 一緒に管理している GATE（友達が作った GATE を、名前・表紙・掲示板の管理で手伝う）
     private var managedSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("一緒に管理している GATE").font(.title3.weight(.bold)).foregroundStyle(Theme.text)
-                Text("\(managed.count)").font(.subheadline.weight(.bold)).foregroundStyle(Theme.accent)
-            }
+            SectionHeader(title: "一緒に管理している GATE", count: managed.count)
             ForEach(managed) { gate in
                 NavigationLink {
                     GateDetailView(gateID: gate.id)
@@ -164,7 +159,7 @@ struct MeView: View {
     /// 見返す：図鑑・アルバム・手紙・保存・TRAIL・友達
     private var lookBackSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("見返す").font(.title3.weight(.bold)).foregroundStyle(Theme.text)
+            SectionHeader(title: "見返す")
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
                 LookBackTile(title: "訪れた GATE", caption: visitedCount.map { "\($0) か所" } ?? "扉を開けた GATE",
                              systemImage: "books.vertical.fill", tint: Theme.accent) { CollectionView(kind: "visited") }
@@ -204,76 +199,6 @@ struct MeView: View {
         managed = (try? await api.myManagedGates()) ?? []
         unopenedLetters = (try? await api.letters())?.filter { !$0.sent && !$0.isOpened }.count ?? 0
         loaded = true
-    }
-}
-
-/// プロフィールの上の段：ネオンの輪の顔、名前（押すと直す）、ID、3 つの数
-struct ProfileHeader: View {
-    let name: String
-    let handle: String?
-    let gateCount: Int?
-    let visitedCount: Int?
-    let friendCount: Int?
-    var onEditName: (() -> Void)?
-
-    var body: some View {
-        VStack(spacing: 16) {
-            HStack(spacing: 16) {
-                NeonAvatar(name: name, size: 76)
-                VStack(alignment: .leading, spacing: 4) {
-                    Button {
-                        onEditName?()
-                    } label: {
-                        HStack(spacing: 6) {
-                            Text(name.isEmpty ? "ゲスト" : name)
-                                .font(.title2.weight(.bold))
-                                .foregroundStyle(Theme.text)
-                                .lineLimit(1)
-                            if onEditName != nil {
-                                Image(systemName: "pencil").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.accent)
-                            }
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(onEditName == nil)
-                    .accessibilityLabel(onEditName == nil ? name : "名前を直す")
-                    if let handle {
-                        Text("ID：\(handle)")
-                            .font(.subheadline)
-                            .foregroundStyle(Theme.textSecondary)
-                            .textSelection(.enabled)
-                    }
-                }
-                Spacer(minLength: 0)
-            }
-            HStack(spacing: 0) {
-                stat(gateCount, "作った GATE")
-                divider
-                stat(visitedCount, "訪れた")
-                divider
-                stat(friendCount, "友達")
-            }
-            .padding(.vertical, 12)
-            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18))
-            .overlay(RoundedRectangle(cornerRadius: 18).stroke(Theme.line))
-        }
-        .padding(.top, 4)
-    }
-
-    private var divider: some View {
-        Rectangle().fill(Theme.line).frame(width: 1, height: 30)
-    }
-
-    private func stat(_ value: Int?, _ label: String) -> some View {
-        VStack(spacing: 2) {
-            Text(value.map(String.init) ?? "–")
-                .font(.title3.weight(.bold).monospacedDigit())
-                .foregroundStyle(Theme.text)
-                .contentTransition(.numericText())
-            Text(label).font(.caption).foregroundStyle(Theme.textSecondary)
-        }
-        .frame(maxWidth: .infinity)
-        .accessibilityElement(children: .combine)
     }
 }
 

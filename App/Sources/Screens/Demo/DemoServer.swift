@@ -256,21 +256,23 @@ enum DemoData {
                  "owner_name": names[g.owner] ?? "", "distance_m": [24.0, 58.0, 91.0][i], "approx_lat": g.lat, "approx_lon": g.lon,
                  "cover_path": nn(g.cover), "visibility": "friends", "mine": g.owner == me] as [String: Any]
             } + sameSpot
-        case "gf_nearby_cards":
+        case "gf_nearby_cards2", "gf_nearby_cards":
             return [["id": UUID().uuidString, "gate_id": hill.uuidString, "gate_title": "夕焼けの見える丘", "gate_kind": "view",
                      "author": misaki.uuidString, "author_name": "みさき", "body": "ここから見る夕焼けが一番好き。",
                      "photo_path": "demo/sunset.jpg", "created_at": ago(3 * 3600), "approx_lat": 35.66, "approx_lon": 139.70,
-                     "distance_m": 180.0]]
+                     "distance_m": 180.0, "title": "夕焼けの約束", "finish": "holo"]]
         case "gf_my_collection":
             return gates.map { g in
                 ["gate_id": g.id.uuidString, "title": g.title, "owner": g.owner.uuidString, "owner_name": names[g.owner] ?? "",
                  "cover_path": nn(g.cover), "approx_lat": g.lat, "approx_lon": g.lon, "first_at": ago(40 * 86400),
                  "last_at": ago(86400), "visits": 3, "shared": true, "saved_at": ago(5 * 86400)]
             }
-        case "gf_user_card_atlas":
-            return gates.map { g in
+        case "gf_user_card_atlas2", "gf_user_card_atlas":
+            let looks: [(title: Any, finish: String)] = [("夕焼けの約束", "holo"), (NSNull(), "normal"), ("満開", "gold"), (NSNull(), "neon")]
+            return gates.enumerated().map { i, g in
                 ["id": UUID().uuidString, "gate_id": g.id.uuidString, "gate_title": g.title, "gate_kind": g.kind,
-                 "photo_path": g.cover ?? "demo/park.jpg", "approx_lat": g.lat, "approx_lon": g.lon, "created_at": ago(365 * 86400)]
+                 "photo_path": g.cover ?? "demo/park.jpg", "approx_lat": g.lat, "approx_lon": g.lon, "created_at": ago(365 * 86400),
+                 "title": looks[i % looks.count].title, "finish": looks[i % looks.count].finish] as [String: Any]
             }
         case "gf_user_gates":
             return gates.filter { $0.owner != me }.map { g in
@@ -282,10 +284,19 @@ enum DemoData {
                 ["gate_id": g.id.uuidString, "title": g.title, "owner": g.owner.uuidString, "owner_name": names[g.owner] ?? "",
                  "cover_path": nn(g.cover), "approx_lat": g.lat, "approx_lon": g.lon, "first_at": ago(30 * 86400), "visits": 2]
             }
-        case "gf_my_saved_cards":
+        case "gf_my_saved_cards2", "gf_my_saved_cards":
             return [["id": UUID().uuidString, "gate_id": hill.uuidString, "gate_title": "夕焼けの見える丘", "author": misaki.uuidString,
                      "author_name": "みさき", "body": NSNull(), "photo_path": "demo/sunset.jpg", "mine": false,
-                     "created_at": ago(3 * 3600), "saved_at": ago(3600), "approx_lat": 35.66, "approx_lon": 139.70]]
+                     "created_at": ago(3 * 3600), "saved_at": ago(3600), "approx_lat": 35.66, "approx_lon": 139.70,
+                     "title": "夕焼けの約束", "finish": "holo"],
+                    ["id": UUID().uuidString, "gate_id": clock.uuidString, "gate_title": "駅前の大時計", "author": kenta.uuidString,
+                     "author_name": "けんた", "body": "待ち合わせはいつもここ。", "photo_path": "demo/night.jpg", "mine": false,
+                     "created_at": ago(2 * 86400), "saved_at": ago(86400), "approx_lat": 35.658, "approx_lon": 139.701,
+                     "title": NSNull(), "finish": "neon"],
+                    ["id": UUID().uuidString, "gate_id": tree.uuidString, "gate_title": "公園の大きな木", "author": me.uuidString,
+                     "author_name": "あなた", "body": "春になったら、またみんなで来よう。", "photo_path": "demo/park.jpg", "mine": true,
+                     "created_at": ago(9 * 86400), "saved_at": ago(5 * 86400), "approx_lat": 35.657, "approx_lon": 139.702,
+                     "title": "満開", "finish": "gold"]]
         case "gf_my_notifications":
             return [
                 ["kind": "card_comment", "actor": misaki.uuidString, "actor_name": "みさき", "gate_id": hill.uuidString,

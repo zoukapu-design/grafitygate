@@ -624,7 +624,12 @@ extension GateAPI {
 
     /// その人のグラフィティ図鑑（本人が載せたカードの写真・場所・日付）
     func userCardAtlas(_ user: UUID) async throws -> [AtlasCard] {
-        try await client.rpc("gf_user_card_atlas", params: UserParam(p_user: user)).execute().value
+        do {
+            // 0032：カードの名前と仕上げつき
+            return try await client.rpc("gf_user_card_atlas2", params: UserParam(p_user: user)).execute().value
+        } catch let error where ErrorText.isMissingFunction(error) {
+            return try await client.rpc("gf_user_card_atlas", params: UserParam(p_user: user)).execute().value
+        }
     }
 
     /// 自分のカードを図鑑に載せる・外す

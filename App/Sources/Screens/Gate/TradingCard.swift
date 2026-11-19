@@ -93,6 +93,8 @@ struct TradingCardContent: Identifiable {
     var finish: CardFinish = .normal
     /// 左上の札（友達・あなた・訪れた人）
     var badge: Badge? = nil
+    /// ひとことが読めないとき（遠くから・保存した一覧）に、ひとことの欄に出す案内
+    var bodyNote: String? = nil
 
     enum Badge {
         case friend, mine, visitor
@@ -354,7 +356,28 @@ struct TradingCard: View {
         }
     }
 
-    private func readOnlyText(_ w: CGFloat) -> some View {
+    @ViewBuilder private func readOnlyText(_ w: CGFloat) -> some View {
+        if content.body.isEmpty, let note = content.bodyNote {
+            // ひとことは現地で（鍵のしるしと案内）
+            VStack(spacing: w * 0.02) {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: w * 0.06, weight: .bold))
+                Text(note)
+                    .font(.system(size: w * 0.042, weight: .bold))
+                    .multilineTextAlignment(.center)
+                    .lineLimit(3)
+                    .minimumScaleFactor(0.7)
+            }
+            .foregroundStyle(content.finish.textInk.opacity(0.55))
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(w * 0.035)
+            .background(content.finish.textBox, in: RoundedRectangle(cornerRadius: w * 0.025, style: .continuous))
+        } else {
+            plainText(w)
+        }
+    }
+
+    private func plainText(_ w: CGFloat) -> some View {
         Text(content.body.isEmpty ? "（ひとことなし）" : content.body)
             .font(.system(size: w * 0.055, weight: .semibold))
             .foregroundStyle(content.body.isEmpty ? content.finish.textInk.opacity(0.4) : content.finish.textInk)

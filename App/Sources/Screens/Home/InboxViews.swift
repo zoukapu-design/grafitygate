@@ -459,7 +459,8 @@ struct ChatView: View {
                     Button {
                         cardViewer = message
                     } label: {
-                        ChatCardBubble(message: message)
+                        ChatCardBubble(message: message,
+                                       authorName: mine ? (session.profile?.display_name ?? "あなた") : displayName)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("グラフィティカードを開く")

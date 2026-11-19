@@ -34,10 +34,7 @@ struct FriendWorks: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Picker("見るもの", selection: $tab) {
-                ForEach(Tab.allCases) { t in Text(t.rawValue).tag(t) }
-            }
-            .pickerStyle(.segmented)
+            UnderlineTabs(items: Tab.allCases, selection: $tab) { $0.rawValue }
 
             switch tab {
             case .gates: gatesView
@@ -177,12 +174,12 @@ struct FriendWorks: View {
             Text(isMe ? "友達には、「カード図鑑に載せる」を選んだカードだけが見えます。ひとことの文は現地だけです。"
                       : "ひとことの文は、現地で扉を開けると読めます。")
                 .font(.caption).foregroundStyle(Theme.textSecondary)
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)], spacing: 18) {
                 ForEach(cards) { card in
                     NavigationLink {
                         GateDetailView(gateID: card.gate_id)
                     } label: {
-                        AtlasCardTile(card: card)
+                        AtlasCardTile(card: card, author: isMe ? "あなた" : name)
                     }
                     .buttonStyle(.plain)
                 }
@@ -240,26 +237,18 @@ struct FriendWorks: View {
     }
 }
 
-/// グラフィティカード図鑑の 1 枚：写真に GATE の名前と日付・場所を重ねる
+/// グラフィティカード図鑑の 1 枚：トレーディングカードの形（ひとことは現地だけ）と、その下に場所
 struct AtlasCardTile: View {
     let card: AtlasCard
+    var author: String = ""
 
     var body: some View {
-        ZStack(alignment: .bottomLeading) {
-            RemotePhoto(path: card.photo_path)
-                .aspectRatio(3 / 4, contentMode: .fit)
-                .frame(maxWidth: .infinity)
-            LinearGradient(colors: [.clear, .black.opacity(0.7)], startPoint: .center, endPoint: .bottom)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(card.gate_title).font(.caption.weight(.bold)).foregroundStyle(.white).lineLimit(1)
-                Text(GateDates.shortText(card.created_at)).font(.caption2).foregroundStyle(.white.opacity(0.85))
-                PlaceNameText(lat: card.approx_lat, lon: card.approx_lon, font: .caption2)
-                    .foregroundStyle(.white.opacity(0.85))
-                    .environment(\.colorScheme, .dark)
-            }
-            .padding(8)
+        VStack(alignment: .leading, spacing: 6) {
+            TradingCard(content: card.tradingContent(author: author), animated: false)
+            PlaceNameText(lat: card.approx_lat, lon: card.approx_lon, font: .caption2)
+                .foregroundStyle(Theme.textSecondary)
+                .lineLimit(1)
+                .padding(.horizontal, 4)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Theme.line))
     }
 }

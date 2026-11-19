@@ -39,22 +39,23 @@ struct NearbyMapView: View {
     var body: some View {
         NavigationStack {
             ScreenScaffold(title: "地図") {
-                VStack(spacing: 0) {
-                    Picker("見るもの", selection: $mode) {
-                        Text("地図").tag(Mode.map)
-                        Text(nearbyCards.deck.isEmpty ? "近くの友達のカード" : "近くの友達のカード \(nearbyCards.deck.count)")
-                            .tag(Mode.cards)
-                    }
-                    .pickerStyle(.segmented)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    if mode == .cards {
-                        NearbyCardsView(model: nearbyCards)
-                    } else {
-                        mapContent
+                // 地図は画面いっぱい。上に「探す」と切り替えを浮かべる（大きな題の帯はやめた＝2026-11-20）
+                GeometryReader { geo in
+                    let top = geo.safeAreaInsets.top
+                    ZStack(alignment: .top) {
+                        if mode == .cards {
+                            NearbyCardsView(model: nearbyCards)
+                                .padding(.top, top + Self.headerHeight)
+                        } else {
+                            mapContent(topInset: top + Self.headerHeight)
+                        }
+                        mapHeader
+                            .padding(.top, top)
                     }
                 }
+                .ignoresSafeArea(edges: .top)
             }
+            .toolbar(.hidden, for: .navigationBar)
             .task(id: location.location?.timestamp) {
                 await refreshIfMoved()
                 await nearbyCards.refresh(api: session.api, location: location.location)
@@ -76,39 +77,85 @@ struct NearbyMapView: View {
                 .environmentObject(location)
                 .environmentObject(nav)
             }
-            .toolbar { toolbarContent }
         }
     }
 
-    @ToolbarContentBuilder private var toolbarContent: some ToolbarContent {
-        ToolbarItem(placement: .topBarLeading) {
-            Button {
-                showSearch = true
-            } label: {
-                Label("探す", systemImage: "magnifyingglass")
-                    .labelStyle(.titleAndIcon)
-                    .font(.subheadline.weight(.semibold))
+    /// 上に浮かべる段の高さ（「探す」の列＋切り替えの列）
+    private static let headerHeight: CGFloat = 108
+
+    /// 上に浮かべる段：「GATE や場所を探す」・TRAIL、その下に「地図／近くの友達のカード」
+    private var mapHeader: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Button {
+                    showSearch = true
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(Theme.accent)
+                        Text("GATE や場所を探す")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Theme.textSecondary)
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 16)
+                    .frame(height: 48)
+                    .background(Theme.surface, in: Capsule())
+                    .overlay(Capsule().stroke(Theme.line))
+                    .shadow(color: .black.opacity(0.12), radius: 10, y: 3)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("GATE や場所を名前で探す")
+                NavigationLink {
+                    TrailListView()
+                } label: {
+                    VStack(spacing: 1) {
+                        Image(systemName: "point.topleft.down.to.point.bottomright.curvepath")
+                            .font(.system(size: 15, weight: .bold))
+                        Text("TRAIL")
+                            .font(.system(size: 9, weight: .heavy, design: .rounded))
+                    }
+                    .foregroundStyle(Theme.warm)
+                    .frame(width: 48, height: 48)
+                    .background(Theme.surface, in: Circle())
+                    .overlay(Circle().stroke(Theme.line))
+                    .shadow(color: .black.opacity(0.12), radius: 10, y: 3)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("TRAIL（GATE をつないだ道）")
             }
-            .accessibilityLabel("GATE や場所を名前で探す")
+            HStack(spacing: 8) {
+                FloatingChip(title: "地図", systemImage: "map.fill", selected: mode == .map) {
+                    withAnimation(.easeInOut(duration: 0.2)) { mode = .map }
+                }
+                FloatingChip(title: "近くの友達のカード", systemImage: "rectangle.portrait.on.rectangle.portrait.fill",
+                             count: nearbyCards.deck.count, selected: mode == .cards) {
+                    withAnimation(.easeInOut(duration: 0.2)) { mode = .cards }
+                }
+            }
         }
-        ToolbarItem(placement: .topBarTrailing) {
-            NavigationLink {
-                TrailListView()
-            } label: {
-                Label("TRAIL", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
-                    .labelStyle(.titleAndIcon)
-                    .font(.subheadline.weight(.semibold))
+        .padding(.horizontal, 16)
+        .padding(.top, 6)
+        .frame(height: Self.headerHeight, alignment: .top)
+        .background {
+            // 近くの友達のカードのときは、地の色を敷く（地図のときは地図が見えるように透明）
+            if mode == .cards {
+                Theme.background.ignoresSafeArea(edges: .top)
             }
         }
     }
 
     /// 地図を画面いっぱいに出し、下に「近くのグラフィティボード」を重ねる（横にめくると、地図の印も選ばれる）
-    private var mapContent: some View {
+    private func mapContent(topInset: CGFloat) -> some View {
         GeometryReader { geo in
             // 小さい iPhone（地図の欄が低い）では、ボードを低くして地図を広く見せる
-            let compact = geo.size.height < 560
+            let compact = geo.size.height - topInset < 560
             ZStack(alignment: .bottom) {
                 map
+                    // 上に浮かべた段の下に、いまいる所のボタンや方位が来るように
+                    .safeAreaPadding(.top, topInset)
                     // 下に重ねた札の上に、いまいる所や印が来るように。札の高さは測らず、決まった高さで空ける
                     .safeAreaPadding(.bottom, reservedBottom(compact: compact) + geo.safeAreaInsets.bottom)
                     .ignoresSafeArea(edges: .bottom)
