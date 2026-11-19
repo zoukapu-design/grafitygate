@@ -105,25 +105,21 @@ struct ProfileBanner: View {
             HStack(spacing: 16) {
                 NeonAvatar(name: name, size: 74)
                 VStack(alignment: .leading, spacing: 5) {
-                    Button {
-                        onEditName?()
-                    } label: {
-                        HStack(spacing: 6) {
-                            Text(name.isEmpty ? "ゲスト" : name)
-                                .font(.title2.weight(.heavy))
-                                .foregroundStyle(.white)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.7)
-                            if onEditName != nil {
+                    if let onEditName {
+                        Button(action: onEditName) {
+                            HStack(spacing: 6) {
+                                nameText
                                 Image(systemName: "pencil")
                                     .font(.subheadline.weight(.bold))
                                     .foregroundStyle(.white.opacity(0.8))
                             }
                         }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("名前を直す")
+                    } else {
+                        // 押せない名前は、ふつうの文字（押せないボタンにすると色がうすくなる）
+                        nameText
                     }
-                    .buttonStyle(.plain)
-                    .disabled(onEditName == nil)
-                    .accessibilityLabel(onEditName == nil ? name : "名前を直す")
                     if let handle {
                         Text("ID：\(handle)")
                             .font(.subheadline)
@@ -179,6 +175,16 @@ struct ProfileBanner: View {
                 .padding(.horizontal, 24)
                 .opacity(0.9)
         }
+    }
+}
+
+extension ProfileBanner {
+    fileprivate var nameText: some View {
+        Text(name.isEmpty ? "ゲスト" : name)
+            .font(.title2.weight(.heavy))
+            .foregroundStyle(.white)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
     }
 }
 

@@ -39,21 +39,18 @@ struct NearbyMapView: View {
     var body: some View {
         NavigationStack {
             ScreenScaffold(title: "地図") {
-                // 地図は画面いっぱい。上に「探す」と切り替えを浮かべる（大きな題の帯はやめた＝2026-11-20）
-                GeometryReader { geo in
-                    let top = geo.safeAreaInsets.top
-                    ZStack(alignment: .top) {
-                        if mode == .cards {
-                            NearbyCardsView(model: nearbyCards)
-                                .padding(.top, top + Self.headerHeight)
-                        } else {
-                            mapContent(topInset: top + Self.headerHeight)
-                        }
-                        mapHeader
-                            .padding(.top, top)
+                // 地図は画面いっぱい。上に「探す」と切り替えを浮かべる（大きな題の帯はやめた＝2026-11-20）。
+                // 浮かべる段は画面の上の安全な範囲の下。地図だけ上の端まで広げ、中身（いまいる所のボタンなど）は段の下から
+                ZStack(alignment: .top) {
+                    if mode == .cards {
+                        NearbyCardsView(model: nearbyCards)
+                            .padding(.top, Self.headerHeight)
+                    } else {
+                        mapContent(topInset: Self.windowTopInset + Self.headerHeight)
+                            .ignoresSafeArea(edges: .top)
                     }
+                    mapHeader
                 }
-                .ignoresSafeArea(edges: .top)
             }
             .toolbar(.hidden, for: .navigationBar)
             .task(id: location.location?.timestamp) {
@@ -82,6 +79,14 @@ struct NearbyMapView: View {
 
     /// 上に浮かべる段の高さ（「探す」の列＋切り替えの列）
     private static let headerHeight: CGFloat = 108
+
+    /// 画面の上の安全な範囲（時刻・電池の帯）の高さ。地図は上の端まで広げるので、自分で足す
+    /// （GeometryReader の safeAreaInsets は、安全な範囲を無視した中では 0 になる＝見本で確かめた）
+    @MainActor private static var windowTopInset: CGFloat {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let window = scenes.flatMap(\.windows).first(where: { $0.isKeyWindow }) ?? scenes.first?.windows.first
+        return window?.safeAreaInsets.top ?? 47
+    }
 
     /// 上に浮かべる段：「GATE や場所を探す」・TRAIL、その下に「地図／近くの友達のカード」
     private var mapHeader: some View {
