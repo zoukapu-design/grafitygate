@@ -82,6 +82,11 @@ enum DemoData {
     static let kenta = UUID(uuidString: "00000000-0000-0000-0000-0000000000c3")!
     static let yui = UUID(uuidString: "00000000-0000-0000-0000-0000000000d4")!
     static let hill = UUID(uuidString: "00000000-0000-0000-0000-00000000f001")!
+    /// 見本のアルバム・話題・返信（カードを入れた見本）
+    static let demoAlbum = UUID(uuidString: "00000000-0000-0000-0000-0000000a1b01")!
+    static let demoAlbumCardItem = UUID(uuidString: "00000000-0000-0000-0000-0000000a1b02")!
+    static let demoThread = UUID(uuidString: "00000000-0000-0000-0000-0000000b0001")!
+    static let demoReply = UUID(uuidString: "00000000-0000-0000-0000-0000000b0002")!
     static let clock = UUID(uuidString: "00000000-0000-0000-0000-00000000f002")!
     static let tree = UUID(uuidString: "00000000-0000-0000-0000-00000000f003")!
     static let visit = UUID(uuidString: "00000000-0000-0000-0000-00000000e001")!
@@ -191,6 +196,28 @@ enum DemoData {
         case "gf_card_extras":
             return cards.map { ["graffiti_id": $0["id"]!, "comments": ($0["author"] as? String) == misaki.uuidString ? 3 : 0,
                                 "saved": ($0["author"] as? String) == misaki.uuidString] }
+        case "gf_board_cards":
+            // 話題「卒業式のあと…」と、その返信にカードを添えた見本
+            let threadCard: [String: Any] = ["target_kind": "thread", "target_id": demoThread.uuidString, "thread_id": demoThread.uuidString,
+                                             "card_id": UUID().uuidString, "title": "卒業の日", "body": "10 年前、ここで撮った。",
+                                             "photo_path": "demo/park.jpg", "finish": "gold", "gate_title": "夕焼けの見える丘",
+                                             "author_name": "けんた", "created_at": ago(30 * 3600)]
+            let replyCard: [String: Any] = ["target_kind": "reply", "target_id": demoReply.uuidString, "thread_id": demoThread.uuidString,
+                                            "card_id": UUID().uuidString, "title": NSNull(), "body": "わたしはこの日の夕焼け。",
+                                            "photo_path": "demo/sunset.jpg", "finish": "holo", "gate_title": "夕焼けの見える丘",
+                                            "author_name": "みさき", "created_at": ago(20 * 3600)]
+            return params["p_thread"] is NSNull || params["p_thread"] == nil ? [threadCard] : [threadCard, replyCard]
+        case "gf_board_replies_of4", "gf_board_replies_of3":
+            return [["id": demoReply.uuidString, "author": misaki.uuidString, "author_name": "みさき",
+                     "body": "なつかしい！わたしも行った。", "created_at": ago(20 * 3600), "label": NSNull(), "source": NSNull(),
+                     "edited_at": NSNull(), "votes": 0, "my_vote": false],
+                    ["id": UUID().uuidString, "author": me.uuidString, "author_name": "あなた",
+                     "body": "また集まりたいね。", "created_at": ago(10 * 3600), "label": NSNull(), "source": NSNull(),
+                     "edited_at": NSNull(), "votes": 0, "my_vote": false]]
+        case "gf_memory_cards":
+            return [["item_id": demoAlbumCardItem.uuidString, "card_id": UUID().uuidString, "title": "満開の木の下で",
+                     "body": "今年もみんなで来られた。", "photo_path": "demo/park.jpg", "finish": "holo",
+                     "gate_title": "夕焼けの見える丘", "author_name": "けんた", "created_at": ago(200 * 86400)]]
         case "gf_board_list4", "gf_board_list3", "gf_board_list2":
             return [
                 ["id": UUID().uuidString, "author": me.uuidString, "author_name": "あなた", "topic": "investigation",
@@ -201,7 +228,7 @@ enum DemoData {
                  "title": "夕焼けがいちばんきれいな季節は？", "body": "秋と冬、どっちがいいですか", "pinned": false, "reply_count": 4,
                  "last_activity_at": ago(6 * 3600), "created_at": ago(3 * 86400), "unread": false, "edited_at": NSNull(),
                  "resolved": true, "progress": "open", "conclusion": NSNull()],
-                ["id": UUID().uuidString, "author": kenta.uuidString, "author_name": "けんた", "topic": "memory",
+                ["id": demoThread.uuidString, "author": kenta.uuidString, "author_name": "けんた", "topic": "memory",
                  "title": "卒業式のあと、みんなでここに来た", "body": "10 年前の話です。", "pinned": false, "reply_count": 2,
                  "last_activity_at": ago(30 * 3600), "created_at": ago(30 * 3600), "unread": false, "edited_at": ago(28 * 3600),
                  "resolved": false, "progress": "open", "conclusion": NSNull()],
@@ -311,7 +338,7 @@ enum DemoData {
                  "approx_lon": NSNull(), "visible": false, "reached": false],
             ]
         case "gf_memory_list":
-            return [["id": UUID().uuidString, "owner": kenta.uuidString, "owner_name": "けんた", "title": "春のお花見",
+            return [["id": demoAlbum.uuidString, "owner": kenta.uuidString, "owner_name": "けんた", "title": "春のお花見",
                      "note": "毎年みんなで集まる日の写真と声", "visibility": "friends", "created_at": ago(200 * 86400), "item_count": 14,
                      "cover_path": "demo/park.jpg", "member_count": 5, "is_member": true, "can_add": true],
                     ["id": UUID().uuidString, "owner": misaki.uuidString, "owner_name": "みさき", "title": "卒業の日",
@@ -383,6 +410,22 @@ enum DemoData {
                      "visibility": "friends", "created_at": ago(300 * 86400)],
                     ["id": UUID().uuidString, "gate_id": hill.uuidString, "author": me.uuidString, "photo_path": "demo/night.jpg",
                      "visibility": "friends", "created_at": ago(2 * 86400)]]
+        case "gf_memory_items":
+            let album = demoAlbum.uuidString
+            rows = [["id": UUID().uuidString, "memory_id": album, "author": kenta.uuidString, "photo_path": "demo/park.jpg",
+                     "caption": "", "created_at": ago(200 * 86400), "media_kind": "photo", "thumb_path": NSNull(), "duration": NSNull(),
+                     "card_id": NSNull()],
+                    ["id": demoAlbumCardItem.uuidString, "memory_id": album, "author": kenta.uuidString,
+                     "photo_path": "card:demo", "caption": "", "created_at": ago(199 * 86400), "media_kind": "card",
+                     "thumb_path": NSNull(), "duration": NSNull(), "card_id": UUID().uuidString],
+                    ["id": UUID().uuidString, "memory_id": album, "author": misaki.uuidString, "photo_path": "demo/sunset.jpg",
+                     "caption": "", "created_at": ago(198 * 86400), "media_kind": "photo", "thumb_path": NSNull(), "duration": NSNull(),
+                     "card_id": NSNull()],
+                    ["id": UUID().uuidString, "memory_id": album, "author": me.uuidString, "photo_path": "demo/voice.m4a",
+                     "caption": "", "created_at": ago(197 * 86400), "media_kind": "voice", "thumb_path": NSNull(), "duration": 12.0,
+                     "card_id": NSNull()]]
+        case "gf_memory_members":
+            rows = [["memory_id": demoAlbum.uuidString, "user_id": misaki.uuidString], ["memory_id": demoAlbum.uuidString, "user_id": me.uuidString]]
         case "gf_gates":
             rows = gates.map { g in
                 ["id": g.id.uuidString, "owner": g.owner.uuidString, "title": g.title, "visibility": "friends", "status": "open",

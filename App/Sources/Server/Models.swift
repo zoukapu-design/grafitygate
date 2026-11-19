@@ -579,27 +579,58 @@ struct MemoryItem: Decodable, Identifiable, Hashable {
     var thumb_path: String?
     /// 動画・声の長さ（秒）
     var duration: Double?
+    /// アルバムに入れたグラフィティカード（0031。photo_path は「card:…」の印で、ファイルではない）
+    var card_id: UUID?
 
     var kind: MemoryMediaKind { MemoryMediaKind(rawValue: media_kind ?? "photo") ?? .photo }
-    /// 一覧に並べる絵（動画は表紙の絵、声は無し）
+    /// 一覧に並べる絵（動画は表紙の絵、声とカードは無し＝カードはカードの形で出す）
     var picturePath: String? {
         switch kind {
         case .photo: return photo_path
         case .video: return thumb_path
-        case .voice: return nil
+        case .voice, .card: return nil
         }
+    }
+    /// 自分のフォルダのファイル（アルバムを消すときに一緒に消すもの。カードはカードのファイルなので入れない）
+    var ownFiles: [String] {
+        kind == .card ? [] : [photo_path] + (thumb_path.map { [$0] } ?? [])
     }
 }
 
 enum MemoryMediaKind: String {
-    case photo, video, voice
+    case photo, video, voice, card
 
     var fileExtension: String {
         switch self {
-        case .photo: return "jpg"
+        case .photo, .card: return "jpg"
         case .video: return "mp4"
         case .voice: return "m4a"
         }
+    }
+}
+
+/// アルバム・掲示板に入れたグラフィティカード（gf_memory_cards・gf_board_cards）
+struct AttachedCard: Decodable, Identifiable, Hashable {
+    /// アルバムの 1 つ（gf_memory_cards）
+    var item_id: UUID?
+    /// 話題か返信（gf_board_cards：thread／reply）
+    var target_kind: String?
+    var target_id: UUID?
+    var thread_id: UUID?
+    let card_id: UUID
+    var title: String?
+    let body: String
+    let photo_path: String?
+    var finish: String?
+    let gate_title: String
+    let author_name: String
+    let created_at: String
+
+    var id: UUID { item_id ?? target_id ?? card_id }
+
+    var content: TradingCardContent {
+        TradingCardContent(id: card_id, photoPath: photo_path, body: body, author: author_name, title: title,
+                           gateTitle: gate_title, createdAt: created_at, finish: CardFinish(raw: finish))
     }
 }
 

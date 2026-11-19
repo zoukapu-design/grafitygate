@@ -206,6 +206,7 @@ enum MemoryDraftLoader {
         case .photo: return "写真"
         case .video: return "動画"
         case .voice: return "声"
+        case .card: return "グラフィティカード"
         }
     }
 }
@@ -423,6 +424,10 @@ struct MemoryDetailView: View {
     @State private var inviting: Set<UUID> = []
     @State private var showInvite = false
     @State private var confirmDelete = false
+    /// 入れたグラフィティカードの中身（アルバムの 1 つの ID ごと）
+    @State private var cards: [UUID: AttachedCard] = [:]
+    @State private var pickingCard = false
+    @State private var cardViewer: TradingCardContent?
 
     init(memory: MemorySummary, context: GateContext?, onChanged: @escaping () -> Void) {
         self.memory = memory
@@ -431,6 +436,14 @@ struct MemoryDetailView: View {
     }
 
     private var isOwner: Bool { memory.owner == session.userID }
+
+    /// 出すもの（中身の分からないカード＝消された・ブロックの相手のものは出さない）
+    private var shownItems: [MemoryItem] {
+        items.filter { $0.kind != .card || cards[$0.id] != nil }
+    }
+
+    /// 左右にめくって見るもの（カードは押すとカードの形で大きく見る）
+    private var pagerItems: [MemoryItem] { shownItems.filter { $0.kind != .card } }
 
     var body: some View {
         ScrollView {
@@ -448,17 +461,26 @@ struct MemoryDetailView: View {
                     }
                 }
                 if memory.can_add {
-                    HStack(spacing: 10) {
-                        PhotosPicker(selection: $adding, maxSelectionCount: 12, matching: .any(of: [.images, .videos])) {
-                            Label("写真・動画", systemImage: "plus.square.on.square")
-                        }
-                        .buttonStyle(SecondaryButtonStyle())
+                    VStack(spacing: 10) {
+                        // グラフィティカードを入れる（2026-11-19 オーナー「カードとほかの機能を連動」）
                         Button {
-                            recording = true
+                            pickingCard = true
                         } label: {
-                            Label("声", systemImage: "mic")
+                            Label("グラフィティカードを入れる", systemImage: "rectangle.portrait.on.rectangle.portrait.angled")
                         }
                         .buttonStyle(SecondaryButtonStyle())
+                        HStack(spacing: 10) {
+                            PhotosPicker(selection: $adding, maxSelectionCount: 12, matching: .any(of: [.images, .videos])) {
+                                Label("写真・動画", systemImage: "plus.square.on.square")
+                            }
+                            .buttonStyle(SecondaryButtonStyle())
+                            Button {
+                                recording = true
+                            } label: {
+                                Label("声", systemImage: "mic")
+                            }
+                            .buttonStyle(SecondaryButtonStyle())
+                        }
                     }
                 }
                 if let progress {
@@ -466,11 +488,15 @@ struct MemoryDetailView: View {
                 }
                 if let message { NoticeText(text: message) }
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 3), spacing: 4) {
-                    ForEach(items) { item in
+                    ForEach(shownItems) { item in
                         Button {
-                            viewer = item
+                            if item.kind == .card, let card = cards[item.id] {
+                                cardViewer = card.content
+                            } else {
+                                viewer = item
+                            }
                         } label: {
-                            MemoryItemTile(item: item)
+                            MemoryItemTile(item: item, card: cards[item.id])
                         }
                         .buttonStyle(.plain)
                         .contextMenu {
@@ -551,8 +577,17 @@ struct MemoryDetailView: View {
             }
         }
         .fullScreenCover(item: $viewer) { item in
-            MemoryPager(items: items, start: items.firstIndex(of: item) ?? 0,
-                        captions: items.map { names[$0.author] ?? "" })
+            MemoryPager(items: pagerItems, start: pagerItems.firstIndex(of: item) ?? 0,
+                        captions: pagerItems.map { names[$0.author] ?? "" })
+        }
+        .fullScreenCover(item: $cardViewer) { card in
+            TradingCardViewer(content: card)
+        }
+        .sheet(isPresented: $pickingCard) {
+            MyCardPicker(preferGate: context?.gateID, title: "アルバムに入れるカード") { card in
+                Task { await addCard(card) }
+            }
+            .environmentObject(session)
         }
         .onChange(of: adding) { _, newItems in
             guard !newItems.isEmpty else { return }
@@ -580,6 +615,12 @@ struct MemoryDetailView: View {
         guard let api = session.api else { return }
         do {
             items = try await api.memoryItems(memory.id)
+            if items.contains(where: { $0.kind == .card }) {
+                let list = (try? await api.memoryCards(memory.id)) ?? []
+                cards = Dictionary(list.compactMap { c in c.item_id.map { ($0, c) } }, uniquingKeysWith: { a, _ in a })
+            } else {
+                cards = [:]
+            }
             members = try await api.memoryMembers(memory.id)
             let people = Array(Set(items.map(\.author) + members + [memory.owner]))
             names = try await api.names(of: people)
@@ -606,6 +647,21 @@ struct MemoryDetailView: View {
         }
         await load()
         onChanged()
+    }
+
+    /// グラフィティカードを入れる
+    private func addCard(_ card: MyCard) async {
+        guard let api = session.api else { return }
+        do {
+            try await api.addMemoryCard(memory: memory.id, card: card.id)
+            Haptics.success()
+            Trace.log("アルバム：カードを入れた")
+            await load()
+            onChanged()
+        } catch {
+            message = ErrorText.isMissingFunction(error)
+                ? "カードを入れるのは、サーバーの準備（setup_all.sql の貼り直し）のあとで使えます。" : ErrorText.of(error)
+        }
     }
 
     private func deleteItem(_ item: MemoryItem) async {
@@ -649,7 +705,8 @@ struct MemoryDetailView: View {
     private func deleteMemory() async {
         guard let api = session.api else { return }
         do {
-            let mine = items.filter { $0.author == session.userID }.flatMap { [$0.photo_path] + ($0.thumb_path.map { [$0] } ?? []) }
+            // カードはカードのファイルなので消さない（自分のフォルダの写真・動画・声だけ）
+            let mine = items.filter { $0.author == session.userID }.flatMap(\.ownFiles)
             try await api.deleteMemory(memory.id)
             for path in mine { await session.media?.removePhoto(path: path) }
             onChanged()
@@ -663,12 +720,20 @@ struct MemoryDetailView: View {
 /// アルバムの並びの 1 つ（写真・動画の表紙・声）
 struct MemoryItemTile: View {
     let item: MemoryItem
+    /// グラフィティカードのときの中身
+    var card: AttachedCard? = nil
 
     var body: some View {
         Color.clear
             .aspectRatio(1, contentMode: .fit)
             .overlay {
-                if let picture = item.picturePath {
+                if item.kind == .card, let card {
+                    ZStack {
+                        LinearGradient(colors: [Color(hex: 0x2A1650), Color(hex: 0x1B1235)], startPoint: .top, endPoint: .bottom)
+                        TradingCard(content: card.content, animated: false)
+                            .padding(6)
+                    }
+                } else if let picture = item.picturePath {
                     RemotePhoto(path: picture)
                 } else {
                     ZStack {
@@ -678,7 +743,7 @@ struct MemoryItemTile: View {
                 }
             }
             .overlay(alignment: .bottomLeading) {
-                if item.kind != .photo {
+                if item.kind == .video || item.kind == .voice {
                     Label(durationText(item.duration ?? 0), systemImage: item.kind == .video ? "play.fill" : "mic.fill")
                         .font(.system(size: 10, weight: .bold))
                         .foregroundStyle(.white)
@@ -719,6 +784,8 @@ struct MemoryPager: View {
                             MemoryVideoView(path: item.photo_path, active: index == i)
                         case .voice:
                             MemoryVoiceView(path: item.photo_path, duration: item.duration ?? 0, active: index == i)
+                        case .card:
+                            EmptyView()
                         }
                         Spacer()
                         if i < captions.count, !captions[i].isEmpty {

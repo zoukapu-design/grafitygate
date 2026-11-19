@@ -17,7 +17,8 @@ struct DemoGallery: View {
                           "cards", "nearby", "nearby-detail", "chat", "lookback", "goal", "board", "edit-card",
                           "edit-gate", "progress", "notifications", "onboarding", "my-gates", "gate-stack", "map-hidden", "trading-cards", "card-viewer", "cover-rotate", "home-empty", "door-designs",
                           "photo-editor", "story-camera", "story-text", "story-review",
-                          "gate-posted", "card-maker", "card-maker-photo", "letter-card", "card-picker", "letter-compose"]
+                          "gate-posted", "card-maker", "card-maker-photo", "letter-card", "card-picker", "letter-compose",
+                          "album-cards", "board-thread-card", "board-new-thread"]
 
     @StateObject private var nearby = NearbyCardsModel()
     @StateObject private var inbox = InboxModel()
@@ -257,6 +258,25 @@ struct DemoGallery: View {
             }
         case "card-picker":
             MyCardPicker(preferGate: DemoData.hill) { _ in }
+        case "album-cards":
+            NavigationStack {
+                MemoryDetailView(memory: MemorySummary(id: DemoData.demoAlbum, owner: DemoData.kenta, owner_name: "けんた",
+                                                       title: "春のお花見", note: "毎年みんなで集まる日の写真と声",
+                                                       visibility: "friends", created_at: Demo.now,
+                                                       item_count: 4, cover_path: "demo/park.jpg", member_count: 3,
+                                                       is_member: true, can_add: true),
+                                 context: Demo.insideContext) {}
+            }
+        case "board-thread-card":
+            NavigationStack {
+                ThreadView(context: Demo.insideContext,
+                           thread: BoardThread(id: DemoData.demoThread, author: DemoData.kenta, author_name: "けんた", topic: "memory",
+                                               title: "卒業式のあと、みんなでここに来た", body: "10 年前の話です。", pinned: false,
+                                               reply_count: 2, last_activity_at: Demo.now,
+                                               created_at: Demo.now, unread: false))
+            }
+        case "board-new-thread":
+            NewThreadSheet(context: Demo.insideContext) {}
         case "letter-compose":
             LetterComposer(context: Demo.insideContext) {}
         case "photo-editor":

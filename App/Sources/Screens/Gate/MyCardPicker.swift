@@ -4,6 +4,7 @@ import SwiftUI
 struct MyCardPicker: View {
     /// 先に出す GATE
     var preferGate: UUID?
+    var title = "添えるカードを選ぶ"
     let onPick: (MyCard) -> Void
 
     @EnvironmentObject private var session: SessionModel
@@ -60,7 +61,7 @@ struct MyCardPicker: View {
                 .padding(16)
             }
             .background(Theme.background.ignoresSafeArea())
-            .navigationTitle("添えるカードを選ぶ")
+            .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("やめる") { dismiss() } }

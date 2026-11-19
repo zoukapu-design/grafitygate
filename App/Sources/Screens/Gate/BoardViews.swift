@@ -13,6 +13,8 @@ struct BoardSection: View {
     @State private var error: String?
     @State private var showNew = false
     @State private var report: ReportItem?
+    /// グラフィティカードを添えた話題
+    @State private var cardThreads: Set<UUID> = []
 
     init(context: GateContext, refreshToken: Int) {
         self.context = context
@@ -71,7 +73,7 @@ struct BoardSection: View {
                         Task { await load() }
                     }
                 } label: {
-                    ThreadRow(thread: thread)
+                    ThreadRow(thread: thread, hasCard: cardThreads.contains(thread.id))
                 }
                 .buttonStyle(.plain)
             }
@@ -108,6 +110,9 @@ struct BoardSection: View {
         guard let api = session.api else { return }
         do {
             threads = try await api.boardThreads(in: context.gateID)
+            if context.canRead {
+                cardThreads = Set(((try? await api.boardCards(gate: context.gateID)) ?? []).compactMap(\.target_id))
+            }
             error = nil
         } catch {
             self.error = ErrorText.of(error)
@@ -117,6 +122,7 @@ struct BoardSection: View {
 
 private struct ThreadRow: View {
     let thread: BoardThread
+    var hasCard = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -152,6 +158,10 @@ private struct ThreadRow: View {
                     Text(ServerDate.relative(thread.last_activity_at))
                     if thread.edited_at != nil { Text("直しました") }
                     Label("\(thread.reply_count)", systemImage: "bubble.left")
+                    if hasCard {
+                        Label("カード", systemImage: "rectangle.portrait.on.rectangle.portrait.angled")
+                            .foregroundStyle(Theme.warm)
+                    }
                 }
                 .font(.caption2)
                 .foregroundStyle(Theme.textSecondary)
@@ -177,6 +187,9 @@ struct NewThreadSheet: View {
     @State private var text = ""
     @State private var posting = false
     @State private var message: String?
+    /// 添えるグラフィティカード
+    @State private var card: MyCard?
+    @State private var choosingCard = false
 
     init(context: GateContext, onPosted: @escaping () -> Void) {
         self.context = context
@@ -200,9 +213,21 @@ struct NewThreadSheet: View {
                 } footer: {
                     Text("この GATE に入った人だけが読めます。人の名前や、家の場所などは書かないでください。")
                 }
+                Section {
+                    BoardCardChooser(card: card, author: session.profile?.display_name ?? "あなた",
+                                     onChoose: { choosingCard = true }, onRemove: { card = nil })
+                } header: {
+                    Text("添えるカード")
+                } footer: {
+                    Text("あなたのグラフィティカードを 1 枚添えられます（なくても大丈夫）。")
+                }
                 if let message {
                     Section { NoticeText(text: message) }
                 }
+            }
+            .sheet(isPresented: $choosingCard) {
+                MyCardPicker(preferGate: context.gateID) { picked in card = picked }
+                    .environmentObject(session)
             }
             .navigationTitle("話題を立てる")
             .navigationBarTitleDisplayMode(.inline)
@@ -228,9 +253,16 @@ struct NewThreadSheet: View {
         posting = true
         defer { posting = false }
         do {
-            _ = try await api.postThread(visit: visit, topic: topic,
-                                         title: String(title.trimmingCharacters(in: .whitespacesAndNewlines).prefix(60)),
-                                         body: String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(1000)))
+            let id = try await api.postThread(visit: visit, topic: topic,
+                                              title: String(title.trimmingCharacters(in: .whitespacesAndNewlines).prefix(60)),
+                                              body: String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(1000)))
+            if let card {
+                do {
+                    try await api.attachBoardCard(isThread: true, id: id, card: card.id)
+                } catch {
+                    Trace.log("掲示板：カードを添えられませんでした（\(ErrorText.of(error))）")
+                }
+            }
             Haptics.success()
             onPosted()
             dismiss()
@@ -263,6 +295,13 @@ struct ThreadView: View {
     @State private var label: EvidenceLabel?
     @State private var source = ""
     @State private var filter: EvidenceLabel?
+    /// 話題・返信に添えたグラフィティカード（話題・返信の ID ごと）
+    @State private var cards: [UUID: AttachedCard] = [:]
+    @State private var cardViewer: TradingCardContent?
+    /// 返信に添えるカード・話題に添え直すカードを選ぶ
+    @State private var replyCard: MyCard?
+    @State private var choosingReplyCard = false
+    @State private var choosingThreadCard = false
 
     init(context: GateContext, thread: BoardThread, onChanged: (() -> Void)? = nil) {
         self.context = context
@@ -307,6 +346,17 @@ struct ThreadView: View {
                     if !thread.body.isEmpty {
                         Text(thread.body).font(.body).foregroundStyle(Theme.text)
                     }
+                    if let card = cards[thread.id] {
+                        Button {
+                            cardViewer = card.content
+                        } label: {
+                            TradingCard(content: card.content)
+                                .frame(maxWidth: 220)
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("押すと大きく見られます")
+                    }
                     Text("\(thread.author_name)・\(ServerDate.relative(thread.created_at))"
                          + (thread.edited_at != nil ? "・直しました" : ""))
                         .font(.caption).foregroundStyle(Theme.textSecondary)
@@ -345,7 +395,9 @@ struct ThreadView: View {
                     }
                 }
                 ForEach(shownReplies) { reply in
-                    ReplyRow(reply: reply, canDelete: reply.author == session.userID || isGateOwner,
+                    ReplyRow(reply: reply, card: cards[reply.id]?.content,
+                             onCard: { cardViewer = cards[reply.id]?.content },
+                             canDelete: reply.author == session.userID || isGateOwner,
                              isMine: reply.author == session.userID,
                              canVote: context.isInside && isInvestigation && reply.votes != nil && reply.author != session.userID,
                              onVote: { Task { await vote(reply) } },
@@ -369,7 +421,36 @@ struct ThreadView: View {
                     if isInvestigation {
                         evidenceComposer
                     }
+                    if let replyCard {
+                        HStack(spacing: 8) {
+                            Image(systemName: "rectangle.portrait.on.rectangle.portrait.angled")
+                            Text("カードを添える：\(replyCard.title?.isEmpty == false ? replyCard.title! : replyCard.gate_title)")
+                                .lineLimit(1)
+                            Spacer()
+                            Button {
+                                self.replyCard = nil
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("カードを外す")
+                        }
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.warm)
+                        .padding(.horizontal, 12).padding(.vertical, 8)
+                        .background(Theme.warm.opacity(0.1), in: Capsule())
+                    }
                     HStack(spacing: 10) {
+                        Button {
+                            choosingReplyCard = true
+                        } label: {
+                            Image(systemName: "rectangle.portrait.on.rectangle.portrait.angled")
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundStyle(Theme.warm)
+                                .frame(width: 38, height: 42)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("グラフィティカードを添える")
                         TextField("返信を書く", text: $draft, axis: .vertical)
                             .lineLimit(1...4)
                             .padding(10)
@@ -436,6 +517,19 @@ struct ThreadView: View {
                         } label: {
                             Label("話題を直す", systemImage: "pencil")
                         }
+                        Button {
+                            choosingThreadCard = true
+                        } label: {
+                            Label(cards[thread.id] == nil ? "グラフィティカードを添える" : "添えたカードを替える",
+                                  systemImage: "rectangle.portrait.on.rectangle.portrait.angled")
+                        }
+                        if cards[thread.id] != nil {
+                            Button {
+                                Task { await attachThreadCard(nil) }
+                            } label: {
+                                Label("添えたカードを外す", systemImage: "rectangle.slash")
+                            }
+                        }
                     }
                     if thread.author == session.userID || isGateOwner {
                         Button(role: .destructive) {
@@ -463,6 +557,19 @@ struct ThreadView: View {
             Text("返信も一緒に見えなくなります。")
         }
         .sheet(item: $report) { item in ReportSheet(item: item) }
+        .sheet(isPresented: $choosingReplyCard) {
+            MyCardPicker(preferGate: context.gateID) { picked in replyCard = picked }
+                .environmentObject(session)
+        }
+        .sheet(isPresented: $choosingThreadCard) {
+            MyCardPicker(preferGate: context.gateID) { picked in
+                Task { await attachThreadCard(picked.id) }
+            }
+            .environmentObject(session)
+        }
+        .fullScreenCover(item: $cardViewer) { card in
+            TradingCardViewer(content: card)
+        }
         .sheet(isPresented: $editingProgress) {
             InvestigationProgressSheet(thread: thread) { progress, conclusion in
                 thread.progress = progress.rawValue
@@ -542,6 +649,8 @@ struct ThreadView: View {
         guard let api = session.api else { return }
         do {
             replies = try await api.boardReplies(thread.id)
+            let list = (try? await api.boardCards(gate: context.gateID, thread: thread.id)) ?? []
+            cards = Dictionary(list.compactMap { c in c.target_id.map { ($0, c) } }, uniquingKeysWith: { a, _ in a })
             message = nil
         } catch {
             message = ErrorText.of(error)
@@ -556,16 +665,39 @@ struct ThreadView: View {
         sending = true
         defer { sending = false }
         do {
-            _ = try await api.reply(visit: visit, thread: thread.id,
-                                    body: String(draft.trimmingCharacters(in: .whitespacesAndNewlines).prefix(1000)),
-                                    label: isInvestigation ? label : nil,
-                                    source: isInvestigation ? String(source.trimmingCharacters(in: .whitespacesAndNewlines).prefix(300)) : nil)
+            let id = try await api.reply(visit: visit, thread: thread.id,
+                                         body: String(draft.trimmingCharacters(in: .whitespacesAndNewlines).prefix(1000)),
+                                         label: isInvestigation ? label : nil,
+                                         source: isInvestigation ? String(source.trimmingCharacters(in: .whitespacesAndNewlines).prefix(300)) : nil)
+            if let card = replyCard {
+                do {
+                    try await api.attachBoardCard(isThread: false, id: id, card: card.id)
+                } catch {
+                    message = ErrorText.isMissingFunction(error)
+                        ? "カードを添えるのは、サーバーの準備（setup_all.sql の貼り直し）のあとで使えます。" : ErrorText.of(error)
+                }
+            }
             draft = ""
             source = ""
+            replyCard = nil
             Haptics.tap()
             await load()
         } catch {
             message = ErrorText.of(error)
+        }
+    }
+
+    /// 話題にカードを添える・替える・外す（立てた本人だけ）
+    private func attachThreadCard(_ card: UUID?) async {
+        guard let api = session.api else { return }
+        do {
+            try await api.attachBoardCard(isThread: true, id: thread.id, card: card)
+            Haptics.tap()
+            await load()
+            onChanged?()
+        } catch {
+            message = ErrorText.isMissingFunction(error)
+                ? "カードを添えるのは、サーバーの準備（setup_all.sql の貼り直し）のあとで使えます。" : ErrorText.of(error)
         }
     }
 
@@ -633,6 +765,9 @@ struct ThreadView: View {
 
 struct ReplyRow: View {
     let reply: BoardReply
+    /// 添えたグラフィティカード
+    var card: TradingCardContent? = nil
+    var onCard: () -> Void = {}
     let canDelete: Bool
     let isMine: Bool
     /// 調べる話題の「なるほど」を押せるか（ほかの人の返信）
@@ -675,6 +810,14 @@ struct ReplyRow: View {
                         .background(Theme.surfaceElevated, in: Capsule())
                 }
                 Text(reply.body).font(.subheadline).foregroundStyle(Theme.text)
+                if let card {
+                    Button(action: onCard) {
+                        TradingCard(content: card, animated: false)
+                            .frame(width: 150)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("押すと大きく見られます")
+                }
                 if let source = reply.source, !source.isEmpty {
                     Label(source, systemImage: "book.closed")
                         .font(.caption).foregroundStyle(Theme.textSecondary)
@@ -917,6 +1060,42 @@ struct InvestigationProgressSheet: View {
             dismiss()
         } catch {
             message = ErrorText.of(error)
+        }
+    }
+}
+
+/// 話題に添えるグラフィティカード（選ぶ・外す）
+struct BoardCardChooser: View {
+    let card: MyCard?
+    let author: String
+    let onChoose: () -> Void
+    let onRemove: () -> Void
+
+    var body: some View {
+        if let card {
+            HStack(alignment: .top, spacing: 14) {
+                TradingCard(content: MyCardPicker.content(card, author: author), animated: false)
+                    .frame(width: 110)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(card.title?.isEmpty == false ? card.title! : card.gate_title)
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(Theme.text)
+                    Text("\(card.gate_title)・\(ServerDate.relative(card.created_at))")
+                        .font(.caption)
+                        .foregroundStyle(Theme.textSecondary)
+                    Button("ほかのカードにする", action: onChoose)
+                        .font(.footnote.weight(.semibold))
+                        .buttonStyle(.borderless)
+                    Button("外す", role: .destructive, action: onRemove)
+                        .font(.footnote.weight(.semibold))
+                        .buttonStyle(.borderless)
+                }
+            }
+            .padding(.vertical, 4)
+        } else {
+            Button(action: onChoose) {
+                Label("グラフィティカードを添える", systemImage: "rectangle.portrait.on.rectangle.portrait.angled")
+            }
         }
     }
 }

@@ -179,6 +179,16 @@ extension GateAPI {
     func memoryItems(_ memory: UUID) async throws -> [MemoryItem] {
         do {
             return try await client.from("gf_memory_items")
+                .select("id,memory_id,author,photo_path,caption,created_at,media_kind,thumb_path,duration,card_id")
+                .eq("memory_id", value: memory.uuidString)
+                .order("created_at", ascending: true)
+                .limit(100)
+                .execute().value
+        } catch let error where ErrorText.isMissingColumn(error) {
+            // 0031 の前のサーバー（カードの欄が無い）
+        }
+        do {
+            return try await client.from("gf_memory_items")
                 .select("id,memory_id,author,photo_path,caption,created_at,media_kind,thumb_path,duration")
                 .eq("memory_id", value: memory.uuidString)
                 .order("created_at", ascending: true)
@@ -191,6 +201,58 @@ extension GateAPI {
                 .order("created_at", ascending: true)
                 .limit(100)
                 .execute().value
+        }
+    }
+
+    /// アルバムにグラフィティカードを入れる（自分のカードだけ）
+    func addMemoryCard(memory: UUID, card: UUID) async throws {
+        struct P: Encodable { let p_memory: UUID; let p_card: UUID }
+        try await client.rpc("gf_add_memory_card", params: P(p_memory: memory, p_card: card)).execute()
+    }
+
+    /// アルバムに入れたカードの中身（0031 の前のサーバーでは空）
+    func memoryCards(_ memory: UUID) async throws -> [AttachedCard] {
+        do {
+            return try await client.rpc("gf_memory_cards", params: MemoryIDParam(p_memory: memory)).execute().value
+        } catch let error where ErrorText.isMissingFunction(error) {
+            return []
+        }
+    }
+
+    /// 掲示板の話題・返信にカードを添える・外す（card が nil なら外す。書いた本人だけ）
+    func attachBoardCard(isThread: Bool, id: UUID, card: UUID?) async throws {
+        struct P: Encodable {
+            let p_kind: String
+            let p_id: UUID
+            let p_card: UUID?
+            enum CodingKeys: String, CodingKey { case p_kind, p_id, p_card }
+            func encode(to encoder: Encoder) throws {
+                var c = encoder.container(keyedBy: CodingKeys.self)
+                try c.encode(p_kind, forKey: .p_kind)
+                try c.encode(p_id, forKey: .p_id)
+                try c.encode(p_card, forKey: .p_card)      // nil は null（外す）
+            }
+        }
+        try await client.rpc("gf_board_attach_card", params: P(p_kind: isThread ? "thread" : "reply", p_id: id, p_card: card))
+            .execute()
+    }
+
+    /// 掲示板に添えたカード（thread が nil なら GATE の話題のもの。0031 の前のサーバーでは空）
+    func boardCards(gate: UUID, thread: UUID? = nil) async throws -> [AttachedCard] {
+        struct P: Encodable {
+            let p_gate: UUID
+            let p_thread: UUID?
+            enum CodingKeys: String, CodingKey { case p_gate, p_thread }
+            func encode(to encoder: Encoder) throws {
+                var c = encoder.container(keyedBy: CodingKeys.self)
+                try c.encode(p_gate, forKey: .p_gate)
+                try c.encode(p_thread, forKey: .p_thread)
+            }
+        }
+        do {
+            return try await client.rpc("gf_board_cards", params: P(p_gate: gate, p_thread: thread)).execute().value
+        } catch let error where ErrorText.isMissingFunction(error) {
+            return []
         }
     }
 

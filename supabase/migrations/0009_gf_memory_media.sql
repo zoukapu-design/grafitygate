@@ -15,11 +15,14 @@ update storage.buckets
 alter table public.gf_memory_items add column if not exists media_kind text not null default 'photo';
 alter table public.gf_memory_items add column if not exists thumb_path text;
 alter table public.gf_memory_items add column if not exists duration real;
+-- アルバムに入れたグラフィティカード（0031）。check を貼り直してもエラーにならないよう、ここで欄を作り「最後の一覧」にする
+alter table public.gf_memory_items add column if not exists card_id uuid references public.gf_graffiti(id) on delete cascade;
 alter table public.gf_memory_items drop constraint if exists gf_memory_items_media_check;
 alter table public.gf_memory_items add constraint gf_memory_items_media_check check (
-  (media_kind = 'photo' and thumb_path is null and duration is null)
-  or (media_kind = 'video' and thumb_path is not null and duration between 0.5 and 15.5)
-  or (media_kind = 'voice' and thumb_path is null and duration between 0.5 and 60.5));
+  (media_kind = 'photo' and thumb_path is null and duration is null and card_id is null)
+  or (media_kind = 'video' and thumb_path is not null and duration between 0.5 and 15.5 and card_id is null)
+  or (media_kind = 'voice' and thumb_path is null and duration between 0.5 and 60.5 and card_id is null)
+  or (media_kind = 'card' and thumb_path is null and duration is null and card_id is not null));
 create index if not exists gf_memory_items_thumb on public.gf_memory_items(thumb_path);
 
 -- 思い出に動画・声を足す（写真のときと同じ決まり：作った人・仲間で、現地にいるか作ってから 72 時間以内）
