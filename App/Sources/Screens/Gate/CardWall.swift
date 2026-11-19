@@ -152,25 +152,21 @@ struct GateCardWall: View {
             Text("みんなのグラフィティカード")
                 .font(.title3.weight(.heavy))
                 .foregroundStyle(ink)
-            Text(subtitle)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(subInk)
+            // 数は下の切り替え（すべて・友達・あなた）に出るので、ここは開けていないとき・まだ無いときだけ
+            if let subtitle {
+                Text(subtitle)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(subInk)
+            }
         }
     }
 
-    private var subtitle: String {
+    private var subtitle: String? {
         guard context.canRead else {
             return "GATE を開けると、ぜんぶ見られます"
         }
         if graffiti.isEmpty { return loaded ? "まだありません" : "読み込んでいます…" }
-        var parts: [String] = []
-        let friends = count(.friends)
-        let mine = count(.mine)
-        let others = graffiti.count - friends - mine
-        if friends > 0 { parts.append("友達 \(friends) 枚") }
-        if others > 0 { parts.append("訪れた人 \(others) 枚") }
-        if mine > 0 { parts.append("あなた \(mine) 枚") }
-        return parts.joined(separator: "・") + "・押すと大きく見られます"
+        return nil
     }
 
     private var filterChips: some View {
