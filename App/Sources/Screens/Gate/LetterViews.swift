@@ -1143,7 +1143,7 @@ private struct SealingOverlay: View {
                     if step >= 3 {
                         WaxSeal()
                             .frame(width: 60, height: 60)
-                            .offset(y: -300 / 1.72 * 0.5 + 300 / 1.72 * 0.55)
+                            .offset(y: 300 / 1.72 * (0.48 - 0.5))
                             .transition(.scale(scale: 2.4).combined(with: .opacity))
                     }
                 }
