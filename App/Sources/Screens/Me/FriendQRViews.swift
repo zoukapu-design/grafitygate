@@ -26,7 +26,7 @@ struct AddFriendButtons: View {
                         .buttonStyle(CompactButtonStyle())
                     }
                 }
-                .labelStyle(CompactLabelStyle())
+                .labelStyle(AccentIconLabelStyle())
             } else {
                 HStack(spacing: 10) {
                     tile("QR を見せる", systemImage: "qrcode") { showingQR = true }

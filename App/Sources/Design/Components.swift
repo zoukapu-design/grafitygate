@@ -319,7 +319,7 @@ struct FloatingChip: View {
 }
 
 /// 小さなボタンの中の「しるし＋文字」（しるしは強調の色）
-struct CompactLabelStyle: LabelStyle {
+struct AccentIconLabelStyle: LabelStyle {
     func makeBody(configuration: Configuration) -> some View {
         HStack(spacing: 5) {
             configuration.icon
