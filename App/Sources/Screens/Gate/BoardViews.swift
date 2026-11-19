@@ -159,8 +159,10 @@ private struct ThreadRow: View {
                     if thread.edited_at != nil { Text("直しました") }
                     Label("\(thread.reply_count)", systemImage: "bubble.left")
                     if hasCard {
-                        Label("カード", systemImage: "rectangle.portrait.on.rectangle.portrait.angled")
+                        // 狭い画面でも折り返さないよう、しるしだけ
+                        Image(systemName: "rectangle.portrait.on.rectangle.portrait.angled")
                             .foregroundStyle(Theme.warm)
+                            .accessibilityLabel("グラフィティカードつき")
                     }
                 }
                 .font(.caption2)
