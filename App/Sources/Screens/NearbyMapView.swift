@@ -384,7 +384,7 @@ struct NearbyMapView: View {
                 GateMark(size: 44, glowing: false)
                 VStack(alignment: .leading, spacing: 4) {
                     Text("近くに GATE はありません").font(.subheadline.weight(.bold)).foregroundStyle(Theme.text)
-                    Text("この場所に、最初の扉を置いてみませんか。").font(.caption).foregroundStyle(Theme.textSecondary)
+                    Text("この場所に、最初の GATE を置いてみませんか。").font(.caption).foregroundStyle(Theme.textSecondary)
                 }
                 Spacer(minLength: 0)
                 Button {
@@ -469,8 +469,6 @@ struct NearbyMapView: View {
             Image(systemName: "mappin.circle.fill").font(.title3).foregroundStyle(Theme.accent)
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.name ?? "探した場所").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text).lineLimit(1)
-                Text("GATE が見つかるのは、着いてからその場の 100m 以内です")
-                    .font(.caption2).foregroundStyle(Theme.textSecondary)
             }
             Spacer(minLength: 0)
             Button {

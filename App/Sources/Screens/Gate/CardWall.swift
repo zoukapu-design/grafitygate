@@ -116,7 +116,7 @@ struct GateCardWall: View {
                     }
                 }
                 if !context.isInside && context.opened && !graffiti.isEmpty {
-                    Label("一度扉を開けた GATE なので、遠くからも読めます。いいね・保存・返信は扉の中で。", systemImage: "key.fill")
+                    Label("一度開けた GATE なので、遠くからも読めます。いいね・保存・返信は GATE の中で。", systemImage: "key.fill")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(subInk)
                         .fixedSize(horizontal: false, vertical: true)
@@ -160,7 +160,7 @@ struct GateCardWall: View {
 
     private var subtitle: String {
         guard context.canRead else {
-            return "扉を開けると、ぜんぶ見られます"
+            return "GATE を開けると、ぜんぶ見られます"
         }
         if graffiti.isEmpty { return loaded ? "まだありません" : "読み込んでいます…" }
         var parts: [String] = []
@@ -262,7 +262,7 @@ struct GateCardWall: View {
     // MARK: 動き
 
     private func insideOnly(_ what: String) {
-        note = "\(what)は、現地で扉を開けているあいだにできます。"
+        note = "\(what)は、現地で GATE を開けているあいだにできます。"
         Haptics.tap()
     }
 
@@ -373,7 +373,7 @@ private struct WallLockCell: View {
             Image(systemName: "lock.fill")
                 .font(.system(size: 26, weight: .bold))
                 .foregroundStyle(onDark ? .white : Theme.accent)
-            Text(empty ? "扉を開けて、最初の 1 枚を" : "ほかのカードは、扉を開けると見られます")
+            Text(empty ? "GATE を開けて、最初の 1 枚を" : "ほかのカードは、GATE を開けると見られます")
                 .font(.footnote.weight(.bold))
                 .foregroundStyle(onDark ? .white : Theme.text)
                 .multilineTextAlignment(.center)

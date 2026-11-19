@@ -82,7 +82,7 @@ struct MapSearchSheet: View {
                         VStack(alignment: .leading, spacing: 8) {
                             Label("GATE は、見てよいものだけが出ます（自分・友達・全員に公開）。",
                                   systemImage: "door.left.hand.open")
-                            Label("場所はおおよそだけ。中のグラフィティカードや掲示板は、現地で扉を開けた人だけが見られます。",
+                            Label("場所はおおよそだけ。中のグラフィティカードや掲示板は、現地で GATE を開けた人だけが見られます。",
                                   systemImage: "mappin.and.ellipse")
                         }
                         .font(.caption)

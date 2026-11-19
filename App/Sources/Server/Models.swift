@@ -279,7 +279,7 @@ enum ArtworkKind: String, CaseIterable, Identifiable {
         switch self {
         case .photo: return "思い出の写真を宙に飾る"
         case .video: return "15 秒までの動画を、触れると流す"
-        case .person: return "動画から人だけ切り抜き、扉の前に立たせる"
+        case .person: return "動画から人だけ切り抜き、GATE の前に立たせる"
         case .text: return "ひとことを光の文字で"
         case .voice: return "触れると、そこから声が聞こえる"
         case .petals: return "花びらがくるくる舞う"
@@ -504,7 +504,7 @@ struct LetterInfo: Decodable, Identifiable, Hashable {
         if !time_ok, let date = openDate {
             return "\(ServerDate.day(date)) に開けます" + (onsite ? "（現地で）" : "")
         }
-        return "\(gate_title) で扉を開けると読めます"
+        return "\(gate_title) で GATE を開けると読めます"
     }
 }
 
@@ -794,7 +794,7 @@ struct NotificationItem: Decodable, Identifiable, Hashable {
         let gate = gate_title.map { "「\($0)」" } ?? "GATE"
         switch kind {
         case "place_map_stale":
-            return "\(gate)の GATE の位置の記録が、ほかの人の iPhone で見つかりにくくなっています。現地で扉を開けて「GATE の位置の記録を撮り直す」を押してください"
+            return "\(gate)の GATE の位置の記録が、ほかの人の iPhone で見つかりにくくなっています。現地で GATE を開けて「GATE の位置の記録を撮り直す」を押してください"
         case "gate_graffiti": return "\(who)が\(gate)にグラフィティカードを残しました"
         case "gate_artwork": return "\(who)が\(gate)に AR の飾りを置きました"
         case "board_thread": return "\(who)が\(gate)の掲示板に話題を立てました"
@@ -928,7 +928,7 @@ struct ProfileRow: Codable, Hashable {
     var handle: String
 }
 
-/// 公開範囲
+/// 見せる範囲
 enum Visibility: String, CaseIterable, Identifiable {
     case `private`, friends, `public`
 
@@ -1051,7 +1051,7 @@ struct AtlasCard: Decodable, Identifiable, Hashable {
     func tradingContent(author: String) -> TradingCardContent {
         var c = TradingCardContent(id: id, photoPath: photo_path, body: "", author: author, title: title,
                                    gateTitle: gate_title, createdAt: created_at, finish: CardFinish(raw: finish))
-        c.bodyNote = "ひとことは、現地で扉を開けると読めます"
+        c.bodyNote = "ひとことは、現地で GATE を開けると読めます"
         return c
     }
 }

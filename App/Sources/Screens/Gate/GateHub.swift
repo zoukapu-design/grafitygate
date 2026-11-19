@@ -31,14 +31,14 @@ extension GateTab {
         case .graffiti:
             return "その場の写真とひとことのカード"
         case .memories:
-            return context.isInside ? "みんなで写真・動画・声を集める" : "扉の中で、みんなのアルバムが見られます"
+            return context.isInside ? "みんなで写真・動画・声を集める" : "GATE の中で、みんなのアルバムが見られます"
         case .board:
             if context.isInside { return "この場所のことを話す・聞く・調べる" }
-            return context.opened ? "読めます（書くのは扉の中で）" : "話題の題名だけ見られます"
+            return context.opened ? "読めます（書くのは GATE の中で）" : "話題の題名だけ見られます"
         case .letters:
             return context.isInside ? "未来の自分や友達へ。カードを添えて" : "あなたあての手紙は、ここで開きます"
         case .thenNow:
-            return context.isInside ? "同じ場所の昔と今の写真を並べる" : "扉の中で、昔と今が見られます"
+            return context.isInside ? "同じ場所の昔と今の写真を並べる" : "GATE の中で、昔と今が見られます"
         }
     }
 
@@ -63,12 +63,12 @@ extension GateTab {
         guard !context.isInside else { return nil }
         switch self {
         case .graffiti, .board:
-            return context.opened ? "一度扉を開けた GATE なので、遠くからも読めます。書く・いいね・返信は、現地で扉を開けているあいだにできます。"
-                                  : "現地で扉を開けると、ぜんぶ読めて、書けるようになります。"
+            return context.opened ? "一度開けた GATE なので、遠くからも読めます。書く・いいね・返信は、現地で GATE を開けているあいだにできます。"
+                                  : "現地で GATE を開けると、ぜんぶ読めて、書けるようになります。"
         case .memories, .thenNow:
-            return "現地で扉を開けると、見たり足したりできます。"
+            return "現地で GATE を開けると、見たり足したりできます。"
         case .letters:
-            return "手紙を書くのは、現地で扉を開けているあいだです。あなたあての手紙は、開く条件がそろうと開けます。"
+            return "手紙を書くのは、現地で GATE を開けているあいだです。あなたあての手紙は、開く条件がそろうと開けます。"
         }
     }
 }
@@ -95,7 +95,7 @@ struct GateFeatureTiles: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 6) {
                 Image(systemName: context.isInside ? "door.left.hand.open" : "lock.fill")
-                Text(context.isInside ? "扉の中でできること" : "扉の向こうでできること")
+                Text("GATE の中でできること")
             }
             .font(.title3.weight(.heavy))
             .foregroundStyle(onDark ? .white : Theme.text)
@@ -202,6 +202,17 @@ struct GateFeaturePage: View {
     @State private var report: ReportItem?
 
     var body: some View {
+        if tab == .thenNow {
+            // 今と昔は、写真を大きく見比べる専用の画面（夜空の地）
+            NowAndThenView(context: context, refreshToken: refreshToken) { item in report = item }
+                .sheet(item: $report) { item in ReportSheet(item: item) }
+                .onAppear { Trace.log("GATE：\(tab.label)を開いた") }
+        } else {
+            listPage
+        }
+    }
+
+    private var listPage: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(alignment: .top, spacing: 14) {
@@ -221,10 +232,6 @@ struct GateFeaturePage: View {
                             .lineLimit(1)
                     }
                 }
-                Text(tab.intro)
-                    .font(.subheadline)
-                    .foregroundStyle(Theme.text)
-                    .fixedSize(horizontal: false, vertical: true)
                 if let lock = tab.lockNote(context) {
                     Label(lock, systemImage: context.opened ? "key.fill" : "lock.fill")
                         .font(.caption.weight(.semibold))
@@ -257,7 +264,7 @@ struct GateFeaturePage: View {
         case .letters:
             LetterSection(context: context, refreshToken: refreshToken)
         case .thenNow:
-            SnapshotSection(context: context, refreshToken: refreshToken) { item in report = item }
+            EmptyView()
         }
     }
 }
@@ -279,7 +286,7 @@ struct TodayCardPanel: View {
                     Text("今日のグラフィティカードは残しました")
                         .font(.headline.weight(.heavy))
                         .foregroundStyle(.white)
-                    Text("この GATE には、明日（0 時から）また残せます。下の「あなた」で見られます。")
+                    Text("明日また残せます")
                         .font(.caption)
                         .foregroundStyle(.white.opacity(0.78))
                         .fixedSize(horizontal: false, vertical: true)
@@ -296,10 +303,6 @@ struct TodayCardPanel: View {
                     Text("今日の 1 枚を残そう")
                         .font(.title3.weight(.heavy))
                         .foregroundStyle(.white)
-                    Text("扉や、みんなの AR と一緒に撮って、グラフィティカードにします。1 つの GATE に 1 日 1 枚。")
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.78))
-                        .fixedSize(horizontal: false, vertical: true)
                 }
                 Button(action: onARCamera) {
                     Label("AR カメラでカードを作る", systemImage: "camera.viewfinder")

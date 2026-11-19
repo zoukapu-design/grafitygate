@@ -587,9 +587,6 @@ struct NearbyCardDetail: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Theme.warm)
             }
-            Text("場所はおおよそです。100m 以内に近づくと、地図に GATE が出ます。中のグラフィティカードや掲示板は、現地で扉を開けると見られます。")
-                .font(.caption).foregroundStyle(Theme.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
             Button {
                 let item = MKMapItem(placemark: MKPlacemark(coordinate: card.gateCoordinate))
                 item.name = card.gate_title

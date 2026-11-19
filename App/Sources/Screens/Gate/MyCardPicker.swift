@@ -32,7 +32,7 @@ struct MyCardPicker: View {
                         NoticeText(text: error)
                     } else if loaded && cards.isEmpty {
                         EmptyNote(title: "まだグラフィティカードがありません",
-                                  message: "GATE の扉を開けて、カードを作ると添えられます。",
+                                  message: "GATE を開けて、カードを作ると添えられます。",
                                   systemImage: "rectangle.portrait.on.rectangle.portrait.angled")
                     } else if !loaded {
                         ProgressView().frame(maxWidth: .infinity).padding(.top, 40)

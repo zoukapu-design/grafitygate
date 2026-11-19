@@ -98,7 +98,7 @@ final class ARExperienceModel: ObservableObject {
         } catch {
             door = nil
             hasPlacedDoor = false
-            notice = "扉を表示できませんでした。もう一度地面を押してください。"
+            notice = "GATE を表示できませんでした。もう一度地面を押してください。"
         }
     }
 
@@ -280,7 +280,7 @@ final class ARExperienceModel: ObservableObject {
     private func startCardCamera(gate: UUID, visit: UUID?) {
         enteredGate = gate
         visitID = visit
-        phase = .working("扉を出しています…")
+        phase = .working("GATE を出しています…")
         Task {
             await showDoor(for: gate)
             guard enteredGate == gate, door != nil else { return }
@@ -442,7 +442,7 @@ final class ARExperienceModel: ObservableObject {
 
     private func enter(_ gate: UUID, fix: CLLocation, print: [Float]) async {
         guard let api = session?.api else { return }
-        phase = .working("扉を開ける準備をしています…")
+        phase = .working("GATE を開ける準備をしています…")
         do {
             let result = try await api.enter(gate: gate, location: fix, print: print)
             guard result.ok else {
@@ -500,7 +500,7 @@ final class ARExperienceModel: ObservableObject {
         if anchor == nil {
             _ = await stage.waitUntilTracking(timeout: 4)
             guard let transform = stage.placementInFront(distance: 2.0) else {
-                phase = .failed("扉を置く場所が見つかりませんでした。周りを見回してから、もう一度お試しください。")
+                phase = .failed("GATE を置く場所が見つかりませんでした。周りを見回してから、もう一度お試しください。")
                 return
             }
             let placed = stage.addAnchor(named: "gg.visit", transform: transform)
@@ -533,7 +533,7 @@ final class ARExperienceModel: ObservableObject {
             Task { await loadArtworks(gate) }
         } catch {
             Trace.log("扉を組み立てられませんでした：\(error)")
-            phase = .failed("扉を表示できませんでした。")
+            phase = .failed("GATE を表示できませんでした。")
         }
     }
 
@@ -866,7 +866,7 @@ final class ARExperienceModel: ObservableObject {
             Haptics.tap()
         } catch {
             stage.removeAnchor(anchor)
-            notice = "扉を表示できませんでした。"
+            notice = "GATE を表示できませんでした。"
         }
     }
 
@@ -966,7 +966,7 @@ final class ARExperienceModel: ObservableObject {
                     mapWarning = nil
                 } catch {
                     Trace.log("GATE の位置の記録を保存できませんでした：\(ErrorText.of(error))")
-                    mapWarning = "GATE の位置の記録を保存できませんでした。友達の iPhone では、扉が仮の位置に出ます。"
+                    mapWarning = "GATE の位置の記録を保存できませんでした。友達の iPhone では、GATE が仮の位置に出ます。"
                     placeMapSaved = true   // 送り直しのたびに見回しをやり直させない（あとで「撮り直す」ができる）
                 }
             }
@@ -974,7 +974,7 @@ final class ARExperienceModel: ObservableObject {
             // 3. 作った人も、同じ手順で入る（新しい合言葉・いまの位置・写真の特徴をサーバーが確かめる）。
             // 写真の特徴は、さっき正面から写したもの。前はここでカメラの絵を写し直していたが、扉を置いて見回したあとの
             // カメラは床や別の方向を向いているので、登録した物と合わず「写したものが合いません」になっていた（2026-11-15）。
-            phase = .createSaving("扉を開けています…")
+            phase = .createSaving("GATE を開けています…")
             let print: [Float]
             if let front = shots.first?.print {
                 print = front
@@ -996,7 +996,7 @@ final class ARExperienceModel: ObservableObject {
                 revealArtworks()
             } else {
                 Trace.log("作ったあとの入場ができませんでした：\(result.reason ?? "不明")")
-                phase = .createRetry("GATE はできました。ただ、扉を開ける確かめが通りませんでした。"
+                phase = .createRetry("GATE はできました。ただ、GATE を開ける確かめが通りませんでした。"
                                      + ErrorText.enterReason(result.reason))
             }
         } catch {
@@ -1064,7 +1064,7 @@ extension ARExperienceModel {
                 do {
                     try await api.setDoorScale(gate: gate, scale: scale)
                     savedDoorScale = scale
-                    showToast("扉の大きさを保存しました")
+                    showToast("GATE の大きさを保存しました")
                     Trace.log(String(format: "扉の大きさを保存しました（%.2f 倍）", scale))
                 } catch {
                     notice = ErrorText.of(error)
@@ -1116,7 +1116,7 @@ extension ARExperienceModel {
             placedPrecisely = true
             mapWarning = nil
             Haptics.success()
-            showToast("GATE の位置の記録を撮り直しました。友達の iPhone でも、この位置に扉が出ます。")
+            showToast("GATE の位置の記録を撮り直しました。友達の iPhone でも、この位置に GATE が出ます。")
             Trace.log("GATE の位置の記録を撮り直しました（\(saved.size / 1024)KB）")
         } catch {
             notice = "GATE の位置の記録を保存できませんでした。" + ErrorText.of(error)

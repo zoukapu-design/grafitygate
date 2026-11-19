@@ -223,7 +223,7 @@ struct GateAPI {
 
     // MARK: AR の飾り
 
-    /// GATE の AR の飾り（入場中なら公開範囲が合うもの、そうでなければ自分のものだけが返る）
+    /// GATE の AR の飾り（入場中なら見せる範囲が合うもの、そうでなければ自分のものだけが返る）
     func artworks(in gate: UUID) async throws -> [Artwork] {
         let base = "id,gate_id,owner,kind,body,photo_path,color,px,py,pz,yaw,scale,rules,visibility,status,revision,created_at"
         // 新しいサーバーから順に試す（0011：置き直しの印、0010：映像・声、それより前）

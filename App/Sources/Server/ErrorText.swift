@@ -69,19 +69,19 @@ enum ErrorText {
         case "inaccurate", "bad_position": return "位置の精度が足りません。空の開けた所で少し待ってから、もう一度お試しください。"
         case "no_match": return "写したものが、この GATE と合いませんでした。作った人が写した場所・物を、正面から写してみてください。"
         case "no_reference": return "この GATE の写真の特徴が、いまのアプリと形式が違うため比べられません。"
-        case "not_found": return "この GATE は見つかりませんでした（公開範囲が変わったか、閉じられた可能性があります）。"
+        case "not_found": return "この GATE は見つかりませんでした（見せる範囲が変わったか、閉じられた可能性があります）。"
         case "challenge_used", "challenge_expired", "challenge_invalid": return "時間がたちすぎました。もう一度お試しください。"
         default: return "入れませんでした。もう一度お試しください。"
         }
     }
 
     private static let known: [(String, String)] = [
-        ("gf_already_posted", "扉を開けるたびに 1 枚です。もう 1 枚書きました。次は扉を開け直してから書けます。"),
+        ("gf_already_posted", "GATE を開けるたびに 1 枚です。もう 1 枚書きました。次は GATE を開け直してから書けます。"),
         ("gf_repost_cooldown", "同じ GATE には、前に書いてから 12 時間あけると書けます。"),
         ("gf_card_today", "この GATE には、今日はもうグラフィティカードを残しました。明日（0 時から）また残せます。"),
         ("gf_bad_card", "添えられるのは、あなたのグラフィティカードだけです。"),
         ("gf_already_added", "このグラフィティカードは、もう入っています。"),
-        ("gf_visit_invalid", "扉が閉じました（GATE から離れたため）。現地でもう一度扉を開けてください。"),
+        ("gf_visit_invalid", "GATE が閉じました（離れたため）。現地でもう一度 GATE を開けてください。"),
         ("gf_inaccurate", "位置の精度が足りません。空の開けた所で少し待ってから、もう一度お試しください。"),
         ("gf_bad_position", "現在地を確かめられませんでした。"),
         ("gf_rate_limited", "短い時間にたくさん操作されました。少し時間をおいてからお試しください。"),
@@ -93,20 +93,20 @@ enum ErrorText {
         ("gf_artwork_limit", "1 つの GATE に置ける AR の飾りは、1 人 3 つまでです。前の AR の飾りを消すと置けます。"),
         ("gf_gate_full", "この GATE には、もう AR の飾りを置けません（30 個まで）。"),
         ("gf_bad_rules", "AR の飾りの動きの設定を読み取れませんでした。アプリを新しくしてからお試しください。"),
-        ("gf_bad_artwork", "AR の飾りを置けませんでした。扉から 4m 以内・地面から 3.5m までの所に置いてください。"),
+        ("gf_bad_artwork", "AR の飾りを置けませんでした。GATE から 4m 以内・地面から 3.5m までの所に置いてください。"),
         ("gf_revision_conflict", "ほかの iPhone で先に動かされていました。いまの位置を読み込み直しました。"),
         ("gf_bad_post", "書けませんでした。題や本文の長さを確かめてください。"),
         ("gf_bad_recipient", "お互いにフォローしている友達にだけ送れます。"),
-        ("gf_recipient_cannot_see", "その友達は、この GATE を見られません（GATE の公開範囲が合いません）。"),
+        ("gf_recipient_cannot_see", "その友達は、この GATE を見られません（GATE の見せる範囲が合いません）。"),
         ("gf_bad_open_at", "開く日時は、これから先 10 年までの間で選んでください。"),
         ("gf_bad_letter", "手紙を書けませんでした。本文（2000 文字まで）と、開く条件（日時か現地）を確かめてください。"),
         ("gf_letter_not_yet", "まだ開く日になっていません。"),
-        ("gf_letter_onsite", "この手紙は、現地で扉を開けると読めます。"),
+        ("gf_letter_onsite", "この手紙は、現地で GATE を開けると読めます。"),
         ("gf_memory_full", "このアルバムには、もう写真・動画・声を足せません。"),
         ("gf_bad_media", "動画は 15 秒まで、声は 60 秒までです。もう一度お試しください。"),
         ("gf_bad_report", "通報を送れませんでした。理由を選び直してください。"),
         ("gf_bad_trail", "TRAIL は、ちがう GATE を 2〜20 か所つないで作れます。題も入れてください。"),
-        ("gf_trail_not_visited", "TRAIL には、自分が扉を開けたことのある GATE だけを入れられます。"),
+        ("gf_trail_not_visited", "TRAIL には、自分が開けたことのある GATE だけを入れられます。"),
         ("gf_not_found", "見つかりませんでした。"),
         ("gf_not_signed_in", "サーバーにつながっていません。アプリを開き直してください。"),
         ("gf_not_friends", "お互いにフォローしている友達とだけできます。"),
@@ -116,7 +116,7 @@ enum ErrorText {
         ("gf_bad_query", "1〜40 文字で探してください。"),
         ("gf_own_reply", "自分の返信には「なるほど」を付けられません。"),
         ("gf_already_sent", "このカードには、もう「来たよ」を送っています。"),
-        ("gf_bad_scale", "扉の大きさは 0.2〜1.5 倍で決めてください。"),
+        ("gf_bad_scale", "GATE の大きさは 0.2〜1.5 倍で決めてください。"),
         ("gf_too_many_refs", "見え方はこれ以上足せません（1 つの GATE に 12 まで）。"),
         ("gf_too_far", "GATE から離れています。作ったときに立っていた所の近く（120m 以内）で足してください。"),
         ("gf_bad_title", "題は 1〜60 文字で書いてください。"),

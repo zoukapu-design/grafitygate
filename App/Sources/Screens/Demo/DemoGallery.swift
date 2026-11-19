@@ -18,7 +18,8 @@ struct DemoGallery: View {
                           "edit-gate", "progress", "notifications", "onboarding", "my-gates", "gate-stack", "map-hidden", "trading-cards", "card-viewer", "cover-rotate", "home-empty", "door-designs",
                           "photo-editor", "story-camera", "story-text", "story-review",
                           "gate-posted", "card-maker", "card-maker-photo", "letter-card", "card-picker", "letter-compose",
-                          "album-cards", "board-thread-card", "board-new-thread"]
+                          "album-cards", "board-thread-card", "board-new-thread",
+                          "follow-list", "album-create", "letter-sealed"]
 
     @StateObject private var nearby = NearbyCardsModel()
     @StateObject private var inbox = InboxModel()
@@ -279,6 +280,19 @@ struct DemoGallery: View {
             NewThreadSheet(context: Demo.insideContext) {}
         case "letter-compose":
             LetterComposer(context: Demo.insideContext) {}
+        case "follow-list":
+            NavigationStack { FollowListView(initial: .followers) }
+        case "album-create":
+            MemoryComposer(context: Demo.insideContext) {}
+        case "letter-sealed":
+            // まだ開けていない手紙（封を切る前）
+            NavigationStack {
+                LetterView(info: LetterInfo(id: UUID(), gate_id: DemoData.hill, gate_title: "夕焼けの見える丘",
+                                            author: Demo.friend, author_name: "みさき", recipient: Demo.me,
+                                            recipient_name: "あなた", open_at: nil, onsite: true, opened_at: nil,
+                                            created_at: Demo.now, sent: false, time_ok: true, here: true)) {}
+            }
+
         case "photo-editor":
             CardPhotoEditor(original: Demo.demoPhoto) { _ in }
         case "story-camera", "story-text", "story-review":

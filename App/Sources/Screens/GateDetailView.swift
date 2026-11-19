@@ -136,9 +136,6 @@ struct GateDetailView: View {
                                 if !trails.isEmpty {
                                     trailStrip
                                 }
-                                if summary.owner == session.userID {
-                                    addLooksButton(summary)
-                                }
                             }
                         }
                     }
@@ -146,7 +143,7 @@ struct GateDetailView: View {
                     NoticeText(text: loadError)
                 } else if loaded {
                     EmptyNote(title: "GATE が見つかりません",
-                              message: "公開範囲が変わったか、閉じられた可能性があります。",
+                              message: "見せる範囲が変わったか、閉じられた可能性があります。",
                               systemImage: "door.left.hand.closed")
                 } else {
                     ProgressView().frame(maxWidth: .infinity)
@@ -182,14 +179,35 @@ struct GateDetailView: View {
         .background {
             if insideNow { InsideBackground().ignoresSafeArea() } else { Theme.background.ignoresSafeArea() }
         }
+        // 保存した・うまくいかなかった などの一言（上に浮かべて、少しすると消える）
+        .overlay(alignment: .top) {
+            if let actionMessage {
+                Text(actionMessage)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Color(hex: 0x1B1235).opacity(0.92), in: Capsule())
+                    .padding(.horizontal, 24)
+                    .padding(.top, 8)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .task(id: actionMessage) {
+                        try? await Task.sleep(nanoseconds: 3_500_000_000)
+                        withAnimation { self.actionMessage = nil }
+                    }
+                    .onTapGesture { withAnimation { self.actionMessage = nil } }
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: actionMessage)
         // 扉を開けずに見ているあいだは「グラフィティボード」、扉が開いているあいだは「扉の中」（夜空の画面）
-        .navigationTitle(insideNow ? "扉の中" : "グラフィティボード")
+        .navigationTitle(insideNow ? "GATE の中" : "グラフィティボード")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(insideNow ? .dark : nil, for: .navigationBar)
-        .confirmationDialog("扉を出ますか？", isPresented: $confirmLeave, titleVisibility: .visible) {
-            Button("扉を出る", role: .destructive) { Task { await leaveDoor() } }
+        .confirmationDialog("GATE を出ますか？", isPresented: $confirmLeave, titleVisibility: .visible) {
+            Button("GATE を出る", role: .destructive) { Task { await leaveDoor() } }
         } message: {
-            Text("グラフィティカードを残す・いいね・返信などは、扉の中でできます。出たあとも、この GATE のものは遠くから読めます。もう一度入るには、現地で扉を開けます。")
+            Text("グラフィティカードを残す・いいね・返信などは、GATE の中でできます。出たあとも、この GATE のものは遠くから読めます。もう一度入るには、現地で GATE を開けます。")
         }
         .toolbar { toolbar }
         .task { await reload() }
@@ -254,7 +272,7 @@ struct GateDetailView: View {
         .confirmationDialog("この GATE をお休みにしますか？", isPresented: $confirmClose, titleVisibility: .visible) {
             Button("お休みにする", role: .destructive) { Task { await setOpen(false) } }
         } message: {
-            Text("ほかの人は見つけられず、入れなくなります（自分が扉から出るだけなら「扉を出る」）。中のグラフィティカードや掲示板は消えず、あとで再開できます。")
+            Text("ほかの人は見つけられず、入れなくなります（自分が GATE から出るだけなら「GATE を出る」）。中のグラフィティカードや掲示板は消えず、あとで再開できます。")
         }
         .sheet(isPresented: $showVisits) {
             MyVisitsSheet(gateID: gateID, title: summary?.title ?? "")
@@ -287,7 +305,7 @@ struct GateDetailView: View {
                 .foregroundStyle(Theme.warm)
             VStack(alignment: .leading, spacing: 6) {
                 Text("この GATE はお休み中です").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
-                Text("いまは、あなたにだけ見えています。ほかの人は見つけられず、入れません。中のグラフィティカードや掲示板は消えていません。")
+                Text("いまは、あなたにだけ見えています。")
                     .font(.caption).foregroundStyle(Theme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Button {
@@ -364,67 +382,95 @@ struct GateDetailView: View {
         }
     }
 
+    /// 右上は「…」だけ（2026-11-20 オーナー「… 以外はなくていい」）。共有・保存・GATE を出る・直す・通報などはこの中
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
         if let summary {
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                if summary.status == "open", summary.visibility != "private" {
-                    ShareLink(item: AppNavigator.gateShareText(title: summary.title, id: summary.id)) {
-                        Image(systemName: "square.and.arrow.up")
-                    }
-                    .accessibilityLabel("この GATE のリンクを送る")
-                }
-                Button {
-                    Task { await toggleSaved() }
-                } label: {
-                    Image(systemName: saved ? "bookmark.fill" : "bookmark")
-                }
-                .accessibilityLabel(saved ? "保存をやめる" : "保存する")
+            ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    if canManage(summary) {
+                    Section {
                         Button {
-                            editingGate = true
+                            Task { await toggleSaved() }
                         } label: {
-                            Label("GATE を直す（名前・紹介・表紙）", systemImage: "pencil")
+                            Label(saved ? "保存をやめる" : "保存する", systemImage: saved ? "bookmark.slash" : "bookmark")
+                        }
+                        if summary.status == "open", summary.visibility != "private" {
+                            ShareLink(item: AppNavigator.gateShareText(title: summary.title, id: summary.id)) {
+                                Label("この GATE のリンクを送る", systemImage: "square.and.arrow.up")
+                            }
                         }
                     }
-                    if isOwner(summary) {
-                        Button {
-                            showManagers = true
-                        } label: {
-                            Label("一緒に管理する人", systemImage: "person.2.badge.gearshape")
-                        }
-                        if summary.status == "open" {
+                    if insideNow {
+                        Section {
                             Button(role: .destructive) {
-                                confirmClose = true
+                                confirmLeave = true
                             } label: {
-                                Label("GATE をお休みにする（ほかの人に見せない）", systemImage: "moon.zzz")
+                                Label("GATE を出る", systemImage: "rectangle.portrait.and.arrow.right")
                             }
-                        } else {
+                        }
+                    }
+                    if canManage(summary) {
+                        Section("GATE を管理する") {
                             Button {
-                                Task { await setOpen(true) }
+                                editingGate = true
                             } label: {
-                                Label("GATE を再開する", systemImage: "door.left.hand.open")
+                                Label("GATE を直す（名前・紹介・表紙）", systemImage: "pencil")
+                            }
+                            if summary.cover_path != nil {
+                                Button {
+                                    rotatingCover = true
+                                } label: {
+                                    Label("表紙の向きを直す", systemImage: "rotate.right")
+                                }
+                            }
+                            if isOwner(summary) {
+                                Button {
+                                    showAddLooks = true
+                                } label: {
+                                    Label("別の時間の見え方を足す（夜・季節）", systemImage: "sun.horizon")
+                                }
+                                .disabled(session.api == nil)
+                                Button {
+                                    showManagers = true
+                                } label: {
+                                    Label("一緒に管理する人", systemImage: "person.2.badge.gearshape")
+                                }
+                                if summary.status == "open" {
+                                    Button(role: .destructive) {
+                                        confirmClose = true
+                                    } label: {
+                                        Label("GATE をお休みにする（ほかの人に見せない）", systemImage: "moon.zzz")
+                                    }
+                                } else {
+                                    Button {
+                                        Task { await setOpen(true) }
+                                    } label: {
+                                        Label("GATE を再開する", systemImage: "door.left.hand.open")
+                                    }
+                                }
+                            } else {
+                                Button(role: .destructive) {
+                                    Task { await leaveManagers() }
+                                } label: {
+                                    Label("管理から抜ける", systemImage: "rectangle.portrait.and.arrow.right")
+                                }
                             }
                         }
-                    } else {
-                        if canManage(summary) {
-                            Button(role: .destructive) {
-                                Task { await leaveManagers() }
+                    }
+                    if !isOwner(summary) {
+                        Section {
+                            Button {
+                                report = ReportItem(id: summary.id, target: .gate, userID: summary.owner,
+                                                    userName: summary.owner_name, label: summary.title)
                             } label: {
-                                Label("管理から抜ける", systemImage: "rectangle.portrait.and.arrow.right")
+                                Label("この GATE を通報する", systemImage: "exclamationmark.bubble")
                             }
-                        }
-                        Button {
-                            report = ReportItem(id: summary.id, target: .gate, userID: summary.owner,
-                                                userName: summary.owner_name, label: summary.title)
-                        } label: {
-                            Label("この GATE を通報する", systemImage: "exclamationmark.bubble")
                         }
                     }
                 } label: {
-                    Image(systemName: "ellipsis.circle")
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 17, weight: .bold))
                 }
-                .accessibilityLabel("そのほか")
+                .accessibilityLabel("そのほか（保存・共有・GATE を出る など）")
             }
         }
     }
@@ -436,19 +482,16 @@ struct GateDetailView: View {
         summary.map { makeContext($0, now: Date()).isInside } ?? false
     }
 
-    /// 扉の中の画面（2026-11-19 オーナー「初めての人でも迷わず使える画面に」）：夜空の画面に、上から
-    /// ① どこにいるか・扉を出る ② 今日の 1 枚（AR カメラでカードを作る／今日は残しました）③ 扉の中でできること（札）
-    /// ④ みんなのグラフィティカード（2 列・友達が上）⑤ この GATE について
+    /// GATE の中の画面（2026-11-19 オーナー「初めての人でも迷わず使える画面に」・2026-11-20 に整理）：夜空の画面に、上から
+    /// ① どこにいるか（離れてまもなく閉じるときだけ一言。GATE を出るのは右上の「…」）② 今日の 1 枚
+    /// ③ みんなのグラフィティカード（2 列・友達が上）④ GATE の中でできること（札）⑤ この GATE について（短く）
     private func insidePage(_ s: GateSummary, context: GateContext, now: Date, scroller: ScrollViewProxy) -> some View {
         let minutes = context.visitExpires.map { max(1, Int($0.timeIntervalSince(now) / 60 + 0.5)) } ?? 0
         let near = keeper.entries[context.visit ?? UUID()]?.near
         return VStack(alignment: .leading, spacing: 24) {
             InsideHeader(title: s.title, coverPath: s.cover_path,
                          ownerLine: s.owner == session.userID ? "あなたの GATE" : "\(s.owner_name) さんの GATE",
-                         status: near == false ? "離れたので、あと約 \(minutes) 分で扉が閉じます" : "扉が開いています",
-                         warning: near == false) {
-                confirmLeave = true
-            }
+                         closingNote: near == false ? "離れたので、あと約 \(minutes) 分で GATE が閉じます" : nil)
 
             VStack(alignment: .leading, spacing: 8) {
                 TodayCardPanel(today: cardToday, onARCamera: { openARCamera() }, onMaker: {
@@ -462,31 +505,111 @@ struct GateDetailView: View {
                 }
             }
 
-            GateFeatureTiles(context: context, counts: featureCounts, onDark: true) { openFeature = $0 }
-
             GateCardWall(context: context, refreshToken: refreshToken, onDark: true)
                 .id("inside")
 
-            // この GATE について（グラフィティボードの中身は下に）
+            GateFeatureTiles(context: context, counts: featureCounts, onDark: true) { openFeature = $0 }
+
+            // この GATE について（表紙・名前・数・場所を 1 枚に。直す・見え方を足すなどは右上の「…」）
             VStack(alignment: .leading, spacing: 12) {
-                Text("この GATE について")
-                    .font(.title3.weight(.heavy))
-                    .foregroundStyle(.white)
-                VStack(alignment: .leading, spacing: 16) {
-                    header(s)
-                    whereWhen(s)
-                    if !trails.isEmpty {
-                        trailStrip
-                    }
-                    if s.owner == session.userID {
-                        addLooksButton(s)
-                    }
-                }
-                .padding(16)
-                .background(Theme.background, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+                SectionHeader(title: "この GATE について", onDark: true)
+                aboutCard(s)
             }
             .padding(.top, 8)
+            .id("about")
         }
+    }
+
+    /// この GATE について：表紙・名前・作った人 → 紹介 → 3 つの数 → 小さな地図と場所・作った日
+    private func aboutCard(_ s: GateSummary) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
+                GateCoverImage(path: s.cover_path, markSize: 22)
+                    .frame(width: 58, height: 58)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(s.title)
+                        .font(.headline)
+                        .foregroundStyle(Theme.text)
+                        .lineLimit(2)
+                    if s.owner == session.userID {
+                        Text("あなたの GATE").font(.caption.weight(.semibold)).foregroundStyle(Theme.warm)
+                    } else {
+                        NavigationLink {
+                            ProfileView(userID: s.owner)
+                        } label: {
+                            HStack(spacing: 5) {
+                                NeonAvatar(name: s.owner_name, size: 18)
+                                Text(s.owner_name).font(.caption.weight(.semibold))
+                                Image(systemName: "chevron.right").font(.caption2.weight(.bold))
+                            }
+                            .foregroundStyle(Theme.textSecondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                Spacer(minLength: 0)
+                Label(GateKind(raw: s.kind).label, systemImage: GateKind(raw: s.kind).symbol)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Theme.textSecondary)
+                    .padding(.horizontal, 9).padding(.vertical, 5)
+                    .background(Theme.surfaceElevated, in: Capsule())
+            }
+            if !s.note.isEmpty {
+                Text(s.note)
+                    .font(.subheadline)
+                    .foregroundStyle(Theme.text)
+                    .lineLimit(4)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack(spacing: 0) {
+                miniStat("\(s.graffiti_count)", "カード")
+                statDivider
+                miniStat(stats.map { "\($0.visitor_count)" } ?? "–", "訪れた人")
+                statDivider
+                if let stats, stats.my_visits > 0 {
+                    Button {
+                        showVisits = true
+                    } label: {
+                        miniStat("\(stats.my_visits)", "あなたが訪れた回数", warm: true)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("あなたが訪れた日を見る")
+                } else {
+                    miniStat(stats == nil ? "–" : "0", "あなたが訪れた回数")
+                }
+            }
+            .padding(.vertical, 10)
+            .background(Theme.surfaceElevated, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            GateWhereWhen(title: s.title, createdAt: s.created_at,
+                          coordinate: exactPlace ?? CLLocationCoordinate2D(latitude: s.approx_lat, longitude: s.approx_lon),
+                          exact: exactPlace != nil, coverPath: s.cover_path,
+                          mine: s.owner == session.userID, ownerName: s.owner_name,
+                          compact: true, visibility: Visibility.label(of: s.visibility))
+            // GATE の位置の記録が見つかりにくくなったときだけ（作った本人）
+            if let health, health.looksStale || !health.has_map {
+                placeMemoryNote(health)
+            }
+            if !trails.isEmpty {
+                trailStrip
+            }
+        }
+        .padding(16)
+        .background(Theme.background, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+    }
+
+    private func miniStat(_ value: String, _ label: String, warm: Bool = false) -> some View {
+        VStack(spacing: 2) {
+            Text(value)
+                .font(.title3.weight(.heavy).monospacedDigit())
+                .foregroundStyle(warm ? Theme.warm : Theme.text)
+            Text(label)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(Theme.textSecondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .frame(maxWidth: .infinity)
     }
 
     /// AR カメラを開く（AR の画面から開いた扉の中なら、シートを閉じていまの扉のまま）
@@ -524,14 +647,7 @@ struct GateDetailView: View {
             refreshToken += 1
         } catch {
             actionMessage = ErrorText.isMissingFunction(error)
-                ? "「扉を出る」は、サーバーの準備（setup_all.sql の貼り直し）のあとで使えます。" : ErrorText.of(error)
-        }
-    }
-
-    private func header(_ s: GateSummary) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            hero(s)
-            statsBox(s)
+                ? "「GATE を出る」は、サーバーの準備（setup_all.sql の貼り直し）のあとで使えます。" : ErrorText.of(error)
         }
     }
 
@@ -563,24 +679,6 @@ struct GateDetailView: View {
                         .lineLimit(1)
                 }
             }
-            .overlay(alignment: .bottomTrailing) {
-                // 表紙が横倒しのとき、すぐ直せるように（作った人・一緒に管理する人）
-                if s.cover_path != nil, canManage(s) {
-                    Button {
-                        rotatingCover = true
-                    } label: {
-                        Label("向きを直す", systemImage: "rotate.right")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 12).padding(.vertical, 8)
-                            .background(.black.opacity(0.5), in: Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    .padding(14)
-                    .padding(.bottom, 6)
-                    .accessibilityLabel("表紙の写真の向きを直す")
-                }
-            }
         }
     }
 
@@ -602,23 +700,20 @@ struct GateDetailView: View {
                         Button {
                             showVisits = true
                         } label: {
-                            BoardStat(value: "\(stats.my_visits)", label: "あなたが来た回数", warm: true)
+                            BoardStat(value: "\(stats.my_visits)", label: "あなたが訪れた回数", warm: true)
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel("あなたが来た日を見る")
+                        .accessibilityLabel("あなたが訪れた日を見る")
                     } else {
-                        BoardStat(value: stats == nil ? "–" : "0", label: "あなたが来た回数")
+                        BoardStat(value: stats == nil ? "–" : "0", label: "あなたが訪れた回数")
                     }
                 }
                 // 入りきらなければ次の行へ
                 FlowLayout(spacing: 8, lineSpacing: 8) {
                     Group {
                         if let last = stats?.last_activity_at { chip("最後の記録 \(ServerDate.relative(last))", "clock") }
-                        chip("見える人：" + Visibility.label(of: s.visibility), "eye")
+                        chip("見せる範囲：" + Visibility.label(of: s.visibility), "eye")
                     }
-                }
-                if let actionMessage {
-                    NoticeText(text: actionMessage, isError: false)
                 }
             }
             .padding(16)
@@ -640,7 +735,8 @@ struct GateDetailView: View {
                           coordinate: exactPlace ?? CLLocationCoordinate2D(latitude: s.approx_lat, longitude: s.approx_lon),
                           exact: exactPlace != nil, coverPath: s.cover_path,
                           mine: s.owner == session.userID, ownerName: s.owner_name)
-            if let health {
+            // 見つかりにくくなったときだけ（ふだんの様子は出さない）
+            if let health, health.looksStale || !health.has_map {
                 placeMemoryNote(health)
             }
         }
@@ -664,12 +760,12 @@ struct GateDetailView: View {
     private func placeMemoryNote(_ h: PlaceMapHealth) -> some View {
         let text: String
         if !h.has_map {
-            text = "GATE の位置の記録がありません。友達の iPhone では扉が仮の位置に出ます。現地で扉を開け、「扉の位置を合わせる」→「この位置で GATE の位置の記録を撮り直す」で保存できます。"
+            text = "GATE の位置の記録がありません。友達の iPhone では GATE が仮の位置に出ます。現地で GATE を開け、「GATE の位置を合わせる」→「この位置で GATE の位置の記録を撮り直す」で保存できます。"
         } else if h.recent_attempts == 0 {
             text = "GATE の位置の記録：まだ友達が探していません。"
         } else {
             text = "GATE の位置の記録：最近 \(h.recent_attempts) 回のうち \(h.recent_found) 回、友達の iPhone で見つかりました。"
-                + (h.looksStale ? "見つかりにくくなっています。現地で扉を開けて「GATE の位置の記録を撮り直す」を押してください。" : "")
+                + (h.looksStale ? "見つかりにくくなっています。現地で GATE を開けて「GATE の位置の記録を撮り直す」を押してください。" : "")
         }
         return Label(text, systemImage: h.looksStale ? "exclamationmark.triangle" : "checkmark.seal")
             .font(.caption)
@@ -706,9 +802,9 @@ struct GateDetailView: View {
             let minutes = max(1, Int(expires.timeIntervalSince(now) / 60 + 0.5))
             let near = keeper.entries[context.visit ?? UUID()]?.near
             BoardDoorPanel(isOpen: true,
-                           title: near == false ? "まもなく扉が閉じます" : "扉が開いています",
+                           title: near == false ? "まもなく GATE が閉じます" : "GATE が開いています",
                            detail: near == false ? "GATE から離れたので、あと約 \(minutes) 分で閉じます。"
-                                                 : "その場にいるあいだ開いたまま。下の「扉の中」で読んだり残したりできます。") {
+                                                 : "その場にいるあいだ開いたまま。下の「GATE の中」で読んだり残したりできます。") {
                 EmptyView()
             }
         } else {
@@ -716,10 +812,10 @@ struct GateDetailView: View {
                                                                          longitude: summary.approx_lon))
             let far = (distance ?? 0) > 150
             BoardDoorPanel(isOpen: false,
-                           title: "扉は閉じています",
+                           title: "GATE は閉じています",
                            detail: far && distance != nil
                                ? "ここから \(TrailGuide.distanceText(distance!))。GATE の近く（120m 以内）まで行くと開けられます。"
-                               : "作った人が写した場所・物にカメラを向けて、位置と景色が合うと扉が開きます。") {
+                               : "作った人が写した場所・物にカメラを向けて、位置と景色が合うと GATE が開きます。") {
                 if showActions {
                 VStack(spacing: 10) {
                     if far, distance != nil {
@@ -733,7 +829,7 @@ struct GateDetailView: View {
                         Button {
                             showAR = true
                         } label: {
-                            Label("着いたら、扉を開ける", systemImage: "door.left.hand.open")
+                            Label("着いたら、GATE を開ける", systemImage: "door.left.hand.open")
                         }
                         .buttonStyle(NightSecondaryButtonStyle())
                         .disabled(session.api == nil)
@@ -741,7 +837,7 @@ struct GateDetailView: View {
                         Button {
                             showAR = true
                         } label: {
-                            Label("扉を開ける", systemImage: "door.left.hand.open")
+                            Label("GATE を開ける", systemImage: "door.left.hand.open")
                         }
                         .buttonStyle(PrimaryButtonStyle())
                         .disabled(session.api == nil)
@@ -759,12 +855,12 @@ struct GateDetailView: View {
         let far = (distance ?? 0) > 150 && distance != nil
         return HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(far ? "ここから \(TrailGuide.distanceText(distance ?? 0))" : (distance == nil ? "扉は閉じています" : "近くにいます"))
+                Text(far ? "ここから \(TrailGuide.distanceText(distance ?? 0))" : (distance == nil ? "GATE は閉じています" : "近くにいます"))
                     .font(.subheadline.weight(.heavy))
                     .foregroundStyle(Theme.text)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
-                Text(far ? "120m 以内まで行くと扉を開けられます" : "カメラを向けて、扉を開けましょう")
+                Text(far ? "120m 以内まで行くと GATE を開けられます" : "カメラを向けて、GATE を開けましょう")
                     .font(.caption2)
                     .foregroundStyle(Theme.textSecondary)
                     .lineLimit(2)
@@ -782,7 +878,7 @@ struct GateDetailView: View {
                         .background(Theme.accentLight, in: Circle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("着いたら、扉を開ける")
+                .accessibilityLabel("着いたら、GATE を開ける")
                 Button {
                     openWalking(summary)
                 } label: {
@@ -798,7 +894,7 @@ struct GateDetailView: View {
                 Button {
                     showAR = true
                 } label: {
-                    Label("扉を開ける", systemImage: "door.left.hand.open")
+                    Label("GATE を開ける", systemImage: "door.left.hand.open")
                         .font(.headline)
                         .foregroundStyle(.white)
                         .padding(.horizontal, 18)
@@ -816,28 +912,6 @@ struct GateDetailView: View {
         .shadow(color: .black.opacity(0.14), radius: 14, y: 4)
         .padding(.horizontal, 12)
         .padding(.bottom, 6)
-    }
-
-    /// 作った本人だけ：別の時間の見え方を足す（夕方・夜・別の季節。景色の GATE で特に大事）
-    private func addLooksButton(_ summary: GateSummary) -> some View {
-        let isView = GateKind(raw: summary.kind) == .view
-        return VStack(alignment: .leading, spacing: 4) {
-            Button {
-                showAddLooks = true
-            } label: {
-                Label("別の時間の見え方を足す", systemImage: "sun.horizon")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Theme.warm)
-            }
-            .disabled(session.api == nil)
-            Text(isView
-                 ? "景色は時間・天気・季節で見え方が変わります。夕方や夜にも現地で足しておくと、その時間に来た友達も入れます。"
-                 : "夜や別の季節に現地で足しておくと、その時間に来た友達も入りやすくなります。")
-                .font(.caption)
-                .foregroundStyle(Theme.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(.top, 4)
     }
 
     // MARK: 動き
@@ -950,7 +1024,7 @@ struct GraffitiCard: View {
     @State private var showBig = false
     /// カードの帯に出す GATE の名前
     let gateTitle: String
-    /// 裏返しているか（裏はくわしいこと：書いた人・日時・公開範囲など）
+    /// 裏返しているか（裏はくわしいこと：書いた人・日時・見せる範囲など）
     @State private var flipped = false
     /// 表と裏の高さ（いま見えている面の高さにする。高いほうに合わせると、低い面の上下に空きができる）
     @State private var frontHeight: CGFloat = 0
@@ -1232,7 +1306,7 @@ struct GraffitiCard: View {
             if let edited = item.edited_at {
                 backRow("pencil", "直した日", GateDates.fullText(edited))
             }
-            backRow("eye", "見える人", Visibility.label(of: item.visibility))
+            backRow("eye", "見せる範囲", Visibility.label(of: item.visibility))
             backRow(item.local_only ? "mappin.and.ellipse" : "sparkles", "どこで見られるか",
                     item.local_only ? "この GATE の中だけ" : "GATE の中と、友達の新着（24 時間）")
             if let inAtlas {

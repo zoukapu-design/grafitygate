@@ -125,6 +125,18 @@ enum GateDates {
         return short.string(from: d)
     }
 
+    static let dayOnly: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ja_JP")
+        f.dateFormat = "yyyy年M月d日"
+        return f
+    }()
+
+    /// 「2026年11月18日」
+    static func day(_ s: String) -> String {
+        ServerDate.parse(s).map { dayOnly.string(from: $0) } ?? ""
+    }
+
     static func monthText(_ s: String) -> String {
         ServerDate.parse(s).map { month.string(from: $0) } ?? "日付なし"
     }

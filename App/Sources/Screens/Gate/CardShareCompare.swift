@@ -120,10 +120,6 @@ struct CardShareSheet: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding(.horizontal, 28)
 
-                Text("この絵と GATE へのリンクを送ります。リンクを開いた人に見えるのは GATE の名前と表紙だけで、GATE の中身は現地で扉を開けた人だけが見られます。")
-                    .font(.footnote)
-                    .foregroundStyle(Theme.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
 
                 if let image {
                     ShareLink(item: Image(uiImage: image),

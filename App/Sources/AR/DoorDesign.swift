@@ -44,7 +44,7 @@ enum DoorDesign: String, CaseIterable, Identifiable {
         case .torii: return "鳥居"
         case .timering: return "時空の輪"
         case .crystal: return "クリスタル"
-        case .wooden: return "木の扉"
+        case .wooden: return "木の戸"
         case .galaxy: return "銀河"
         case .heart: return "ハート"
         case .cloud: return "くも"
@@ -61,12 +61,12 @@ enum DoorDesign: String, CaseIterable, Identifiable {
     var summary: String {
         switch self {
         case .neon: return "夕焼けから夜空へ光るネオンのアーチ"
-        case .magic: return "光の文字の輪がまわる、円い魔法の扉"
+        case .magic: return "光の文字の輪がまわる、円い魔法の GATE"
         case .torii: return "朱い鳥居。くぐると向こうの世界へ"
         case .timering: return "開くと印が順に灯る、金属の大きな輪"
-        case .crystal: return "氷の結晶に囲まれた、すきとおる扉"
-        case .wooden: return "本物の扉のように、木の戸が開く"
-        case .galaxy: return "星と惑星が、まわりをめぐる円い扉"
+        case .crystal: return "氷の結晶に囲まれた、すきとおる GATE"
+        case .wooden: return "木の戸が、手前にゆっくり開く"
+        case .galaxy: return "星と惑星が、まわりをめぐる円い GATE"
         case .heart: return "小さなハートが浮かぶ、ピンクのハート"
         case .cloud: return "ふわふわの雲と、うしろに虹"
         case .flower: return "花でいっぱいのアーチ"
@@ -810,7 +810,7 @@ struct DoorDesignPicker: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text("扉の見た目").font(.caption.weight(.semibold)).foregroundStyle(Theme.textSecondary)
+                Text("GATE の見た目").font(.caption.weight(.semibold)).foregroundStyle(Theme.textSecondary)
                 Text(selection.label).font(.caption.weight(.heavy)).foregroundStyle(Theme.accent)
                 Text(selection.summary).font(.caption2).foregroundStyle(Theme.textSecondary).lineLimit(1)
             }
@@ -864,7 +864,7 @@ struct DoorDesignChip: View {
             }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("扉の見た目：\(design.label)。\(design.summary)")
+        .accessibilityLabel("GATE の見た目：\(design.label)。\(design.summary)")
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

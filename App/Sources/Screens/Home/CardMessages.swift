@@ -62,8 +62,6 @@ struct ChatCardSheet: View {
                                     .background(Theme.accentLight, in: Circle())
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(message.card_gate_title ?? "GATE").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
-                                    Text("この GATE の場所と、ほかのグラフィティカード（現地で）")
-                                        .font(.caption).foregroundStyle(Theme.textSecondary)
                                 }
                                 Spacer()
                                 Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(Theme.textSecondary)
@@ -137,8 +135,6 @@ struct SendCardSheet: View {
                             }
                         }
                     }
-                } footer: {
-                    Text("送った友達は、このカードの写真・ひとこと・GATE の名前を見られます。カードを消すと、送ったものも見えなくなります。")
                 }
                 Section("だれに送る？") {
                     if loaded && friends.isEmpty {

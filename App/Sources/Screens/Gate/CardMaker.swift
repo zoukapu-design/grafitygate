@@ -217,9 +217,9 @@ struct CardMakerView: View {
 
     private var visibilityRow: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("見せる人").font(.subheadline.weight(.heavy)).foregroundStyle(Theme.text)
+            Text("見せる範囲").font(.subheadline.weight(.heavy)).foregroundStyle(Theme.text)
             Menu {
-                Picker("見せる人", selection: $draft.visibility) {
+                Picker("見せる範囲", selection: $draft.visibility) {
                     ForEach(Visibility.allCases) { v in Text(v.label).tag(v) }
                 }
                 Toggle("この GATE の中だけで見せる（友達の新着に出さない）", isOn: $draft.localOnly)
@@ -253,7 +253,7 @@ struct CardMakerView: View {
             }
             .buttonStyle(PrimaryButtonStyle())
             .disabled(posting || draft.isEmpty || context.visit == nil)
-            Text(context.visit == nil ? "扉が閉じました。現地で扉を開けると残せます。"
+            Text(context.visit == nil ? "GATE が閉じました。現地で GATE を開けると残せます。"
                                       : "1 つの GATE に 1 日 1 枚。残したあとも、名前・ひとことは直せます。")
                 .font(.caption2)
                 .foregroundStyle(Theme.textSecondary)
@@ -295,7 +295,7 @@ struct CardMakerView: View {
 
     private func post() async {
         guard let api = session.api, let visit = context.visit else {
-            message = "扉が閉じました（GATE から離れたため）。現地でもう一度扉を開けてください。"
+            message = "GATE が閉じました（離れたため）。現地でもう一度 GATE を開けてください。"
             return
         }
         focus = nil

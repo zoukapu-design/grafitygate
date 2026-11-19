@@ -101,9 +101,6 @@ struct CardCommentsSheet: View {
                         .foregroundStyle(Theme.text)
                         .lineLimit(3)
                 }
-                Text("返信は、この GATE の中にいる人と、カードを書いた人だけが読めます。")
-                    .font(.caption2)
-                    .foregroundStyle(Theme.textSecondary)
             }
             Spacer(minLength: 0)
         }

@@ -120,8 +120,8 @@ struct StoryCameraControls: View {
                     .padding(.top, 10)
                     .transition(.opacity)
             } else if showHint {
-                Text(artworkCount > 0 ? "扉や、みんなの AR と一緒に撮れます。AR の飾りは押すと動きます。"
-                                      : "扉と一緒に撮れます。効果と文字を足してみましょう。")
+                Text(artworkCount > 0 ? "GATE や、みんなの AR と一緒に撮れます。AR の飾りは押すと動きます。"
+                                      : "GATE と一緒に撮れます。効果と文字を足してみましょう。")
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.center)
@@ -157,7 +157,7 @@ struct StoryCameraControls: View {
                 story.startText()
             }
             railButton(story.doorHidden ? "door.left.hand.closed" : "door.left.hand.open",
-                       label: story.doorHidden ? "扉を出す" : "扉を隠す", active: story.doorHidden) {
+                       label: story.doorHidden ? "GATE を出す" : "GATE を隠す", active: story.doorHidden) {
                 story.toggleDoor()
             }
             railButton("timer", label: story.timerSeconds == 0 ? "タイマー" : "\(story.timerSeconds) 秒",
@@ -413,7 +413,7 @@ private struct StoryTextComposer: View {
                     .lineLimit(1...3)
                     .focused($focused)
                     .padding(.horizontal, 30)
-                Text("\(story.textDraft?.text.count ?? 0) / 40・写真だけに入る文字です（GATE には残りません）")
+                Text("\(story.textDraft?.text.count ?? 0) / 40")
                     .font(.caption)
                     .foregroundStyle(.white.opacity(0.75))
                 Spacer()

@@ -231,7 +231,7 @@ private struct HomeWelcome: View {
                 .buttonStyle(PrimaryButtonStyle())
             }
             Button { go(.map) } label: {
-                GuideRow(systemImage: "map", title: "近くの GATE を探す", detail: "地図で、100m 以内の扉を見られます。")
+                GuideRow(systemImage: "map", title: "近くの GATE を探す", detail: "地図で、100m 以内の GATE を見られます。")
             }
             .buttonStyle(.plain)
             Button { go(.capture) } label: {

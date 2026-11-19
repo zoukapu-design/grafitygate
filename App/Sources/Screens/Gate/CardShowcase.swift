@@ -94,7 +94,7 @@ struct GateCardShowcase: View {
     private var subtitle: String {
         if !context.canRead {
             let cards = shown
-            return cards.isEmpty ? "扉を開けると、ここに残されたカードが見られます" : "新しい \(cards.count) 枚をチラ見せ。扉を開けると全部見られます"
+            return cards.isEmpty ? "GATE を開けると、ここに残されたカードが見られます" : "新しい \(cards.count) 枚をチラ見せ。GATE を開けると全部見られます"
         }
         var parts: [String] = []
         if friendCount > 0 { parts.append("友達 \(friendCount) 枚") }
@@ -185,11 +185,11 @@ private struct LockedCardSlot: View {
                 .foregroundStyle(.white)
                 .frame(width: 60, height: 60)
                 .background(GateCoverImage.nightSky, in: Circle())
-            Text(hasCards ? "ほかのカードは\n扉の向こう" : "カードは\n扉の向こう")
+            Text(hasCards ? "ほかのカードは\nGATE の中" : "カードは\nGATE の中")
                 .font(.headline.weight(.heavy))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(onDark ? .white : Theme.text)
-            Text("現地で扉を開けると\n全部見られます")
+            Text("現地で GATE を開けると\n全部見られます")
                 .font(.caption.weight(.semibold))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(onDark ? .white.opacity(0.7) : Theme.textSecondary)
@@ -214,7 +214,7 @@ private struct EmptyCardSlot: View {
                 .font(.headline.weight(.heavy))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(onDark ? .white : Theme.text)
-            Text("扉を開けて、最初の 1 枚を")
+            Text("GATE を開けて、最初の 1 枚を")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(onDark ? .white.opacity(0.7) : Theme.textSecondary)
         }

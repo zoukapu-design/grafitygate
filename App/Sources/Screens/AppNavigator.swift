@@ -40,12 +40,12 @@ final class AppNavigator: ObservableObject {
 
     /// TRAIL を送るときの文（地点の中身は、現地で扉を開けた人だけ）
     nonisolated static func trailShareText(title: String, stops: Int, id: UUID) -> String {
-        "Grafity Gate の TRAIL「\(title)」（\(stops) か所）\n順番に現地で扉を開けて歩く、思い出の道です。\n\(trailURL(id).absoluteString)"
+        "Grafity Gate の TRAIL「\(title)」（\(stops) か所）\n順番に現地で GATE を開けて歩く、思い出の道です。\n\(trailURL(id).absoluteString)"
     }
 
     /// GATE を送るときの文（現地でしか中は見られないことも書く）
     nonisolated static func gateShareText(title: String, id: UUID) -> String {
-        "Grafity Gate の「\(title)」\n現地で扉を開けると、中のグラフィティカードや掲示板が見られます。\n\(gateURL(id).absoluteString)"
+        "Grafity Gate の「\(title)」\n現地で GATE を開けると、中のグラフィティカードや掲示板が見られます。\n\(gateURL(id).absoluteString)"
     }
 
     /// QR・リンク・打った文字から、友達の ID を取り出す（ID の形でなければ nil）

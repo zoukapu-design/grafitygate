@@ -52,13 +52,11 @@ struct FriendWorks: View {
         if !loaded {
             ProgressView().frame(maxWidth: .infinity).padding(.vertical, 20)
         } else if trails.isEmpty {
-            Text(isMe ? "まだ TRAIL を作っていません。扉を開けた GATE が 2 つ以上あれば、TRAIL を作れます。"
+            Text(isMe ? "まだ TRAIL を作っていません。開けたことのある GATE が 2 つ以上あれば、TRAIL を作れます。"
                       : "\(name)さんが見せている TRAIL はまだありません。")
                 .font(.subheadline).foregroundStyle(Theme.textSecondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
         } else {
-            Text("GATE をつないだ「思い出を歩く道」。順番に現地で扉を開けると進みます。")
-                .font(.caption).foregroundStyle(Theme.textSecondary)
             ForEach(trails) { trail in
                 NavigationLink {
                     TrailDetailView(trailID: trail.id, title: trail.title)
@@ -168,12 +166,9 @@ struct FriendWorks: View {
         } else if !loaded {
             ProgressView().frame(maxWidth: .infinity).padding(.vertical, 30)
         } else if cards.isEmpty {
-            note(isMe ? "写真つきのカードを残すと、ここに並びます。友達に見せるかは、カードごとに「カード図鑑に載せる」で選べます。"
+            note(isMe ? "写真つきのカードを残すと、ここに並びます。"
                       : "\(name) さんがカード図鑑に載せたカードはまだありません。")
         } else {
-            Text(isMe ? "友達には、「カード図鑑に載せる」を選んだカードだけが見えます。ひとことの文は現地だけです。"
-                      : "ひとことの文は、現地で扉を開けると読めます。")
-                .font(.caption).foregroundStyle(Theme.textSecondary)
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)], spacing: 18) {
                 ForEach(cards) { card in
                     NavigationLink {

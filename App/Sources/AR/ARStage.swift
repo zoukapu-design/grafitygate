@@ -26,7 +26,7 @@ final class ARStage: NSObject, ObservableObject {
             case .moveSlowly: return "動きが速すぎます。ゆっくり動かしてください"
             case .tooDark: return "暗すぎて周りが見えません。明るい所でお試しください"
             case .featureless: return "周りの形がつかみにくい所です。少し離れて、床や家具も一緒に映してください"
-            case .relocalizing: return "扉の場所を探しています。作った人が扉を置いた辺りを見回してください"
+            case .relocalizing: return "GATE の場所を探しています。作った人が GATE を置いた辺りを見回してください"
             case .interrupted: return "カメラが止まりました。少し待つと戻ります"
             case .cameraDenied: return "カメラが許可されていません。設定アプリの「Grafity Gate」で「カメラ」を入れてください"
             case .unavailable: return "カメラを使えませんでした。ほかのアプリでカメラを使っていたら閉じて、もう一度開いてください"
@@ -40,7 +40,7 @@ final class ARStage: NSObject, ObservableObject {
 
         var errorDescription: String? {
             switch self {
-            case .noWorldMap: return "GATE の位置の記録を作れませんでした。扉のまわりを、もう少し見回してください。"
+            case .noWorldMap: return "GATE の位置の記録を作れませんでした。GATE のまわりを、もう少し見回してください。"
             case .noFrame: return "カメラの準備ができていません。少し待ってからお試しください。"
             }
         }

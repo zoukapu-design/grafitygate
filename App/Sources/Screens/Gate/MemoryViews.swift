@@ -27,14 +27,12 @@ struct MemorySection: View {
                 } label: {
                     Label("アルバムを作る", systemImage: "rectangle.stack.badge.plus")
                 }
-                .buttonStyle(SecondaryButtonStyle())
-            } else if memories.isEmpty {
-                Text("アルバムは、現地で扉を開けると見られます。何枚かの写真を 1 つにまとめ、一緒にいた友達も写真を足せます。")
-                    .font(.subheadline).foregroundStyle(Theme.textSecondary)
+                .buttonStyle(PrimaryButtonStyle())
             }
             if let error { NoticeText(text: error) }
-            if context.isInside && memories.isEmpty && error == nil {
-                Text("まだアルバムはありません。").font(.subheadline).foregroundStyle(Theme.textSecondary)
+            if memories.isEmpty && error == nil {
+                EmptyNote(title: context.isInside ? "最初のアルバムを作ろう" : "GATE を開けると見られます",
+                          message: "", systemImage: "photo.stack")
             }
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
                 ForEach(memories) { memory in
@@ -253,7 +251,10 @@ struct MemoryDraftStrip: View {
     }
 }
 
-/// アルバムを作る：題・ひとこと・見せる人 → 写真・動画（12 まで）・声 → 一緒にいた友達
+/// アルバムを作る（2026-11-20 オーナー「どこを触ればいいのか分からない」）：
+/// いちばん上がアルバムの表紙（名前・ひとことは表紙の上に直接書く。1 枚目の写真が表紙になる）。
+/// その下に「入れるもの」を大きな札で（写真・動画／声／グラフィティカード）、一緒にいた友達、見せる範囲。
+/// いちばん下のボタンは、足りないものを教えてくれる（名前を入れよう → 写真を入れよう → アルバムを作る）。
 struct MemoryComposer: View {
     let context: GateContext
     let onCreated: () -> Void
@@ -266,11 +267,18 @@ struct MemoryComposer: View {
     @State private var items: [PhotosPickerItem] = []
     @State private var picked: [MemoryDraftItem] = []
     @State private var voices: [MemoryDraftItem] = []
+    @State private var cards: [MyCard] = []
     @State private var loading = false
     @State private var recording = false
+    @State private var choosingCard = false
+    @State private var choosingFriends = false
     @State private var members: Set<UUID> = []
+    @State private var memberNames: [UUID: String] = [:]
     @State private var progress: String?
     @State private var message: String?
+    @FocusState private var focus: Field?
+
+    enum Field { case title, note }
 
     init(context: GateContext, onCreated: @escaping () -> Void) {
         self.context = context
@@ -278,84 +286,356 @@ struct MemoryComposer: View {
     }
 
     private var drafts: [MemoryDraftItem] { picked + voices }
+    private var hasTitle: Bool { !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    private var hasItems: Bool { !drafts.isEmpty || !cards.isEmpty }
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    TextField("題（例：2026 年の花見）", text: $title)
-                    TextField("ひとこと（なくても大丈夫）", text: $note, axis: .vertical).lineLimit(2...4)
-                    Picker("見せる人", selection: $visibility) {
-                        ForEach(Visibility.allCases) { v in Text(v.label).tag(v) }
-                    }
-                }
-                Section {
-                    PhotosPicker(selection: $items, maxSelectionCount: 12, matching: .any(of: [.images, .videos])) {
-                        Label(picked.isEmpty ? "写真・動画を選ぶ（12 まで）" : "写真・動画を選び直す（\(picked.count)）",
-                              systemImage: "photo.on.rectangle.angled")
-                    }
-                    Button {
-                        recording = true
-                    } label: {
-                        Label("声を残す（60 秒まで）", systemImage: "mic")
-                    }
-                    if loading {
-                        HStack { ProgressView(); Text("動画を整えています…").foregroundStyle(Theme.textSecondary) }
-                    }
-                    if !drafts.isEmpty {
-                        MemoryDraftStrip(drafts: drafts) { id in
-                            MemoryDraftLoader.discard(drafts.filter { $0.id == id })
-                            picked.removeAll { $0.id == id }
-                            voices.removeAll { $0.id == id }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    cover
+                    VStack(alignment: .leading, spacing: 12) {
+                        SectionHeader(title: "入れるもの", count: drafts.count + cards.count)
+                        addTiles
+                        if loading {
+                            Label("動画を整えています…", systemImage: "hourglass")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(Theme.accent)
                         }
+                        if hasItems { itemsGrid }
                     }
-                } header: {
-                    Text("写真・動画・声")
-                } footer: {
-                    Text("動画ははじめの 15 秒まで。位置情報などは消し、iPhone の中で小さくしてから送ります。人の顔や声が入るときは、その人に断ってから。")
+                    friendsRow
+                    visibilityRow
+                    if let message { NoticeText(text: message) }
                 }
-                Section {
-                    NavigationLink {
-                        FriendPicker(title: "一緒にいた友達", multiple: true, selection: $members)
-                    } label: {
-                        HStack {
-                            Text("一緒にいた友達")
-                            Spacer()
-                            Text(members.isEmpty ? "なし" : "\(members.count) 人").foregroundStyle(Theme.textSecondary)
-                        }
-                    }
-                } footer: {
-                    Text("仲間に入った友達は、作ってから 72 時間のあいだ、ここにいなくても自分の写真・動画・声を足せます。")
-                }
-                if let progress {
-                    Section { HStack { ProgressView(); Text(progress).foregroundStyle(Theme.textSecondary) } }
-                }
-                if let message {
-                    Section { NoticeText(text: message) }
-                }
+                .padding(16)
+                .padding(.bottom, 90)
             }
+            .scrollDismissesKeyboard(.interactively)
+            .background(Theme.background.ignoresSafeArea())
+            .safeAreaInset(edge: .bottom) { createBar }
             .navigationTitle("アルバムを作る")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("やめる") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("作る") { Task { await create() } }
-                        .bold()
-                        .disabled(progress != nil || loading || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                  || drafts.isEmpty)
-                }
             }
             .onChange(of: items) { _, newItems in
                 Task { await loadPicked(newItems) }
             }
+            .onChange(of: members) { _, ids in Task { await loadNames(ids) } }
             .sheet(isPresented: $recording) {
                 VoiceRecorderSheet { url, seconds in
-                    voices.append(MemoryDraftItem(kind: .voice(url, seconds)))
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
+                        voices.append(MemoryDraftItem(kind: .voice(url, seconds)))
+                    }
                 }
+            }
+            .sheet(isPresented: $choosingCard) {
+                MyCardPicker(preferGate: context.gateID, title: "入れるカードを選ぶ") { card in
+                    guard !cards.contains(where: { $0.id == card.id }) else { return }
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) { cards.append(card) }
+                    Haptics.tap()
+                }
+                .environmentObject(session)
+            }
+            .navigationDestination(isPresented: $choosingFriends) {
+                FriendPicker(title: "一緒にいた友達", multiple: true, selection: $members)
             }
         }
         .interactiveDismissDisabled(progress != nil)
         .onDisappear { MemoryDraftLoader.discard(drafts) }
+    }
+
+    // MARK: 表紙（名前とひとことは、ここに直接書く）
+
+    private var coverImage: UIImage? { picked.first?.thumbnail }
+
+    private var cover: some View {
+        ZStack(alignment: .bottomLeading) {
+            Group {
+                if let image = coverImage {
+                    Image(uiImage: image).resizable().scaledToFill()
+                } else {
+                    LinearGradient(colors: [Color(hex: 0xF0702A), Color(hex: 0xE0457B), Color(hex: 0x5B3FE0)],
+                                   startPoint: .topLeading, endPoint: .bottomTrailing)
+                        .overlay(alignment: .topTrailing) {
+                            Image(systemName: "photo.stack.fill")
+                                .font(.system(size: 64, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.22))
+                                .padding(22)
+                        }
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 230)
+            .clipped()
+            LinearGradient(colors: [.clear, .black.opacity(0.55)], startPoint: .center, endPoint: .bottom)
+            VStack(alignment: .leading, spacing: 6) {
+                TextField("", text: $title, prompt: Text("アルバムの名前").foregroundColor(.white.opacity(0.75)))
+                    .font(.title2.weight(.heavy))
+                    .foregroundStyle(.white)
+                    .focused($focus, equals: .title)
+                    .submitLabel(.next)
+                    .onSubmit { focus = .note }
+                TextField("", text: $note, prompt: Text("ひとこと（なくても大丈夫）").foregroundColor(.white.opacity(0.65)),
+                          axis: .vertical)
+                    .font(.subheadline)
+                    .foregroundStyle(.white.opacity(0.95))
+                    .lineLimit(1...3)
+                    .focused($focus, equals: .note)
+            }
+            .padding(18)
+            .overlay(alignment: .topTrailing) {
+                if !hasTitle && focus == nil {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(8)
+                        .background(.black.opacity(0.3), in: Circle())
+                        .offset(x: -8, y: -28)
+                }
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .overlay(alignment: .top) {
+            // 本のような綴じ目
+            HStack(spacing: 18) {
+                ForEach(0..<4, id: \.self) { _ in
+                    Capsule().fill(.white.opacity(0.85)).frame(width: 18, height: 6)
+                }
+            }
+            .padding(.top, 10)
+        }
+        .shadow(color: .black.opacity(0.18), radius: 16, y: 8)
+        .onTapGesture { if focus == nil { focus = .title } }
+    }
+
+    // MARK: 入れるもの
+
+    private var addTiles: some View {
+        HStack(spacing: 10) {
+            PhotosPicker(selection: $items, maxSelectionCount: 12, matching: .any(of: [.images, .videos])) {
+                addTile("写真・動画", systemImage: "photo.on.rectangle.angled",
+                        colors: [Color(hex: 0xFF9A5A), Color(hex: 0xF0457B)])
+            }
+            .buttonStyle(.plain)
+            Button {
+                recording = true
+            } label: {
+                addTile("声を録る", systemImage: "mic.fill", colors: [Color(hex: 0x6E7CFF), Color(hex: 0x5B3FE0)])
+            }
+            .buttonStyle(.plain)
+            Button {
+                choosingCard = true
+            } label: {
+                addTile("カード", systemImage: "rectangle.portrait.on.rectangle.portrait.angled.fill",
+                        colors: [Color(hex: 0x2FC1A8), Color(hex: 0x2F86C9)])
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func addTile(_ title: String, systemImage: String, colors: [Color]) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: systemImage)
+                .font(.system(size: 24, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 52, height: 52)
+                .background(LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing),
+                            in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(alignment: .topTrailing) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(.white, Theme.text)
+                        .offset(x: 7, y: -7)
+                }
+            Text(title)
+                .font(.footnote.weight(.bold))
+                .foregroundStyle(Theme.text)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity, minHeight: 104)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(Theme.line))
+    }
+
+    /// 入れたもの（3 列）。右上の × で外す。1 枚目の写真が表紙
+    private var itemsGrid: some View {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
+            ForEach(Array(drafts.enumerated()), id: \.element.id) { index, draft in
+                draftTile(draft, isCover: index == 0 && draft.thumbnail != nil)
+            }
+            ForEach(cards, id: \.id) { card in
+                TradingCard(content: MyCardPicker.content(card, author: session.profile?.display_name ?? "あなた"),
+                            animated: false)
+                    .overlay(alignment: .topTrailing) {
+                        removeButton {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { cards.removeAll { $0.id == card.id } }
+                        }
+                    }
+                    .transition(.scale(scale: 0.6).combined(with: .opacity))
+            }
+        }
+    }
+
+    private func draftTile(_ draft: MemoryDraftItem, isCover: Bool) -> some View {
+        Color.clear
+            .aspectRatio(1, contentMode: .fit)
+            .overlay { draftFace(draft) }
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(alignment: .topLeading) {
+                if isCover {
+                    Text("表紙")
+                        .font(.caption2.weight(.heavy))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(Theme.warm, in: Capsule())
+                        .padding(6)
+                }
+            }
+            .overlay(alignment: .topTrailing) {
+                removeButton {
+                    MemoryDraftLoader.discard([draft])
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        picked.removeAll { $0.id == draft.id }
+                        voices.removeAll { $0.id == draft.id }
+                    }
+                }
+            }
+            .transition(.scale(scale: 0.6).combined(with: .opacity))
+    }
+
+    private func draftFace(_ draft: MemoryDraftItem) -> some View {
+        ZStack(alignment: .bottomLeading) {
+            if let image = draft.thumbnail {
+                Image(uiImage: image).resizable().scaledToFill()
+            } else {
+                LinearGradient(colors: [Color(hex: 0x6E7CFF), Color(hex: 0x5B3FE0)], startPoint: .top, endPoint: .bottom)
+                    .overlay(Image(systemName: "waveform").font(.system(size: 30, weight: .bold)).foregroundStyle(.white))
+            }
+            if let d = draft.duration {
+                Label(durationText(d), systemImage: draft.thumbnail == nil ? "mic.fill" : "play.fill")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 6).padding(.vertical, 3)
+                    .background(.black.opacity(0.45), in: Capsule())
+                    .padding(6)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func removeButton(_ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: "xmark.circle.fill")
+                .font(.system(size: 22))
+                .foregroundStyle(.white, .black.opacity(0.55))
+        }
+        .buttonStyle(.plain)
+        .padding(4)
+        .accessibilityLabel("外す")
+    }
+
+    // MARK: 一緒にいた友達・見せる範囲
+
+    private var friendsRow: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader(title: "一緒にいた友達", count: members.count)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 14) {
+                    Button {
+                        choosingFriends = true
+                    } label: {
+                        VStack(spacing: 6) {
+                            Image(systemName: "plus")
+                                .font(.system(size: 20, weight: .bold))
+                                .foregroundStyle(Theme.accent)
+                                .frame(width: 56, height: 56)
+                                .background(Theme.accentLight, in: Circle())
+                                .overlay(Circle().strokeBorder(Theme.accent.opacity(0.4), style: StrokeStyle(lineWidth: 1.5, dash: [4, 3])))
+                            Text(members.isEmpty ? "えらぶ" : "かえる")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(Theme.accent)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    ForEach(Array(members), id: \.self) { id in
+                        VStack(spacing: 6) {
+                            NeonAvatar(name: memberNames[id] ?? "友", size: 56)
+                            Text(memberNames[id] ?? "…")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(Theme.text)
+                                .lineLimit(1)
+                                .frame(maxWidth: 64)
+                        }
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+        }
+    }
+
+    private var visibilityRow: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader(title: "見せる範囲")
+            HStack(spacing: 8) {
+                ForEach(Visibility.allCases) { v in
+                    let on = visibility == v
+                    Button {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { visibility = v }
+                        Haptics.tap()
+                    } label: {
+                        Text(v.label)
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(on ? .white : Theme.text)
+                            .frame(maxWidth: .infinity, minHeight: 42)
+                            .background(on ? Theme.accent : Theme.surface, in: Capsule())
+                            .overlay(Capsule().stroke(on ? Color.clear : Theme.line))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(on ? .isSelected : [])
+                }
+            }
+        }
+    }
+
+    // MARK: 作る
+
+    private var createBar: some View {
+        VStack(spacing: 8) {
+            if let progress {
+                HStack(spacing: 10) {
+                    ProgressView()
+                    Text(progress).font(.footnote.weight(.semibold)).foregroundStyle(Theme.text)
+                }
+            }
+            Button {
+                if !hasTitle {
+                    focus = .title
+                } else if hasItems {
+                    Task { await create() }
+                }
+            } label: {
+                Label(!hasTitle ? "まず、アルバムの名前を入れよう" : (hasItems ? "アルバムを作る" : "写真・声・カードを入れよう"),
+                      systemImage: !hasTitle ? "pencil" : (hasItems ? "sparkles" : "arrow.up"))
+            }
+            .buttonStyle(PrimaryButtonStyle())
+            .disabled(progress != nil || loading || (hasTitle && !hasItems))
+            .opacity(hasTitle && hasItems ? 1 : 0.85)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(.ultraThinMaterial)
+    }
+
+    private func loadNames(_ ids: Set<UUID>) async {
+        guard let api = session.api else { return }
+        let missing = ids.filter { memberNames[$0] == nil }
+        guard !missing.isEmpty else { return }
+        if let names = try? await api.names(of: Array(missing)) {
+            memberNames.merge(names) { a, _ in a }
+        }
     }
 
     private func loadPicked(_ newItems: [PhotosPickerItem]) async {
@@ -373,7 +653,7 @@ struct MemoryComposer: View {
     private func create() async {
         guard let api = session.api, let media = session.media, let me = session.userID else { return }
         guard let visit = context.visit else {
-            message = "扉が閉じました（GATE から離れたため）。現地でもう一度扉を開けてください。"
+            message = "GATE が閉じました（離れたため）。現地でもう一度 GATE を開けてください。"
             return
         }
         message = nil
@@ -389,10 +669,14 @@ struct MemoryComposer: View {
                 progress = "\(MemoryDraftLoader.label(draft))を送っています（\(i + 1)/\(all.count)）…"
                 try await MemoryDraftLoader.add(draft, to: memory, api: api, media: media, me: me)
             }
+            for card in cards {
+                progress = "グラフィティカードを入れています…"
+                try? await api.addMemoryCard(memory: memory, card: card.id)
+            }
             for friend in members {
                 try? await api.inviteToMemory(memory, user: friend)
             }
-            Trace.log("アルバムを作りました（\(all.count) つ・仲間 \(members.count) 人）")
+            Trace.log("アルバムを作りました（\(all.count) つ・カード \(cards.count) 枚・仲間 \(members.count) 人）")
             Haptics.success()
             onCreated()
             dismiss()

@@ -168,7 +168,7 @@ struct SavedCard: Decodable, Identifiable, Hashable {
         var c = TradingCardContent(id: id, photoPath: photo_path, body: body ?? "", author: mine ? "あなた" : author_name,
                                    title: title, gateTitle: gate_title, createdAt: created_at,
                                    finish: CardFinish(raw: finish), badge: mine ? .mine : nil)
-        if body == nil { c.bodyNote = "ひとことは、この GATE の扉を開けると読めます" }
+        if body == nil { c.bodyNote = "ひとことは、この GATE を開けると読めます" }
         return c
     }
 }

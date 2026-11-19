@@ -12,6 +12,9 @@ struct GateWhereWhen: View {
     var coverPath: String? = nil
     var mine = false
     var ownerName: String? = nil
+    /// 短く見せる（GATE の中の「この GATE について」）：地図を低くし、場所・作った日・見せる範囲を小さな 2 行に
+    var compact = false
+    var visibility: String? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -34,7 +37,7 @@ struct GateWhereWhen: View {
                 .mapStyle(.standard(pointsOfInterest: .including([.publicTransport, .park, .museum])))
                 // 正確な位置があとから届いたら、地図を作り直してそこを真ん中にする
                 .id(PlaceNames.key(coordinate.latitude, coordinate.longitude) + (exact ? "e" : "a"))
-                .frame(height: 150)
+                .frame(height: compact ? 120 : 150)
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .overlay(alignment: .topTrailing) {
                     Label("地図アプリ", systemImage: "arrow.up.right.square")
@@ -49,14 +52,29 @@ struct GateWhereWhen: View {
             .buttonStyle(.plain)
             .accessibilityLabel("地図アプリで場所を開く")
 
-            VStack(alignment: .leading, spacing: 4) {
-                Label(GateDates.fullText(createdAt) + " に作成", systemImage: "calendar")
-                    .font(.subheadline.weight(.semibold))
+            if compact {
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "mappin.and.ellipse")
+                        PlaceNameText(lat: coordinate.latitude, lon: coordinate.longitude, font: .footnote.weight(.semibold))
+                        if !exact { Text("（おおよそ）") }
+                    }
+                    .font(.footnote.weight(.semibold))
                     .foregroundStyle(Theme.text)
-                HStack(spacing: 6) {
-                    PlaceNameText(lat: coordinate.latitude, lon: coordinate.longitude, font: .subheadline)
-                    if !exact {
-                        Text("（おおよそ）").font(.caption).foregroundStyle(Theme.textSecondary)
+                    Text(GateDates.day(createdAt) + " に作成" + (visibility.map { "・見せる範囲：\($0)" } ?? ""))
+                        .font(.caption)
+                        .foregroundStyle(Theme.textSecondary)
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 4) {
+                    Label(GateDates.fullText(createdAt) + " に作成", systemImage: "calendar")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Theme.text)
+                    HStack(spacing: 6) {
+                        PlaceNameText(lat: coordinate.latitude, lon: coordinate.longitude, font: .subheadline)
+                        if !exact {
+                            Text("（おおよそ）").font(.caption).foregroundStyle(Theme.textSecondary)
+                        }
                     }
                 }
             }

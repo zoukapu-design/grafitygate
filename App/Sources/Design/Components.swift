@@ -99,6 +99,8 @@ struct ProfileBanner: View {
     var relation: String? = nil
     var stats: [(value: Int?, label: String)] = []
     var onEditName: (() -> Void)? = nil
+    /// 数を押したとき（何番目の数か）。無ければ押せない
+    var onStatTap: ((Int) -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -143,16 +145,25 @@ struct ProfileBanner: View {
                         if i > 0 {
                             Rectangle().fill(.white.opacity(0.18)).frame(width: 1, height: 30)
                         }
-                        VStack(spacing: 2) {
-                            Text(stat.value.map(String.init) ?? "–")
-                                .font(.title3.weight(.heavy).monospacedDigit())
-                                .foregroundStyle(.white)
-                                .contentTransition(.numericText())
-                            Text(stat.label)
-                                .font(.caption)
-                                .foregroundStyle(.white.opacity(0.72))
+                        Button {
+                            onStatTap?(i)
+                        } label: {
+                            VStack(spacing: 2) {
+                                Text(stat.value.map(String.init) ?? "–")
+                                    .font(.title3.weight(.heavy).monospacedDigit())
+                                    .foregroundStyle(.white)
+                                    .contentTransition(.numericText())
+                                Text(stat.label)
+                                    .font(.caption)
+                                    .foregroundStyle(.white.opacity(0.72))
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.75)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .contentShape(Rectangle())
                         }
-                        .frame(maxWidth: .infinity)
+                        .buttonStyle(.plain)
+                        .disabled(onStatTap == nil)
                         .accessibilityElement(children: .combine)
                     }
                 }

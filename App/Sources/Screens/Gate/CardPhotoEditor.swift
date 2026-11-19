@@ -366,11 +366,6 @@ struct CardPhotoEditor: View {
             .aspectRatio(Self.aspect, contentMode: .fit)
             .padding(.horizontal, 16)
 
-            Text("2 本の指で広げる・1 本の指で動かすと、カードに入る所を決められます")
-                .font(.caption)
-                .foregroundStyle(.white.opacity(0.7))
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 24)
 
             HStack(spacing: 12) {
                 tool("rotate.left", "左に回す") { turn(right: false) }

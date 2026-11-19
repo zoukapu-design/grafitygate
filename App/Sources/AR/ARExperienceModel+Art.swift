@@ -54,7 +54,7 @@ extension ARExperienceModel {
     var visitRemainingText: String? {
         guard let expires = visitExpires else { return nil }
         let minutes = Int(ceil(expires.timeIntervalSinceNow / 60))
-        return minutes > 0 ? "扉が開いています（その場にいるあいだ）" : "扉が閉じました"
+        return minutes > 0 ? "GATE が開いています（その場にいるあいだ）" : "GATE が閉じました"
     }
 
     // MARK: 出す
@@ -247,11 +247,11 @@ extension ARExperienceModel {
     func startArt() {
         guard canPlaceArt else {
             if !placedPrecisely {
-                notice = "扉が仮の位置に出ているため、AR の飾りは置けません（置くと、ほかの人にはずれた所に見えます）。作った人が扉を置いた辺りを見回して、扉を出し直してください。"
+                notice = "GATE が仮の位置に出ているため、AR の飾りは置けません（置くと、ほかの人にはずれた所に見えます）。作った人が GATE を置いた辺りを見回して、GATE を出し直してください。"
             } else if myArtworkCount >= Self.artworksPerPerson {
                 notice = "1 つの GATE に置ける AR の飾りは、1 人 3 つまでです。前の AR の飾りを押して消すと置けます。"
             } else {
-                notice = "扉が閉じています。現地でもう一度扉を開けると置けます。"
+                notice = "GATE が閉じています。現地でもう一度 GATE を開けると置けます。"
             }
             return
         }
@@ -496,7 +496,7 @@ extension ARExperienceModel {
     private func confirmArtPlacementAsync() async {
         guard let scene = artScene, let pose = scene.previewPose() else { return }
         guard previewInRange else {
-            notice = "扉から離れすぎています。扉から 4m 以内・地面から 3.5m までの所に向けてください。"
+            notice = "GATE から離れすぎています。GATE から 4m 以内・地面から 3.5m までの所に向けてください。"
             return
         }
         guard let api = session?.api, let media = session?.media, let me = session?.userID,
@@ -587,7 +587,7 @@ extension ARExperienceModel {
             let message = ErrorText.of(error)
             Trace.log("AR の飾りを置けませんでした：\(message)")
             notice = message
-            if message.contains("扉が閉じ") {
+            if message.contains("GATE が閉じ") {
                 scene.endPreview()
                 art = nil
                 visitExpires = Date()
@@ -633,11 +633,11 @@ extension ARExperienceModel {
     func startMovingArtwork(_ id: UUID) {
         guard let scene = artScene, let artwork = scene.artwork(id) else { return }
         guard placedPrecisely else {
-            notice = "扉が仮の位置に出ているため、置き直せません。扉が作った人と同じ位置に出たときに置き直せます。"
+            notice = "GATE が仮の位置に出ているため、置き直せません。GATE が作った人と同じ位置に出たときに置き直せます。"
             return
         }
         guard visitID != nil, (visitExpires ?? .distantFuture) > Date() else {
-            notice = "扉が閉じています。現地でもう一度扉を開けると置き直せます。"
+            notice = "GATE が閉じています。現地でもう一度 GATE を開けると置き直せます。"
             return
         }
         notice = nil
@@ -660,7 +660,7 @@ extension ARExperienceModel {
                 artScene?.items[id]?.perform(.glow)
                 art = nil
                 Haptics.success()
-                showToast("公開しました。友達がここで扉を開けると見えます。")
+                showToast("公開しました。友達がここで GATE を開けると見えます。")
                 Trace.log("下書きの AR の飾りを公開しました")
             } catch {
                 notice = ErrorText.of(error)

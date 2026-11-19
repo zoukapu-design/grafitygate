@@ -522,7 +522,7 @@ final class StoryCamera: ObservableObject {
                     self.shot = upright
                     Haptics.success()
                     Trace.log("AR カメラ：撮った（持ち方 \(holding.rawValue)・効果 \(self.effect.rawValue)・文字 \(self.stickers.count)・"
-                              + "扉\(self.doorHidden ? "なし" : "あり")・\(Int(upright.size.width))×\(Int(upright.size.height))）")
+                              + "GATE \(self.doorHidden ? "なし" : "あり")・\(Int(upright.size.width))×\(Int(upright.size.height))）")
                 }
             }
         }

@@ -70,9 +70,6 @@ struct ProfileView: View {
                     if let message { NoticeText(text: message.text, isError: message.isError) }
                     if !blocked {
                         if !isFriend && !isMe {
-                            Text("お互いにフォローすると「友達」になり、友達向けの GATE や、その人がカード図鑑に載せたグラフィティカードが見えるようになります。")
-                                .font(.caption).foregroundStyle(Theme.textSecondary)
-                                .fixedSize(horizontal: false, vertical: true)
                         }
                         FriendWorks(userID: userID, name: profile.display_name, isFriend: isFriend, isMe: isMe)
                     }

@@ -37,7 +37,7 @@ struct BoardSection: View {
                 }
                 .buttonStyle(SecondaryButtonStyle())
             } else if context.opened {
-                Label("一度扉を開けた GATE なので、遠くからも読めます。話題を立てる・返信するのは、扉を開けているあいだにできます。",
+                Label("一度開けた GATE なので、遠くからも読めます。話題を立てる・返信するのは、GATE を開けているあいだにできます。",
                       systemImage: "key.fill")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Theme.accent)
@@ -97,12 +97,12 @@ struct BoardSection: View {
                         report = ReportItem(id: thread.id, target: .thread, userID: nil, userName: nil, label: "掲示板の話題")
                     }
                 }
-                LockNote(text: "話題の中身と返信は、扉を開けると読めます。一度開ければ、そのあとは遠くからでも読めます。")
+                LockNote(text: "話題の中身と返信は、GATE を開けると読めます")
             }
         } else {
             LockNote(text: context.peek != nil
-                     ? "まだ話題はありません。扉を開けて、思い出話・質問・注意したいことを話せます。"
-                     : "掲示板は、現地で扉を開けると読めます。一度開ければ、そのあとは遠くからでも読めます。")
+                     ? "まだ話題はありません。GATE を開けて、思い出話・質問・注意したいことを話せます。"
+                     : "掲示板は、現地で GATE を開けると読めます。一度開ければ、そのあとは遠くからでも読めます。")
         }
     }
 
@@ -213,15 +213,13 @@ struct NewThreadSheet: View {
                     TextField("本文（なくても大丈夫）", text: $text, axis: .vertical)
                         .lineLimit(4...10)
                 } footer: {
-                    Text("この GATE に入った人だけが読めます。人の名前や、家の場所などは書かないでください。")
+                    Text("人の名前や、家の場所などは書かないでください。")
                 }
                 Section {
                     BoardCardChooser(card: card, author: session.profile?.display_name ?? "あなた",
                                      onChoose: { choosingCard = true }, onRemove: { card = nil })
                 } header: {
                     Text("添えるカード")
-                } footer: {
-                    Text("あなたのグラフィティカードを 1 枚添えられます（なくても大丈夫）。")
                 }
                 if let message {
                     Section { NoticeText(text: message) }
@@ -249,7 +247,7 @@ struct NewThreadSheet: View {
 
     private func post() async {
         guard let api = session.api, let visit = context.visit else {
-            message = "扉が閉じました（GATE から離れたため）。現地でもう一度扉を開けてください。"
+            message = "GATE が閉じました（離れたため）。現地でもう一度 GATE を開けてください。"
             return
         }
         posting = true
@@ -479,7 +477,7 @@ struct ThreadView: View {
                 .background(.bar)
             } else {
                 // 遠くから読んでいるとき（一度扉を開けた GATE）
-                Label("返信・なるほどは、現地で扉を開けているあいだにできます。", systemImage: "lock.fill")
+                Label("返信・なるほどは、現地で GATE を開けているあいだにできます。", systemImage: "lock.fill")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Theme.textSecondary)
                     .frame(maxWidth: .infinity)
@@ -661,7 +659,7 @@ struct ThreadView: View {
 
     private func send() async {
         guard let api = session.api, let visit = context.visit else {
-            message = "扉が閉じました（GATE から離れたため）。現地でもう一度扉を開けてください。"
+            message = "GATE が閉じました（離れたため）。現地でもう一度 GATE を開けてください。"
             return
         }
         sending = true
@@ -1018,8 +1016,6 @@ struct InvestigationProgressSheet: View {
                     .labelsHidden()
                 } header: {
                     Text("進み具合")
-                } footer: {
-                    Text("「まとまった」にすると、話題に「解決しました」も付きます。")
                 }
                 Section {
                     TextField("分かったこと・確かな出典など（なくてもよい）", text: $conclusion, axis: .vertical)
@@ -1028,7 +1024,7 @@ struct InvestigationProgressSheet: View {
                 } header: {
                     Text("まとめ")
                 } footer: {
-                    Text("\(conclusion.count) / 600・話題のいちばん上に出ます。")
+                    Text("\(conclusion.count) / 600")
                 }
                 if let message {
                     Section { NoticeText(text: message) }

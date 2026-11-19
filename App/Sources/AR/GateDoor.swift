@@ -87,7 +87,7 @@ final class GateDoor {
         self.shape = design.shape
         self.arView = arView
         anchorEntity = AnchorEntity(anchor: anchor)
-        try MainWatch.run("扉を組み立てる") {
+        try MainWatch.run("GATE を組み立てる") {
             try build()
         }
         anchorEntity.addChild(base)

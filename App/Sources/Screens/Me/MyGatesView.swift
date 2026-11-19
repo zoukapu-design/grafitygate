@@ -143,7 +143,7 @@ struct MyGatesView: View {
     }
 }
 
-/// 一覧の 1 行：表紙・名前・種類・場所の名前・作った日時・公開範囲
+/// 一覧の 1 行：表紙・名前・種類・場所の名前・作った日時・見せる範囲
 struct GateJournalRow: View {
     let gate: MyGate
     var highlighted = false

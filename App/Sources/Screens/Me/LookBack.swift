@@ -235,7 +235,7 @@ struct MyVisitsSheet: View {
             List {
                 if let first = days.last, let last = days.first {
                     Section {
-                        LabeledContent("来た回数", value: "\(days.count) 回")
+                        LabeledContent("訪れた回数", value: "\(days.count) 回")
                         LabeledContent("はじめて", value: GateDates.full.string(from: first))
                         if days.count > 1 {
                             LabeledContent("前回", value: GateDates.full.string(from: last))
@@ -255,17 +255,12 @@ struct MyVisitsSheet: View {
                         .font(.subheadline).foregroundStyle(Theme.textSecondary)
                 }
             }
-            .navigationTitle("あなたが来た日")
+            .navigationTitle("あなたが訪れた日")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("閉じる") { dismiss() } }
             }
             .safeAreaInset(edge: .top) {
-                Text("「\(title)」に扉を開けて入った日です。見られるのはあなただけです。")
-                    .font(.caption).foregroundStyle(Theme.textSecondary)
-                    .padding(.horizontal, 20).padding(.vertical, 8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Theme.background)
             }
         }
         .presentationDetents([.medium, .large])
@@ -279,7 +274,7 @@ struct MyVisitsSheet: View {
             message = nil
         } catch {
             message = ErrorText.isMissingFunction(error)
-                ? "来た日の一覧は、サーバーの準備（setup_all.sql の貼り直し）のあとで見られます。" : ErrorText.of(error)
+                ? "訪れた日の一覧は、サーバーの準備（setup_all.sql の貼り直し）のあとで見られます。" : ErrorText.of(error)
         }
         loaded = true
     }
@@ -338,8 +333,6 @@ struct NotificationSettingsView: View {
                     .tint(Theme.accent)
                     .disabled(!loaded || unsupported)
                 }
-            } footer: {
-                Text("切った種類のお知らせは、あとから入れ直しても届きません（切っているあいだのものは作られません）。メッセージの未読は、ここでは止まりません。")
             }
             if let message {
                 Section { NoticeText(text: message) }

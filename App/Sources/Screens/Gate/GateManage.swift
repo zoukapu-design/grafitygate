@@ -88,8 +88,6 @@ struct GateEditSheet: View {
                         .padding(10)
                     }
                     .listRowInsets(EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 8))
-                } footer: {
-                    Text("表紙は地図や友達の画面に出る絵です。入るときの見本（写真の特徴）は変わりません。")
                 }
                 Section("名前") {
                     TextField("GATE の名前", text: $title)
@@ -120,9 +118,7 @@ struct GateEditSheet: View {
                         }
                         .padding(.vertical, 4)
                     } header: {
-                        Text("扉の見た目")
-                    } footer: {
-                        Text("AR で見える扉の形と飾りです。次に AR で開いたときから、入った人にもこの見た目で出ます。")
+                        Text("GATE の見た目")
                     }
                 }
                 if let message {
@@ -296,8 +292,6 @@ struct GateManagersSheet: View {
                     }
                 } header: {
                     Text("友達から入れる")
-                } footer: {
-                    Text("入れた友達にはお知らせが届きます。友達はいつでも自分で抜けられます。")
                 }
                 if let message {
                     Section { NoticeText(text: message) }
@@ -395,8 +389,6 @@ struct GraffitiEditSheet: View {
                             .frame(maxWidth: .infinity)
                             .clipShape(RoundedRectangle(cornerRadius: 12))
                             .listRowInsets(EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 8))
-                    } footer: {
-                        Text("写真は変えられません（その日に撮った写真のため）。")
                     }
                 }
                 Section {
@@ -405,7 +397,7 @@ struct GraffitiEditSheet: View {
                 } header: {
                     Text("カードの名前")
                 } footer: {
-                    Text("カードの上の帯に出ます（30 文字まで）。")
+                    Text("30 文字まで")
                 }
                 Section {
                     TextField("ひとこと", text: $text, axis: .vertical)
@@ -414,7 +406,7 @@ struct GraffitiEditSheet: View {
                 } header: {
                     Text("ひとこと")
                 } footer: {
-                    Text("\(text.count) / \(Self.limit)・文を変えると、カードに「直しました」と出ます。")
+                    Text("\(text.count) / \(Self.limit)")
                 }
                 Section {
                     Picker("見せる範囲", selection: $visibility) {

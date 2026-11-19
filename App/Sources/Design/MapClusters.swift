@@ -172,10 +172,6 @@ struct GateStackSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 10) {
-                    Text("おおよその位置が同じなので、地図では 1 つにまとめています。")
-                        .font(.caption)
-                        .foregroundStyle(Theme.textSecondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
                     ForEach(stack.items) { item in
                         Button {
                             onPick(item.id)

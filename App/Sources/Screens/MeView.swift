@@ -8,6 +8,10 @@ struct MeView: View {
     @State private var gates: [MyGate] = []
     @State private var visitedCount: Int?
     @State private var friendCount: Int?
+    @State private var followerCount: Int?
+    @State private var followingCount: Int?
+    @State private var followList: FollowListView.Tab?
+    @State private var showMyGates = false
     @State private var savedCount: Int?
     @State private var unopenedLetters = 0
     @State private var message: (text: String, isError: Bool)?
@@ -28,9 +32,19 @@ struct MeView: View {
                             ProfileBanner(name: session.profile?.display_name ?? "",
                                           handle: session.profile?.handle,
                                           stats: [(loaded ? gates.count : nil, "作った GATE"),
-                                                  (visitedCount, "訪れた"),
-                                                  (friendCount, "友達")],
-                                          onEditName: { editingName = true })
+                                                  (friendCount, "友達"),
+                                                  (followerCount, "フォロワー"),
+                                                  (followingCount, "フォロー中")],
+                                          onEditName: { editingName = true },
+                                          onStatTap: { i in
+                                              Haptics.tap()
+                                              switch i {
+                                              case 0: showMyGates = true
+                                              case 1: followList = .friends
+                                              case 2: followList = .followers
+                                              default: followList = .following
+                                              }
+                                          })
                             AddFriendButtons(compact: true)
                         }
                         if let onThisDay {
@@ -65,6 +79,12 @@ struct MeView: View {
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
+            .navigationDestination(item: $followList) { tab in
+                FollowListView(initial: tab)
+            }
+            .navigationDestination(isPresented: $showMyGates) {
+                MyGatesView(gates: gates)
+            }
             .task(id: session.state) { await load() }
             .sheet(isPresented: $editingName) {
                 NameEditSheet(current: session.profile?.display_name ?? "") { newName in
@@ -161,7 +181,7 @@ struct MeView: View {
         VStack(alignment: .leading, spacing: 10) {
             SectionHeader(title: "見返す")
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                LookBackTile(title: "訪れた GATE", caption: visitedCount.map { "\($0) か所" } ?? "扉を開けた GATE",
+                LookBackTile(title: "訪れた GATE", caption: visitedCount.map { "\($0) か所" } ?? "開けたことのある GATE",
                              systemImage: "books.vertical.fill", tint: Theme.accent) { CollectionView(kind: "visited") }
                 LookBackTile(title: "アルバム", caption: "写真・動画・声のアルバム",
                              systemImage: "photo.stack.fill", tint: Theme.warm) { MyMemoriesView() }
@@ -190,7 +210,11 @@ struct MeView: View {
         } catch {
             message = (ErrorText.of(error), true)
         }
-        friendCount = try? await api.friends(me: me).count
+        if let r = try? await api.relations(me: me) {
+            friendCount = r.following.intersection(r.followers).count
+            followerCount = r.followers.count
+            followingCount = r.following.count
+        }
         visitedCount = try? await api.collection("visited").count
         savedCount = try? await api.collection("saved").count
         savedCardCount = try? await api.mySavedCards().count
@@ -315,8 +339,6 @@ struct NameEditSheet: View {
                     .onChange(of: name) { _, value in
                         if value.count > 30 { name = String(value.prefix(30)) }
                     }
-                Text("30 文字まで。友達のホームや GATE のグラフィティカードに、この名前で出ます。")
-                    .font(.caption).foregroundStyle(Theme.textSecondary)
                 if let error { NoticeText(text: error) }
                 Spacer()
             }
@@ -414,8 +436,6 @@ struct FriendsView: View {
                 }
             } header: {
                 Text("ID で探す")
-            } footer: {
-                Text("お互いにフォローすると「友達」になり、友達向けの GATE が見えるようになります。")
             }
 
             if !followersOnly.isEmpty {
@@ -503,14 +523,8 @@ struct CollectionView: View {
 
     var body: some View {
         List {
-            if kind == "visited" {
-                Section {
-                    Text("扉を開けた GATE が、ここに集まります。「友達に見せる」を入れたものだけ、友達があなたのプロフィールから見られます（場所はおおよそだけ）。")
-                        .font(.footnote).foregroundStyle(Theme.textSecondary)
-                }
-            }
             if loaded && gates.isEmpty {
-                Text(kind == "visited" ? "まだありません。GATE の扉を開けると、ここに付きます。" : "まだありません。グラフィティボードの右上で保存できます。")
+                Text(kind == "visited" ? "まだありません。GATE を開けると、ここに付きます。" : "まだありません。グラフィティボードの右上で保存できます。")
                     .foregroundStyle(Theme.textSecondary)
             }
             if let message { NoticeText(text: message) }
@@ -595,7 +609,7 @@ struct MyMemoriesView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 if loaded && memories.isEmpty {
-                    Text("まだありません。GATE の扉を開けて「アルバム」から作れます。")
+                    Text("まだありません。GATE を開けて「アルバム」から作れます。")
                         .font(.subheadline).foregroundStyle(Theme.textSecondary)
                 }
                 if let message { NoticeText(text: message) }
@@ -642,7 +656,7 @@ struct MyLettersView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 if loaded && letters.isEmpty {
-                    Text("まだありません。GATE の扉を開けて「手紙」から、未来の自分や友達に書けます。")
+                    Text("まだありません。GATE を開けて「手紙」から、未来の自分や友達に書けます。")
                         .font(.subheadline).foregroundStyle(Theme.textSecondary)
                 }
                 if let message { NoticeText(text: message) }
@@ -707,7 +721,7 @@ struct BlockedView: View {
                     }
                 }
             } footer: {
-                Text("ブロックは Lyric Path と共通です。ブロックすると、おたがいの GATE・記録・手紙が見えなくなります。")
+                Text("ブロックすると、おたがいの GATE・記録・手紙が見えなくなります。")
             }
             if let message { NoticeText(text: message) }
         }
@@ -907,8 +921,6 @@ struct MySettingsView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Grafity Gate \(Self.appVersion)")
                         .font(.caption.weight(.semibold)).foregroundStyle(Theme.textSecondary)
-                    Text("「調べものの記録」は、AR で何が起きたかの記録です（位置や写真は入っていません）。うまく動かないとき、開発者に送ってください。")
-                        .font(.caption).foregroundStyle(Theme.textSecondary)
                 }
                 .padding(.horizontal, 4)
             }

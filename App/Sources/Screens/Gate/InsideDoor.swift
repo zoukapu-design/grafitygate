@@ -70,9 +70,8 @@ struct InsideHeader: View {
     let title: String
     let coverPath: String?
     let ownerLine: String
-    let status: String
-    var warning = false
-    let onLeave: () -> Void
+    /// 離れて、まもなく閉じるときだけ出す一言（ふだんは何も出さない。GATE を出るのは右上の「…」から）
+    var closingNote: String? = nil
 
     private let ring = AngularGradient(colors: Brand.neon + [Brand.neon.first ?? .orange], center: .center)
 
@@ -102,26 +101,14 @@ struct InsideHeader: View {
                 }
                 Spacer(minLength: 0)
             }
-            HStack(spacing: 10) {
-                Label(status, systemImage: warning ? "exclamationmark.circle.fill" : "lock.open.fill")
+            if let closingNote {
+                Label(closingNote, systemImage: "exclamationmark.circle.fill")
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(warning ? Color(hex: 0xFFB36B) : .white)
-                    .lineLimit(2)
-                Spacer(minLength: 0)
-                Button(action: onLeave) {
-                    Label("扉を出る", systemImage: "rectangle.portrait.and.arrow.right")
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 14)
-                        .frame(minHeight: 40)
-                        .background(.white.opacity(0.16), in: Capsule())
-                        .overlay(Capsule().stroke(.white.opacity(0.4)))
-                }
-                .buttonStyle(.plain)
-                .accessibilityHint("扉の中から出て、グラフィティボードに戻ります")
+                    .foregroundStyle(Color(hex: 0xFFB36B))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(.white.opacity(0.08), in: Capsule())
             }
-            .padding(.leading, 12).padding(.trailing, 6).padding(.vertical, 6)
-            .background(.white.opacity(0.08), in: Capsule())
         }
     }
 }

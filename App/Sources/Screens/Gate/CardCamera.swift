@@ -117,7 +117,7 @@ struct ARCameraCallout: View {
                     Text(hasPhoto ? "AR カメラで撮り直す" : "AR カメラで撮る")
                         .font(.headline.weight(.heavy))
                         .foregroundStyle(.white)
-                    Text("扉・みんなの AR・キラキラや文字と一緒に")
+                    Text("GATE・みんなの AR・キラキラや文字と一緒に")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.white.opacity(0.78))
                         .lineLimit(2)

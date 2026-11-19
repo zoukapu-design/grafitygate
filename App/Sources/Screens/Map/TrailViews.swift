@@ -19,12 +19,12 @@ struct TrailListView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                Text("TRAIL は、いくつかの GATE をつないだ「思い出を歩く道」です。順番に現地で扉を開けると進みます。")
+                Text("TRAIL は、いくつかの GATE をつないだ「思い出を歩く道」です。順番に現地で GATE を開けると進みます。")
                     .font(.subheadline).foregroundStyle(Theme.textSecondary)
                 if let error { NoticeText(text: error) }
                 if loaded && trails.isEmpty && error == nil {
                     EmptyNote(title: "まだ TRAIL はありません",
-                              message: "扉を開けた GATE が 2 つ以上あれば、右上から作れます。友達の TRAIL もここに出ます。",
+                              message: "開けたことのある GATE が 2 つ以上あれば、右上から作れます。友達の TRAIL もここに出ます。",
                               systemImage: "point.topleft.down.to.point.bottomright.curvepath")
                 }
                 if let found {
@@ -37,8 +37,6 @@ struct TrailListView: View {
                 let near = nearby.filter { n in !trails.contains { $0.id == n.id } }
                 if found == nil && !near.isEmpty {
                     Text("近くの TRAIL").font(.headline).foregroundStyle(Theme.text)
-                    Text("いまいる所の 5km 以内に地点がある、だれでも・友達が歩ける TRAIL です。")
-                        .font(.caption).foregroundStyle(Theme.textSecondary)
                     ForEach(near) { trail in trailLink(trail) }
                 }
                 if !walking.isEmpty {
@@ -151,8 +149,6 @@ struct TrailEditSheet: View {
                     Picker("見せる範囲", selection: $visibility) {
                         ForEach(Visibility.allCases) { v in Text(v.label).tag(v) }
                     }
-                } footer: {
-                    Text("地点の並びは、歩いている人の進み具合が崩れないよう、あとから変えられません。")
                 }
                 if let message {
                     Section { NoticeText(text: message) }
@@ -234,7 +230,7 @@ struct TrailDetailView: View {
     @State private var report: ReportItem?
     @State private var confirmDelete = false
     @State private var editing = false
-    /// 見られない（消された・公開範囲が変わった）
+    /// 見られない（消された・見せる範囲が変わった）
     @State private var unavailable = false
 
     init(trailID: UUID, title: String) {
@@ -378,8 +374,6 @@ struct TrailDetailView: View {
                     if let next = nextStop {
                         Text("次は \(next.seq). \(next.title)\(distanceText(next))")
                             .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
-                        Text("着いたら「撮る」で扉を開けると、ここが 1 つ進みます。")
-                            .font(.caption).foregroundStyle(Theme.textSecondary)
                         if let lat = next.approx_lat, let lon = next.approx_lon {
                             Button {
                                 openDirections(lat: lat, lon: lon, name: next.title)
@@ -390,7 +384,7 @@ struct TrailDetailView: View {
                         }
                     }
                 } else {
-                    Text("歩き始めると、順番に現地で扉を開けるたびに進みます。")
+                    Text("歩き始めると、順番に現地で GATE を開けるたびに進みます。")
                         .font(.subheadline).foregroundStyle(Theme.textSecondary)
                     Button("この TRAIL を歩き始める") { Task { await start() } }
                         .buttonStyle(PrimaryButtonStyle())
@@ -529,7 +523,7 @@ struct TrailComposer: View {
                 Section {
                     TextField("題（例：春の川沿い）", text: $title)
                     TextField("ひとこと（なくても大丈夫）", text: $note, axis: .vertical).lineLimit(2...4)
-                    Picker("見せる人", selection: $visibility) {
+                    Picker("見せる範囲", selection: $visibility) {
                         ForEach(Visibility.allCases) { v in Text(v.label).tag(v) }
                     }
                 }
@@ -550,9 +544,9 @@ struct TrailComposer: View {
                 } footer: {
                     Text("並べ替えは右上の「編集」から。")
                 }
-                Section("扉を開けたことのある GATE") {
+                Section("開けたことのある GATE") {
                     if loaded && visited.isEmpty {
-                        Text("まだありません。GATE の扉を開けると、ここに出ます。").foregroundStyle(Theme.textSecondary)
+                        Text("まだありません。GATE を開けると、ここに出ます。").foregroundStyle(Theme.textSecondary)
                     }
                     ForEach(visited.filter { g in !chosen.contains { $0.gate_id == g.gate_id } }) { gate in
                         Button {
