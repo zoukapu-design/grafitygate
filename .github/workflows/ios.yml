@@ -186,6 +186,19 @@ jobs:
           fi
           echo "::notice title=鍵::組み立てたアプリのサーバーのアドレス：形は正しい"
 
+          # 送る直前に、ビルド番号をもう一度確かめる（すぐ前に送ったビルドは、App Store Connect に出てくるまで数分かかる。
+          # 組み立てているあいだに出てきて番号が重なったら、組み立てたアプリの番号だけを上げる。送るときに署名し直すので大丈夫）
+          BN2=$(python3 tools/ci/asc.py next-build-number "$BUNDLE_ID" 2>/dev/null | tail -1) || BN2=""
+          case "$BN2" in ''|*[!0-9]*) BN2="$BN" ;; esac
+          if [ "$BN2" -gt "$BN" ]; then
+            find "$RUNNER_TEMP/$SCHEME.xcarchive/Products/Applications" -name Info.plist -path "*.app*/Info.plist" -maxdepth 4 | while read -r f; do
+              /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BN2" "$f" 2>/dev/null || true
+            done
+            /usr/libexec/PlistBuddy -c "Set :ApplicationProperties:CFBundleVersion $BN2" "$RUNNER_TEMP/$SCHEME.xcarchive/Info.plist" 2>/dev/null || true
+            echo "::notice::ビルド番号を $BN から $BN2 に上げました（前のビルドと重ならないように）"
+            BN="$BN2"
+          fi
+
           cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
