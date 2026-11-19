@@ -959,7 +959,7 @@ private struct ArtCard: View {
             .pickerStyle(.segmented)
             Toggle(isOn: $model.draft.asDraft) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("まず自分だけで試す").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text).font(.caption).foregroundStyle(Theme.textSecondary)
+                    Text("まず自分だけで試す").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
                 }
             }
             .tint(Theme.accent)

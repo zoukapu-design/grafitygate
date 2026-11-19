@@ -540,7 +540,7 @@ struct SparkleBurst: View {
                 Image(systemName: i.isMultiple(of: 3) ? "heart.fill" : "sparkle")
                     .font(.system(size: i.isMultiple(of: 2) ? 16 : 11, weight: .bold))
                     .foregroundStyle(i.isMultiple(of: 3) ? Color(hex: 0xFF5C8A) : Color(hex: 0xFFC34D))
-                    .offset(x: trigger ? cos(angle) * dist : 0, y: trigger ? sin(angle) * dist : 0)
+                    .offset(x: trigger ? CGFloat(cos(angle)) * dist : 0, y: trigger ? CGFloat(sin(angle)) * dist : 0)
                     .scaleEffect(trigger ? 1 : 0.2)
                     .opacity(trigger ? 0 : 1)
             }
