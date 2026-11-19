@@ -300,8 +300,8 @@ struct EnvelopeArt: View {
                     }
                 }
                 .padding(.leading, w * 0.07)
-                .padding(.top, h * 0.6)
-                .frame(width: w * 0.62, alignment: .leading)
+                .padding(.top, h * 0.66)
+                .frame(width: w * 0.6, alignment: .leading)
                 // 切手と消印
                 if !stampDate.isEmpty || !place.isEmpty {
                     StampArt(date: stampDate, place: place)
@@ -313,15 +313,15 @@ struct EnvelopeArt: View {
                     .fill(LinearGradient(colors: [LetterPalette.envelopeDeep, LetterPalette.envelope],
                                          startPoint: .top, endPoint: .bottom))
                     .overlay(EnvelopeFlap().stroke(LetterPalette.envelopeEdge.opacity(0.6), lineWidth: 1))
-                    .frame(width: w, height: h * 0.55)
+                    .frame(width: w, height: h * 0.48)
                     .shadow(color: .black.opacity(openAmount > 0.5 ? 0 : 0.08), radius: 3, y: 2)
                     .rotation3DEffect(.degrees(Double(openAmount) * 178), axis: (x: 1, y: 0, z: 0),
                                       anchor: .top, perspective: 0.5)
                 // 封ろう
                 if sealed {
                     WaxSeal()
-                        .frame(width: h * 0.28, height: h * 0.28)
-                        .offset(x: w * 0.5 - h * 0.14, y: h * 0.55 - h * 0.14)
+                        .frame(width: h * 0.24, height: h * 0.24)
+                        .offset(x: w * 0.5 - h * 0.12, y: h * 0.48 - h * 0.12)
                         .opacity(Double(1 - min(1, openAmount * 2.5)))
                         .scaleEffect(1 + openAmount * 0.6, anchor: .center)
                 }
@@ -362,8 +362,8 @@ struct EnvelopePocket: View {
                     }
                 }
                 .padding(.leading, w * 0.07)
-                .padding(.top, h * 0.6)
-                .frame(width: w * 0.62, alignment: .leading)
+                .padding(.top, h * 0.66)
+                .frame(width: w * 0.6, alignment: .leading)
                 if !stampDate.isEmpty {
                     StampArt(date: stampDate, place: place)
                         .frame(width: h * 0.32, height: h * 0.38)
@@ -380,10 +380,10 @@ struct EnvelopePocket: View {
 struct PocketShape: Shape {
     func path(in rect: CGRect) -> Path {
         var p = Path()
-        let top = rect.minY + rect.height * 0.4
+        let top = rect.minY + rect.height * 0.36
         let r = rect.height * 0.07
         p.move(to: CGPoint(x: rect.minX, y: top))
-        p.addLine(to: CGPoint(x: rect.midX, y: rect.minY + rect.height * 0.52))
+        p.addLine(to: CGPoint(x: rect.midX, y: rect.minY + rect.height * 0.5))
         p.addLine(to: CGPoint(x: rect.maxX, y: top))
         p.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - r))
         p.addQuadCurve(to: CGPoint(x: rect.maxX - r, y: rect.maxY), control: CGPoint(x: rect.maxX, y: rect.maxY))
