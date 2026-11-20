@@ -849,69 +849,33 @@ struct GateDetailView: View {
     }
 
     /// グラフィティボードの下にいつも出す、いちばん大事なこと（遠ければ「ここへ行く」、近ければ「扉を開ける」）
+    /// 画面の下にいつも出す、いちばん大事なボタン（2026-11-20 オーナー「GATE を開ける画面の表示がイマイチ」）：
+    /// 近いときは「GATE を開ける」1 つだけを大きく（光が呼吸する）。遠いときは「ここへ行く・距離」。
     private func boardActionBar(_ summary: GateSummary) -> some View {
         let distance = location.location?.distance(from: CLLocation(latitude: summary.approx_lat,
                                                                      longitude: summary.approx_lon))
         let far = (distance ?? 0) > 150 && distance != nil
-        return HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(far ? "ここから \(TrailGuide.distanceText(distance ?? 0))" : (distance == nil ? "GATE は閉じています" : "近くにいます"))
-                    .font(.subheadline.weight(.heavy))
-                    .foregroundStyle(Theme.text)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                Text(far ? "120m 以内まで行くと GATE を開けられます" : "カメラを向けて、GATE を開けましょう")
-                    .font(.caption2)
-                    .foregroundStyle(Theme.textSecondary)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 0)
+        return VStack(spacing: 0) {
             if far {
-                Button {
-                    showAR = true
-                } label: {
-                    Image(systemName: "door.left.hand.open")
-                        .font(.headline)
-                        .foregroundStyle(Theme.accent)
-                        .frame(width: 46, height: 46)
-                        .background(Theme.accentLight, in: Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("着いたら、GATE を開ける")
                 Button {
                     openWalking(summary)
                 } label: {
-                    Label("ここへ行く", systemImage: "figure.walk")
-                        .font(.headline)
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 18)
-                        .frame(minHeight: 46)
-                        .background(Theme.neonBand, in: Capsule())
+                    Label("ここへ行く・\(TrailGuide.distanceText(distance ?? 0))", systemImage: "figure.walk")
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PrimaryButtonStyle())
             } else {
-                Button {
-                    showAR = true
-                } label: {
-                    Label("GATE を開ける", systemImage: "door.left.hand.open")
-                        .font(.headline)
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 18)
-                        .frame(minHeight: 46)
-                        .background(Theme.neonBand, in: Capsule())
-                        .shadow(color: Color(hex: 0xFF3D7F).opacity(0.35), radius: 8, y: 3)
-                }
-                .buttonStyle(.plain)
-                .disabled(session.api == nil)
+                OpenGateButton(disabled: session.api == nil) { showAR = true }
             }
         }
-        .padding(.leading, 16).padding(.trailing, 10).padding(.vertical, 10)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).strokeBorder(.white.opacity(0.7), lineWidth: 1))
-        .shadow(color: .black.opacity(0.14), radius: 14, y: 4)
-        .padding(.horizontal, 12)
-        .padding(.bottom, 6)
+        .padding(.horizontal, 16)
+        .padding(.top, 14)
+        .padding(.bottom, 8)
+        .background {
+            // 下の札が透けて重ならないよう、地の色で下からぼかす
+            LinearGradient(colors: [Theme.background.opacity(0), Theme.background.opacity(0.95), Theme.background],
+                           startPoint: .top, endPoint: .bottom)
+                .ignoresSafeArea(edges: .bottom)
+        }
     }
 
     // MARK: 動き
@@ -1375,5 +1339,40 @@ struct HeightReader: View {
                 .onAppear { height = proxy.size.height }
                 .onChange(of: proxy.size.height) { _, value in height = value }
         }
+    }
+}
+
+/// 「GATE を開ける」：大きなネオンの帯。まわりの光がゆっくり呼吸して、押したくなる
+struct OpenGateButton: View {
+    var disabled = false
+    let action: () -> Void
+    @State private var glow = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Button {
+            Haptics.open()
+            action()
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "door.left.hand.open")
+                    .font(.system(size: 20, weight: .bold))
+                Text("GATE を開ける")
+                    .font(.title3.weight(.heavy))
+            }
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity, minHeight: 58)
+            .background(Theme.neonBand, in: Capsule())
+            .overlay(Capsule().strokeBorder(.white.opacity(0.35), lineWidth: 1))
+            .shadow(color: Color(hex: 0xFF3D7F).opacity(glow ? 0.55 : 0.2), radius: glow ? 18 : 8, y: 4)
+            .shadow(color: Color(hex: 0x8A4DF5).opacity(glow ? 0.45 : 0.15), radius: glow ? 24 : 10)
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) { glow = true }
+        }
+        .accessibilityLabel("GATE を開ける（カメラが開きます）")
     }
 }

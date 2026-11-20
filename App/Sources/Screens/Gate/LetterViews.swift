@@ -165,6 +165,10 @@ struct LetterRow: View {
 
     private var envelope: some View {
         VStack(alignment: .leading, spacing: 8) {
+            if letter.isOpened {
+                // 開いたふたと、のぞく便せんの分の場所（封筒の高さの半分ほど）
+                Color.clear.aspectRatio(3.3, contentMode: .fit)
+            }
             EnvelopeArt(to: title, from: from,
                         stampDate: ServerDate.parse(letter.created_at).map { ServerDate.day($0) } ?? "",
                         place: letter.gate_title,
@@ -263,6 +267,16 @@ struct EnvelopeArt: View {
         GeometryReader { geo in
             let w = geo.size.width, h = geo.size.height
             ZStack(alignment: .topLeading) {
+                // 開いたふた（上へ返る）は便せんの後ろ、閉じたふたはいちばん前
+                EnvelopeFlap()
+                    .fill(LinearGradient(colors: [LetterPalette.envelopeDeep, LetterPalette.envelope],
+                                         startPoint: .top, endPoint: .bottom))
+                    .overlay(EnvelopeFlap().stroke(LetterPalette.envelopeEdge.opacity(0.6), lineWidth: 1))
+                    .frame(width: w, height: h * 0.48)
+                    .shadow(color: .black.opacity(openAmount > 0.5 ? 0 : 0.08), radius: 3, y: 2)
+                    .rotation3DEffect(.degrees(Double(openAmount) * 178), axis: (x: 1, y: 0, z: 0),
+                                      anchor: .top, perspective: 0.25)
+                    .zIndex(openAmount > 0.5 ? -1 : 10)
                 // 便せんの頭（開封済み）
                 if peeking {
                     RoundedRectangle(cornerRadius: 6)
@@ -271,20 +285,15 @@ struct EnvelopeArt: View {
                         .frame(width: w * 0.82, height: h * 0.5)
                         .offset(x: w * 0.09, y: -h * 0.22)
                         .shadow(color: .black.opacity(0.08), radius: 3, y: 1)
+                        .zIndex(0)
                 }
-                // 封筒の本体
+                // 封筒の本体（折り目の線は宛名にかかるので引かない）
                 RoundedRectangle(cornerRadius: h * 0.07, style: .continuous)
                     .fill(LinearGradient(colors: [LetterPalette.envelope, LetterPalette.envelopeDeep],
                                          startPoint: .top, endPoint: .bottom))
                     .overlay(RoundedRectangle(cornerRadius: h * 0.07, style: .continuous)
                         .strokeBorder(LetterPalette.envelopeEdge.opacity(0.7), lineWidth: 1))
-                // 下のポケットの折り目
-                Path { p in
-                    p.move(to: CGPoint(x: 0, y: h))
-                    p.addLine(to: CGPoint(x: w * 0.5, y: h * 0.5))
-                    p.addLine(to: CGPoint(x: w, y: h))
-                }
-                .stroke(LetterPalette.envelopeEdge.opacity(0.45), lineWidth: 1)
+                    .zIndex(1)
                 // 宛名・差出人
                 VStack(alignment: .leading, spacing: 4) {
                     Text(to)
@@ -302,21 +311,14 @@ struct EnvelopeArt: View {
                 .padding(.leading, w * 0.07)
                 .padding(.top, h * 0.66)
                 .frame(width: w * 0.6, alignment: .leading)
+                .zIndex(2)
                 // 切手と消印
                 if !stampDate.isEmpty || !place.isEmpty {
                     StampArt(date: stampDate, place: place)
                         .frame(width: h * 0.32, height: h * 0.38)
                         .offset(x: w - h * 0.32 - w * 0.06, y: h * 0.56)
+                        .zIndex(3)
                 }
-                // ふた（上の三角）：開くと上へ返る
-                EnvelopeFlap()
-                    .fill(LinearGradient(colors: [LetterPalette.envelopeDeep, LetterPalette.envelope],
-                                         startPoint: .top, endPoint: .bottom))
-                    .overlay(EnvelopeFlap().stroke(LetterPalette.envelopeEdge.opacity(0.6), lineWidth: 1))
-                    .frame(width: w, height: h * 0.48)
-                    .shadow(color: .black.opacity(openAmount > 0.5 ? 0 : 0.08), radius: 3, y: 2)
-                    .rotation3DEffect(.degrees(Double(openAmount) * 178), axis: (x: 1, y: 0, z: 0),
-                                      anchor: .top, perspective: 0.5)
                 // 封ろう
                 if sealed {
                     WaxSeal()
@@ -324,6 +326,7 @@ struct EnvelopeArt: View {
                         .offset(x: w * 0.5 - h * 0.12, y: h * 0.48 - h * 0.12)
                         .opacity(Double(1 - min(1, openAmount * 2.5)))
                         .scaleEffect(1 + openAmount * 0.6, anchor: .center)
+                        .zIndex(11)
                 }
             }
             .frame(width: w, height: h)
@@ -516,9 +519,9 @@ struct LetterPaper<Content: View>: View {
         .padding(.vertical, 26)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
+            // 罫線は本文（RuledTextArea）が文字に合わせて引く。ここは紙と左の赤い線だけ
             ZStack(alignment: .leading) {
                 LetterPalette.paper
-                RuledLines(spacing: 32).padding(.top, 50)
                 Rectangle().fill(LetterPalette.margin.opacity(0.7)).frame(width: 1.5).padding(.leading, 22)
             }
         }
@@ -737,12 +740,8 @@ struct LetterView: View {
                             .frame(maxWidth: .infinity)
                             .clipShape(RoundedRectangle(cornerRadius: 8))
                     }
-                    Text(content.body)
-                        .font(.system(size: 17, design: .serif))
-                        .foregroundStyle(LetterPalette.ink)
-                        .lineSpacing(11)
-                        .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
+                    RuledTextArea(text: .constant(content.body), editable: false, minLines: 3)
+                        .background(alignment: .top) { RuledTextLines() }
                 }
             }
             .padding(.horizontal, 18)
@@ -804,7 +803,7 @@ struct LetterComposer: View {
     @State private var sending = false
     @State private var sealed = false
     @State private var message: String?
-    @FocusState private var writing: Bool
+    @State private var writing = false
 
     init(context: GateContext, onSent: @escaping () -> Void) {
         self.context = context
@@ -842,7 +841,8 @@ struct LetterComposer: View {
                 }
             }
             .safeAreaInset(edge: .bottom) {
-                if !sealed {
+                // 書いているあいだはキーボードの「書けた」と重なるので隠す
+                if !sealed && !writing {
                     Button {
                         Task { await send() }
                     } label: {
@@ -863,12 +863,6 @@ struct LetterComposer: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("やめる") { dismiss() } }
-                ToolbarItem(placement: .keyboard) {
-                    HStack {
-                        Spacer()
-                        Button("書けた") { writing = false }.bold()
-                    }
-                }
             }
             .sheet(isPresented: $choosingCard) {
                 MyCardPicker(preferGate: context.gateID) { picked in
@@ -881,9 +875,6 @@ struct LetterComposer: View {
                 FriendPicker(title: "宛先の友達", multiple: false, selection: $friend)
             }
             .onChange(of: friend) { _, ids in Task { await loadFriendName(ids.first) } }
-            .onChange(of: text) { _, value in
-                if value.count > 2000 { text = String(value.prefix(2000)) }
-            }
         }
     }
 
@@ -931,24 +922,10 @@ struct LetterComposer: View {
     private var paper: some View {
         LetterPaper(to: toText, from: "あなたより",
                     footnote: "\(ServerDate.day(Date()))・\(context.title) で") {
-            ZStack(alignment: .topLeading) {
-                if text.isEmpty {
-                    Text(toSelf ? "いまの気持ち、未来の自分に伝えたいこと…" : "伝えたいこと…")
-                        .font(.system(size: 17, design: .serif))
-                        .foregroundStyle(LetterPalette.ink.opacity(0.35))
-                        .padding(.top, 8)
-                        .padding(.leading, 5)
-                        .allowsHitTesting(false)
-                }
-                TextEditor(text: $text)
-                    .font(.system(size: 17, design: .serif))
-                    .foregroundStyle(LetterPalette.ink)
-                    .lineSpacing(11)
-                    .scrollContentBackground(.hidden)
-                    .background(Color.clear)
-                    .frame(minHeight: 220)
-                    .focused($writing)
-            }
+            RuledTextArea(text: $text, editable: true,
+                          placeholder: toSelf ? "未来の自分に伝えたいこと…" : "伝えたいこと…",
+                          minLines: 7, maxLength: 2000, editing: $writing)
+                .background(alignment: .top) { RuledTextLines() }
             HStack {
                 Spacer()
                 Text("\(text.count) / 2000")
@@ -1091,7 +1068,7 @@ struct LetterComposer: View {
             message = "GATE が閉じました（離れたため）。現地でもう一度 GATE を開けてください。"
             return
         }
-        writing = false
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         sending = true
         defer { sending = false }
         let body = text.trimmingCharacters(in: .whitespacesAndNewlines)

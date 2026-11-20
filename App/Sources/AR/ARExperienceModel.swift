@@ -597,6 +597,8 @@ final class ARExperienceModel: ObservableObject {
         guard let door, phase == .doorClosed else { return }
         door.open()
         Haptics.open()
+        // 開いた瞬間に、足もとから光の粒がふわっと舞い上がる（TRAIL が進んだときは、あとで大きな粒も）
+        door.celebrate(big: false)
         phase = .doorOpen
         revealArtworks()
     }

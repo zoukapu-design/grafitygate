@@ -89,6 +89,15 @@ struct NowAndThenView: View {
         return list.sorted { (ServerDate.parse($0.date) ?? .distantPast) < (ServerDate.parse($1.date) ?? .distantPast) }
     }
 
+    /// 「今」を撮るときに、うすく重ねる写真：カメラでそのまま撮った写真（今と昔の写真・はじまりの表紙）。
+    /// カードの写真は切り取り・飾りが入っていて形が合わないので、ほかに無いときだけ
+    private var captureReference: String? {
+        let picked = [thenFrame, nowFrame].compactMap { $0 }
+        if let photo = picked.first(where: { $0.kind != .card }) { return photo.path }
+        if let photo = frames.last(where: { $0.kind != .card }) { return photo.path }
+        return (nowFrame ?? thenFrame)?.path
+    }
+
     private func who(_ id: UUID) -> String {
         id == session.userID ? "あなた" : (names[id] ?? "だれか")
     }
@@ -134,7 +143,7 @@ struct NowAndThenView: View {
         .toolbarColorScheme(.dark, for: .navigationBar)
         .task(id: "\(context.isInside)-\(refreshToken)") { await load() }
         .fullScreenCover(isPresented: $capturing) {
-            SnapshotCaptureView(context: context, reference: (nowFrame ?? thenFrame)?.path) {
+            SnapshotCaptureView(context: context, reference: captureReference) {
                 Task {
                     await load()
                     // 撮ったばかりの 1 枚を「今」に

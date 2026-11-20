@@ -605,10 +605,13 @@ final class StoryEffectField {
     init(effect: StoryEffect, parent: Entity, scale: Float, arView: ARView) {
         self.effect = effect
         self.arView = arView
-        halfWidth = 1.5 * scale
-        top = 2.8 * scale
-        near = -0.6 * scale
-        far = 1.8 * scale
+        // 小さな GATE（物の GATE は大きさ 0.35 ほど）でも、まわりに十分な広さで舞わせる。
+        // 前は粒の大きさも GATE に合わせて小さくしていて、1〜4cm の粒になり、ほとんど見えなかった（2026-11-20 オーナー「エフェクトが出ない」）
+        let area = max(scale, 0.8)
+        halfWidth = 1.5 * area
+        top = 2.8 * area
+        near = -0.6 * area
+        far = 1.8 * area
         let low = Perf.isLowMemoryDevice
         let count: Int
         switch effect {
@@ -619,9 +622,11 @@ final class StoryEffectField {
         default: count = low ? 24 : 36
         }
         MainWatch.run("AR カメラの効果を作る") {
-            build(count: count, scale: scale)
+            // 粒の大きさは GATE の大きさに合わせて小さくしない（見えなくなる）
+            build(count: count, scale: max(scale, 1))
         }
         parent.addChild(holder)
+        Trace.log("AR カメラ：効果の粒 \(particles.count) 個（GATE の大きさ \(String(format: "%.2f", scale))・広さ \(String(format: "%.1f", halfWidth * 2))m）")
         subscription = arView.scene.subscribe(to: SceneEvents.Update.self) { [weak self] event in
             MainActor.assumeIsolated {
                 self?.tick(Float(event.deltaTime))
@@ -649,13 +654,13 @@ final class StoryEffectField {
             mesh = .generatePlane(width: 1, height: 1)
             materials = [UIColor(red: 1, green: 0.92, blue: 0.7, alpha: 1), .white, UIColor(red: 0.85, green: 0.75, blue: 1, alpha: 1)]
                 .compactMap { StorySprites.material(.star, tint: $0) }
-            baseSize = 0.09
+            baseSize = 0.12
         case .hearts:
             mesh = .generatePlane(width: 1, height: 1)
             materials = [UIColor(red: 1, green: 0.4, blue: 0.62, alpha: 1), UIColor(red: 1, green: 0.62, blue: 0.75, alpha: 1),
                          UIColor(red: 0.95, green: 0.25, blue: 0.4, alpha: 1)]
                 .compactMap { StorySprites.material(.heart, tint: $0) }
-            baseSize = 0.1
+            baseSize = 0.13
         case .confetti:
             mesh = .generateBox(width: 1, height: 0.5, depth: 0.04)
             billboard = false
@@ -663,32 +668,32 @@ final class StoryEffectField {
                          UIColor(red: 0.4, green: 0.8, blue: 1, alpha: 1), UIColor(red: 0.6, green: 0.95, blue: 0.6, alpha: 1),
                          UIColor(red: 0.8, green: 0.6, blue: 1, alpha: 1)]
                 .map { DoorDecor.pbr($0, rough: 0.4, emissive: $0, glow: 0.4) }
-            baseSize = 0.045
+            baseSize = 0.06
         case .snow:
             mesh = .generatePlane(width: 1, height: 1)
             materials = [StorySprites.material(.dot, tint: .white)].compactMap { $0 }
-            baseSize = 0.05
+            baseSize = 0.07
         case .petals:
             mesh = .generateBox(width: 1, height: 0.7, depth: 0.03, cornerRadius: 0.3)
             billboard = false
             materials = [UIColor(red: 1, green: 0.76, blue: 0.84, alpha: 1), UIColor(red: 1, green: 0.66, blue: 0.78, alpha: 1),
                          UIColor(red: 1, green: 0.88, blue: 0.92, alpha: 1)]
                 .map { DoorDecor.pbr($0, rough: 0.6, emissive: $0, glow: 0.25) }
-            baseSize = 0.05
+            baseSize = 0.07
         case .stardust:
             mesh = .generatePlane(width: 1, height: 1)
             materials = [UIColor(red: 0.75, green: 0.6, blue: 1, alpha: 1), UIColor(red: 0.5, green: 0.85, blue: 1, alpha: 1), .white]
                 .compactMap { StorySprites.material(.dot, tint: $0) }
-            baseSize = 0.035
+            baseSize = 0.055
         case .fireflies:
             mesh = .generatePlane(width: 1, height: 1)
             materials = [UIColor(red: 1, green: 0.9, blue: 0.45, alpha: 1), UIColor(red: 0.85, green: 1, blue: 0.5, alpha: 1)]
                 .compactMap { StorySprites.material(.dot, tint: $0) }
-            baseSize = 0.07
+            baseSize = 0.09
         case .bubbles:
             mesh = .generatePlane(width: 1, height: 1)
             materials = [StorySprites.material(.bubble, tint: .white)].compactMap { $0 }
-            baseSize = 0.13
+            baseSize = 0.16
         case .none:
             return
         }

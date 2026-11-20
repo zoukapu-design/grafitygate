@@ -781,15 +781,23 @@ private struct DoorOpenCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .center) {
-                Title("GATE が開きました")
+            HStack(alignment: .center, spacing: 10) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 36, height: 36)
+                    .background(Theme.neonBand, in: Circle())
+                VStack(alignment: .leading, spacing: 2) {
+                    Title("GATE が開きました")
+                    Text(model.doorScale < 0.6 ? "iPhone を中へ入れても入れます" : "くぐっても入れます")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(Theme.accent)
+                }
                 Spacer(minLength: 8)
                 if model.visitID != nil || model.isGateOwner {
                     moreMenu
                 }
             }
-            Caption(model.doorScale < 0.6 ? "iPhone を GATE の中へ入れるか、下のボタンで中へ。"
-                                          : "GATE をくぐるか、下のボタンで中へ。")
             if model.artworkCount > 0 {
                 Label(hand.isActive ? "AR の飾りが \(model.artworkCount) 個。手をのばして触れると動きます"
                                     : "AR の飾りが \(model.artworkCount) 個。押すと動きます",

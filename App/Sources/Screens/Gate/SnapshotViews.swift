@@ -30,14 +30,12 @@ struct SnapshotCaptureView: View {
             ARViewContainer(arView: stage.arView)
                 .ignoresSafeArea()
                 .opacity(shot == nil ? 1 : 0)
+            // 写真は画面の大きさの中に収める（scaledToFill をそのまま置くと、画面より大きくなって
+            // 下の札まで横にはみ出し、前の写真がとても大きく写っていた＝2026-11-20 オーナー）
             if let shot {
-                Image(uiImage: shot).resizable().scaledToFill()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity).clipped()
-                    .ignoresSafeArea()
+                FullScreenPhoto(image: shot)
             } else if let refImage {
-                Image(uiImage: refImage).resizable().scaledToFill()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity).clipped()
-                    .ignoresSafeArea()
+                FullScreenPhoto(image: refImage)
                     .opacity(ghost)
                     .allowsHitTesting(false)
             }
@@ -148,5 +146,21 @@ struct SnapshotCaptureView: View {
             if let path { await media.removePhoto(path: path) }
             message = ErrorText.of(error)
         }
+    }
+}
+
+/// 画面いっぱいの写真（カメラの映像と同じく、縦横の比を保って画面をうめる。画面より大きくならない）
+struct FullScreenPhoto: View {
+    let image: UIImage
+
+    var body: some View {
+        Color.clear
+            .overlay {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            }
+            .clipped()
+            .ignoresSafeArea()
     }
 }
