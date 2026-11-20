@@ -1,0 +1,24 @@
+name: サーバーの確かめ
+
+# サーバー（Supabase）に、アプリが使う新しい関数がそろっているかを確かめる（手動で実行）。
+# 公開の鍵（anon）で、空の値を入れて関数を呼ぶだけ（ログインしていないので、中身は動かない）。
+# 「ない」と出たら、オーナーに supabase/setup_all.sql を SQL の画面に貼り直してもらう。
+# 鍵・アドレスは出さない。
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: 関数がそろっているか
+        run: python3 tools/server_check.py
