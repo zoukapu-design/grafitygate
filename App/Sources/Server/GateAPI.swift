@@ -141,7 +141,12 @@ struct GateAPI {
         do {
             return try await client.rpc("gf_enter2", params: params).execute().value
         } catch let error where ErrorText.isMissingFunction(error) {
-            return try await enter(gate: gate, location: location, print: first)
+            // 0033 の前のサーバー：1 枚ずつ送る（全体・まん中・下寄りの 3 つまで。写真が合わなかったときだけ次へ）
+            var last = try await enter(gate: gate, location: location, print: first)
+            for p in prints.dropFirst().prefix(3) where !last.ok && last.reason == "no_match" {
+                last = try await enter(gate: gate, location: location, print: p)
+            }
+            return last
         }
     }
 
