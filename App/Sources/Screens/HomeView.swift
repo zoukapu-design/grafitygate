@@ -44,8 +44,7 @@ struct HomeView: View {
                                 FriendRing(cards: cards) { id in
                                     withAnimation(.easeInOut(duration: 0.4)) { scroller.scrollTo(id, anchor: .top) }
                                 }
-                                SectionHeader(title: "友達の新着", count: cards.count,
-                                              subtitle: "友達が GATE に残したグラフィティカードが、24 時間だけ届きます")
+                                SectionHeader(title: "友達の新着", count: cards.count)
                                 ForEach(cards) { card in
                                     FeedPost(card: card,
                                              onOpen: { opened = card },

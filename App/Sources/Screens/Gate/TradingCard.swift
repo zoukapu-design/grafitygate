@@ -316,9 +316,12 @@ struct TradingCard: View {
             Image(systemName: "door.left.hand.open")
             Text("GRAFFITI CARD")
                 .tracking(w * 0.004)
-            Text("・\(content.gateTitle)")
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
+            if !content.gateTitle.isEmpty {
+                // GATE の名前が無いとき（見本・古いデータ）は「・」だけが残らないように
+                Text("・\(content.gateTitle)")
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
             Spacer(minLength: 0)
         }
         .font(.system(size: w * 0.038, weight: .heavy))

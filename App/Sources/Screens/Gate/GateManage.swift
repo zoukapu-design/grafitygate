@@ -360,7 +360,8 @@ struct GraffitiEditSheet: View {
     @State private var saving = false
     @State private var message: String?
 
-    private static let limit = 280
+    /// カードのひとことの欄に入る長さ（作るときと同じ 100 文字）
+    private static let limit = 100
 
     init(item: Graffiti, onSaved: @escaping () -> Void) {
         self.item = item
@@ -414,9 +415,6 @@ struct GraffitiEditSheet: View {
                     }
                     Toggle("この GATE の中だけで見せる", isOn: $localOnly)
                         .tint(Theme.accent)
-                } footer: {
-                    Text(localOnly ? "友達の新着・カード図鑑には出ません。GATE に入った人だけが見られます。"
-                                   : "GATE の中と、友達の新着（24 時間）に出ます。")
                 }
                 if let message {
                     Section { NoticeText(text: message) }

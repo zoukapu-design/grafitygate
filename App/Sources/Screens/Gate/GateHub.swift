@@ -31,14 +31,14 @@ extension GateTab {
         case .graffiti:
             return "その場の写真とひとことのカード"
         case .memories:
-            return context.isInside ? "みんなで写真・動画・声を集める" : "GATE の中で、みんなのアルバムが見られます"
+            return context.isInside ? "みんなで写真・動画・声を集める" : "GATE の中で見られます"
         case .board:
             if context.isInside { return "この場所のことを話す・聞く・調べる" }
-            return context.opened ? "読めます（書くのは GATE の中で）" : "話題の題名だけ見られます"
+            return context.opened ? "話題が読めます" : "話題の題名が見られます"
         case .letters:
-            return context.isInside ? "未来の自分や友達へ。カードを添えて" : "あなたあての手紙は、ここで開きます"
+            return context.isInside ? "未来の自分や友達へ。カードを添えて" : "あなたあての手紙を開く"
         case .thenNow:
-            return context.isInside ? "同じ場所の昔と今の写真を並べる" : "GATE の中で、昔と今が見られます"
+            return context.isInside ? "同じ場所の昔と今の写真を並べる" : "GATE の中で見られます"
         }
     }
 

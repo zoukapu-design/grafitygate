@@ -186,7 +186,7 @@ struct LetterRow: View {
                 Label(status.text, systemImage: status.symbol)
                     .font(.footnote.weight(.bold))
                     .foregroundStyle(status.color)
-                if showsGate {
+                if showsGate && !status.text.contains(letter.gate_title) {
                     Text("・\(letter.gate_title)")
                         .font(.footnote)
                         .foregroundStyle(Theme.textSecondary)

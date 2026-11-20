@@ -439,7 +439,7 @@ struct FriendsView: View {
             }
 
             if !followersOnly.isEmpty {
-                Section("あなたをフォローしている人（フォローを返すと友達）") {
+                Section("フォロワー（\(followersOnly.count)）") {
                     ForEach(followersOnly, id: \.id) { p in
                         NavigationLink { ProfileView(userID: p.id) } label: { PersonRow(profile: p) }
                     }
@@ -454,7 +454,7 @@ struct FriendsView: View {
                 }
             }
             if !followingOnly.isEmpty {
-                Section("フォロー中（相手のフォロー待ち）") {
+                Section("フォロー中（\(followingOnly.count)）") {
                     ForEach(followingOnly, id: \.id) { p in
                         NavigationLink { ProfileView(userID: p.id) } label: { PersonRow(profile: p) }
                     }

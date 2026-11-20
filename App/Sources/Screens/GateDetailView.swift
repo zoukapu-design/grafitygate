@@ -814,8 +814,8 @@ struct GateDetailView: View {
             BoardDoorPanel(isOpen: false,
                            title: "GATE は閉じています",
                            detail: far && distance != nil
-                               ? "ここから \(TrailGuide.distanceText(distance!))。GATE の近く（120m 以内）まで行くと開けられます。"
-                               : "作った人が写した場所・物にカメラを向けて、位置と景色が合うと GATE が開きます。") {
+                               ? "ここから \(TrailGuide.distanceText(distance!))。近くまで行くと開けられます"
+                               : "作った人が写した所にカメラを向けると開きます") {
                 if showActions {
                 VStack(spacing: 10) {
                     if far, distance != nil {

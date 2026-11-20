@@ -202,8 +202,7 @@ struct NearbyCardsView: View {
     // MARK: 部品
 
     private var header: some View {
-        SectionHeader(title: "近くの友達のカード",
-                      subtitle: "いまいる所から 300m 以内の GATE に、友達が残したもの。右へはらうとくわしく見られます") {
+        SectionHeader(title: "近くの友達のカード") {
             if !model.deck.isEmpty {
                 Text("あと \(model.deck.count) 枚")
                     .font(.caption.weight(.bold))

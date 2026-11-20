@@ -139,7 +139,6 @@ struct SavedCardsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                ScreenIntro(text: "GATE の中で「保存」したグラフィティカードです。押すと、そのカードがある GATE を開きます。")
                 if let message { NoticeText(text: message) }
                 if loaded && cards.isEmpty && message == nil {
                     EmptyNote(title: "まだ保存したカードはありません",
