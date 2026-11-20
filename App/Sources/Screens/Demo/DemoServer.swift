@@ -378,6 +378,10 @@ enum DemoData {
                      "card_gate_title": "夕焼けの見える丘", "card_created_at": ago(365 * 86400), "card_gone": false]]
         case "gf_my_letters":
             return [
+                // 開封済み（ふたが開いて便せんがのぞく形）
+                ["id": UUID().uuidString, "gate_id": hill.uuidString, "gate_title": "夕焼けの見える丘", "author": kenta.uuidString,
+                 "author_name": "けんた", "recipient": me.uuidString, "recipient_name": "あなた", "open_at": NSNull(), "onsite": true,
+                 "opened_at": ago(3 * 86400), "created_at": ago(9 * 86400), "sent": false, "time_ok": true, "here": true],
                 ["id": UUID().uuidString, "gate_id": hill.uuidString, "gate_title": "夕焼けの見える丘", "author": misaki.uuidString,
                  "author_name": "みさき", "recipient": me.uuidString, "recipient_name": "あなた", "open_at": NSNull(), "onsite": true,
                  "opened_at": NSNull(), "created_at": ago(2 * 86400), "sent": false, "time_ok": true, "here": false],

@@ -104,11 +104,6 @@ struct CardMakerView: View {
                         .frame(maxWidth: 330)
                         .frame(maxWidth: .infinity)
                         .animation(.spring(response: 0.4, dampingFraction: 0.8), value: draft.finish)
-                    Label("カードの名前・ひとことは、カードの上を押して書けます。写真を押すと撮る・整える。", systemImage: "hand.tap")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Theme.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
                     VStack(alignment: .leading, spacing: 8) {
                         Text("仕上げ").font(.subheadline.weight(.heavy)).foregroundStyle(Theme.text)
                         CardFinishPicker(selection: $draft.finish)
@@ -253,10 +248,12 @@ struct CardMakerView: View {
             }
             .buttonStyle(PrimaryButtonStyle())
             .disabled(posting || draft.isEmpty || context.visit == nil)
-            Text(context.visit == nil ? "GATE が閉じました。現地で GATE を開けると残せます。"
-                                      : "1 つの GATE に 1 日 1 枚。残したあとも、名前・ひとことは直せます。")
-                .font(.caption2)
-                .foregroundStyle(Theme.textSecondary)
+            if context.visit == nil {
+                // 残せない理由だけ（決まりの説明は出さない）
+                Label("GATE が閉じました。現地で開けると残せます", systemImage: "lock.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Theme.textSecondary)
+            }
         }
         .padding(.horizontal, 16)
         .padding(.top, 10)

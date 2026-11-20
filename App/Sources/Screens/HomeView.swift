@@ -216,9 +216,7 @@ private struct HomeWelcome: View {
                 Text(friendCount == 0 ? "友達のグラフィティカードが、ここに届く" : "友達の新着は、まだありません")
                     .font(.title3.weight(.heavy))
                     .foregroundStyle(Theme.text)
-                Text(friendCount == 0
-                     ? "友達が GATE に残したカードが、24 時間ここに並びます。キラやゴールドのカードも。まずは友達を足しましょう。"
-                     : "友達がどこかの GATE でカードを残すと、24 時間ここに並びます。あなたも近くの GATE で 1 枚残してみましょう。")
+                Text(friendCount == 0 ? "まずは友達を足そう" : "あなたも近くの GATE で 1 枚残してみよう")
                     .font(.subheadline)
                     .foregroundStyle(Theme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -230,12 +228,11 @@ private struct HomeWelcome: View {
                 .buttonStyle(PrimaryButtonStyle())
             }
             Button { go(.map) } label: {
-                GuideRow(systemImage: "map", title: "近くの GATE を探す", detail: "地図で、100m 以内の GATE を見られます。")
+                GuideRow(systemImage: "map", title: "近くの GATE を探す")
             }
             .buttonStyle(.plain)
             Button { go(.capture) } label: {
-                GuideRow(systemImage: "door.left.hand.open", title: "最初の GATE を作る",
-                         detail: "思い出の場所や物にカメラを向けて、記憶の扉を置きます。")
+                GuideRow(systemImage: "door.left.hand.open", title: "最初の GATE を作る")
             }
             .buttonStyle(.plain)
         }
@@ -254,7 +251,7 @@ private struct HomeWelcome: View {
 private struct GuideRow: View {
     let systemImage: String
     let title: String
-    let detail: String
+    var detail: String? = nil
 
     var body: some View {
         HStack(spacing: 14) {
@@ -265,8 +262,10 @@ private struct GuideRow: View {
                 .background(Theme.accentLight, in: RoundedRectangle(cornerRadius: 12))
             VStack(alignment: .leading, spacing: 3) {
                 Text(title).font(.headline).foregroundStyle(Theme.text)
-                Text(detail).font(.caption).foregroundStyle(Theme.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                if let detail {
+                    Text(detail).font(.caption).foregroundStyle(Theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             Spacer(minLength: 0)
             Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(Theme.textSecondary)

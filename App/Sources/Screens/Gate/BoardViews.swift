@@ -97,7 +97,6 @@ struct BoardSection: View {
                         report = ReportItem(id: thread.id, target: .thread, userID: nil, userName: nil, label: "掲示板の話題")
                     }
                 }
-                LockNote(text: "話題の中身と返信は、GATE を開けると読めます")
             }
         } else {
             LockNote(text: context.peek != nil
