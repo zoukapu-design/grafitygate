@@ -67,7 +67,7 @@ enum ErrorText {
         switch reason {
         case "too_far": return "GATE から離れています。GATE の近く（120m 以内）で入れます。"
         case "inaccurate", "bad_position": return "位置の精度が足りません。空の開けた所で少し待ってから、もう一度お試しください。"
-        case "no_match": return "写したものが、この GATE と合いませんでした。作った人が写した場所・物を、正面から写してみてください。"
+        case "no_match": return "まだ見つかりません。見本の景色と同じように写して、もう一度。"
         case "no_reference": return "この GATE の写真の特徴が、いまのアプリと形式が違うため比べられません。"
         case "not_found": return "この GATE は見つかりませんでした（見せる範囲が変わったか、閉じられた可能性があります）。"
         case "challenge_used", "challenge_expired", "challenge_invalid": return "時間がたちすぎました。もう一度お試しください。"
@@ -84,6 +84,7 @@ enum ErrorText {
         ("gf_visit_invalid", "GATE が閉じました（離れたため）。現地でもう一度 GATE を開けてください。"),
         ("gf_inaccurate", "位置の精度が足りません。空の開けた所で少し待ってから、もう一度お試しください。"),
         ("gf_bad_position", "現在地を確かめられませんでした。"),
+        ("gf_bad_prints", "写真の特徴を送れませんでした。もう一度お試しください。"),
         ("gf_rate_limited", "短い時間にたくさん操作されました。少し時間をおいてからお試しください。"),
         ("gf_challenge_used", "時間がたちすぎました。もう一度お試しください。"),
         ("gf_challenge_expired", "時間がたちすぎました。もう一度お試しください。"),

@@ -24,6 +24,8 @@ final class GateDoor {
     let shape: DoorShape
     /// 見た目ごとのまわりの飾り（動くものは毎コマ tick）
     private var decor: DoorDecor?
+    /// まわりに舞う光の粒と星（どの見た目にも。台に付けるので、GATE の大きさで小さくしすぎない）
+    private var aura: GateAura?
     private(set) var isOpen = false
     /// 扉と AR の飾りを載せる台。見る人が指で少し動かした分（自分の画面だけ）は、この台の位置・向きで持つ
     let base = Entity()
@@ -80,6 +82,8 @@ final class GateDoor {
     /// 前のコマのカメラの位置（扉の座標。くぐったかを見る）
     private var lastCamLocal: SIMD3<Float>?
     private var passQuietUntil: TimeInterval = 0
+    /// まわりの光を出し始めたか（現れた・開いたあと）
+    private var auraShown = false
 
     init(anchor: ARAnchor, in arView: ARView, style: Style = .portal, design: DoorDesign = .neon) throws {
         self.style = style
@@ -92,6 +96,9 @@ final class GateDoor {
         }
         anchorEntity.addChild(base)
         base.addChild(root)
+        let glow = GateAura(design: design, shape: design.shape)
+        base.addChild(glow.root)
+        aura = glow
         Fade.set(root, 0)
         arView.scene.addAnchor(anchorEntity)
         subscription = arView.scene.subscribe(to: SceneEvents.Update.self) { [weak self] event in
@@ -112,6 +119,7 @@ final class GateDoor {
     /// 扉を隠す・出す（グラフィティカードを撮るとき。AR の飾りは台に付いているので、そのまま見える）
     func setHidden(_ hidden: Bool) {
         root.isEnabled = !hidden
+        aura?.root.isEnabled = !hidden && auraShown
         lastCamLocal = nil
     }
 
@@ -452,7 +460,8 @@ final class GateDoor {
         }
 
         // 光の粒（ゆっくり立ちのぼる。金色と、ネオンの色）
-        let mote = MeshResource.generateSphere(radius: 0.007)
+        // 扉の中の世界は GATE の大きさで小さくなるので、粒は大きめに（前は 7mm で、物の GATE では見えなかった）
+        let mote = MeshResource.generateSphere(radius: 0.016)
         let moteColors = [UIColor(red: 1.0, green: 0.93, blue: 0.78, alpha: 1), DoorTextures.neonColor(at: 0.15),
                           DoorTextures.neonColor(at: 0.45), DoorTextures.neonColor(at: 0.9)]
         let moteMaterials: [UnlitMaterial] = moteColors.map {
@@ -498,12 +507,15 @@ final class GateDoor {
         let v = min(max(value, 0.2), 1.5)
         size = v
         root.scale = .one * v
+        aura?.setSize(v)
         lastCamLocal = nil
     }
 
     /// 足もとから現れ、ネオンがまたたいて灯る
     func appear() {
         root.position = [0, -0.05, 0]
+        auraShown = true
+        aura?.appear(at: Float(clock))
         setNeon(0)
         animate(0.9) { [weak self] t in
             guard let self else { return }
@@ -530,6 +542,8 @@ final class GateDoor {
         guard !isOpen else { return }
         isOpen = true
         interior.isEnabled = true
+        auraShown = true
+        aura?.open(at: Float(clock))
         animate(1.1) { [weak self] t in
             guard let self else { return }
             let e = Self.easeInOut(t)
@@ -633,7 +647,8 @@ final class GateDoor {
         let count = big ? (Perf.isLowMemoryDevice ? 36 : 54) : 20
         let holder = Entity()
         base.addChild(holder)
-        let mesh = MeshResource.generateSphere(radius: big ? 0.024 : 0.018)
+        // 物の GATE でも見える大きさ（前は 1.8〜2.4cm で、白い壁の部屋ではほとんど見えなかった）
+        let mesh = MeshResource.generateSphere(radius: big ? 0.036 : 0.028)
         var dots: [(Entity, SIMD3<Float>, SIMD3<Float>)] = []
         for i in 0..<count {
             let dot = ModelEntity(mesh: mesh, materials: [UnlitMaterial(color: colors[i % colors.count])])
@@ -665,6 +680,7 @@ final class GateDoor {
         floaters.removeAll()
         beckonRings.removeAll()
         decor = nil
+        aura = nil
         onPassThrough = nil
     }
 
@@ -676,6 +692,9 @@ final class GateDoor {
         clock += dt
         checkPassThrough()
         decor?.tick(time: Float(clock))
+        if let aura, let arView, aura.root.isEnabled {
+            aura.tick(time: Float(clock), camera: base.convert(position: arView.cameraTransform.translation, from: nil))
+        }
         // 進行中の動き
         tweens.removeAll { tween in
             let t = Float(min(max((clock - tween.start) / tween.duration, 0), 1))

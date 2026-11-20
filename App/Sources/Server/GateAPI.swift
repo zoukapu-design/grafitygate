@@ -34,6 +34,20 @@ struct GateAPI {
                                                      p_print_rev: FeaturePrint.revision)).execute().value
     }
 
+    /// 近くの GATE の候補（いくつかの写真の特徴をまとめて送り、いちばん近いもので比べる＝0033。前のサーバーでは 1 枚目だけ）
+    func candidates(_ location: CLLocation, prints: [[Float]]) async throws -> [MatchCandidate] {
+        guard let first = prints.first else { return [] }
+        do {
+            return try await client.rpc("gf_match_candidates2",
+                                        params: CandidatesParams2(p_lat: location.coordinate.latitude,
+                                                                  p_lon: location.coordinate.longitude,
+                                                                  p_prints: Array(prints.prefix(12)),
+                                                                  p_print_rev: FeaturePrint.revision)).execute().value
+        } catch let error where ErrorText.isMissingFunction(error) {
+            return try await candidates(location, print: first)
+        }
+    }
+
     // MARK: 作る・入る・残す
 
     func requestChallenge() async throws -> UUID {
@@ -113,6 +127,22 @@ struct GateAPI {
         try await client.rpc("gf_register_place_map",
                              params: PlaceMapParams(p_gate: gate, p_path: path, p_size: size, p_anchor: anchorName))
             .execute()
+    }
+
+    /// 現地で入る（位置と、いま写した何コマか・いくつかの切り抜きの写真の特徴をまとめて送る＝0033。
+    /// サーバーは見本といちばん近いもので判定する。前のサーバーでは 1 枚目だけを送る）
+    func enter(gate: UUID, location: CLLocation, prints: [[Float]]) async throws -> EnterResult {
+        guard let first = prints.first else { throw FeaturePrint.Failure.noResult }
+        let challenge = try await requestChallenge()
+        let params = Enter2Params(p_gate: gate, p_challenge: challenge,
+                                  p_lat: location.coordinate.latitude, p_lon: location.coordinate.longitude,
+                                  p_accuracy: location.horizontalAccuracy,
+                                  p_prints: Array(prints.prefix(12)), p_print_rev: FeaturePrint.revision)
+        do {
+            return try await client.rpc("gf_enter2", params: params).execute().value
+        } catch let error where ErrorText.isMissingFunction(error) {
+            return try await enter(gate: gate, location: location, print: first)
+        }
     }
 
     /// 現地で入る（位置と、いま写した写真の特徴を送る）
@@ -421,6 +451,23 @@ private struct CreateGateParams: Encodable {
         try c.encode(p_cover_path, forKey: .p_cover_path)    // nil は null
         try c.encode(p_refs, forKey: .p_refs)
     }
+}
+
+private struct Enter2Params: Encodable {
+    let p_gate: UUID
+    let p_challenge: UUID
+    let p_lat: Double
+    let p_lon: Double
+    let p_accuracy: Double
+    let p_prints: [[Float]]
+    let p_print_rev: Int
+}
+
+private struct CandidatesParams2: Encodable {
+    let p_lat: Double
+    let p_lon: Double
+    let p_prints: [[Float]]
+    let p_print_rev: Int
 }
 
 private struct EnterParams: Encodable {

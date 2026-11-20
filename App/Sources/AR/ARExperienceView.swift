@@ -78,6 +78,12 @@ struct ARExperienceView: View {
                 Reticle()
                     .allowsHitTesting(false)
             }
+            if model.scanningLook {
+                // 写真の特徴を作っているあいだ、景色の上を光が流れる
+                ScanSweep()
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+            }
             HandCursorView(hand: model.hand)
             if storyShown {
                 // AR カメラ（扉・みんなの AR と一緒に、グラフィティカードの写真を撮る）
@@ -121,6 +127,7 @@ struct ARExperienceView: View {
             }
         }
         .animation(.easeInOut(duration: 0.25), value: storyShown)
+        .animation(.easeInOut(duration: 0.3), value: model.scanningLook)
         .task(id: model.enteredGate) {
             // AR カメラの上に出す GATE の名前
             guard let gate = model.enteredGate, let api = session.api else { return }
@@ -358,38 +365,30 @@ private struct ExperienceCard: View {
         case .choosing(let list):
             choosing(list)
         case .findingPlace:
-            VStack(alignment: .leading, spacing: 10) {
-                Title("GATE の場所を探しています")
-                Caption("作った人が GATE を置いた辺りを、ゆっくり見回してください。見つかると、同じ位置に GATE が現れます。")
+            VStack(alignment: .leading, spacing: 12) {
+                CardHeadline(symbol: "location.viewfinder", title: "GATE の場所を探しています", hint: "まわりをゆっくり見回してね")
                 ProgressView().tint(Theme.accent)
                 Button("見つからないので、目の前に出す") { model.stopFindingPlace() }
                     .buttonStyle(SecondaryButtonStyle())
             }
         case .doorClosed:
-            VStack(alignment: .leading, spacing: 10) {
-                Title("GATE が現れました")
+            // 2026-11-21 オーナー：説明の文はやめて、何をすればよいかを 1 行と大きなボタンで
+            VStack(alignment: .leading, spacing: 12) {
+                CardHeadline(symbol: "sparkles", title: "GATE が現れました",
+                             hint: model.doorScale < 0.6 ? "iPhone を GATE に入れても開くよ" : "くぐっても開くよ")
                 if let note = model.trailNote {
                     Label(note, systemImage: "figure.walk")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Theme.warm)
                 }
-                Caption(model.placedPrecisely ? "作った人が GATE を置いた場所です。GATE を押すか、GATE をくぐると開きます。"
-                                              : "GATE の位置の記録が見つからなかったので、仮の位置に出しています。GATE を押すか、GATE をくぐると開きます。")
-                Label(model.doorScale < 0.6 ? "小さな GATE は、iPhone を GATE の中へそっと入れても開きます"
-                                            : "歩いて GATE をくぐると、そのまま中へ入れます",
-                      systemImage: "figure.walk.arrival")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Theme.accent)
-                Button("GATE を開ける") { model.openDoor() }
-                    .buttonStyle(PrimaryButtonStyle())
+                Button {
+                    model.openDoor()
+                } label: {
+                    Label("GATE を開ける", systemImage: "door.left.hand.open")
+                }
+                .buttonStyle(PrimaryButtonStyle())
                 if !model.placedPrecisely {
-                    Button {
-                        model.beginAdjust()
-                    } label: {
-                        Label("GATE の位置を合わせる", systemImage: "hand.draw")
-                    }
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Theme.accent)
+                    AdjustLink(model: model)
                 }
             }
         case .doorOpen:
@@ -467,10 +466,24 @@ private struct ExperienceCard: View {
                     .foregroundStyle(Theme.textSecondary)
             }
         case .failed(let message):
-            VStack(alignment: .leading, spacing: 10) {
-                NoticeText(text: message)
-                Button("もう一度") { model.retry() }
-                    .buttonStyle(SecondaryButtonStyle())
+            if model.lastEnterReason == "no_match" {
+                // 写真が合わなかったとき：見本の景色を大きめに見せて、すぐ写し直せるように
+                VStack(alignment: .leading, spacing: 12) {
+                    GuideLook(cover: model.guideCover, title: "まだ見つかりません", detail: "この景色と同じように写して")
+                    Button {
+                        model.retry()
+                        model.openHere()
+                    } label: {
+                        Label("もう一度写す", systemImage: "viewfinder")
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 10) {
+                    NoticeText(text: message)
+                    Button("もう一度") { model.retry() }
+                        .buttonStyle(SecondaryButtonStyle())
+                }
             }
         }
     }
@@ -481,7 +494,6 @@ private struct ExperienceCard: View {
                 if model.nearbyChecked && model.nearby.isEmpty {
                     // 近くに何もない：いちばん大きいボタンは「作る」
                     Title("この辺りに GATE はまだありません")
-                    Caption("残したい場所や物に向けて、最初の GATE を作れます。")
                     Button("ここに GATE を作る") { model.startCreate() }
                         .buttonStyle(PrimaryButtonStyle())
                     Button("ここで開く") { model.openHere() }
@@ -491,10 +503,7 @@ private struct ExperienceCard: View {
                 } else {
                     Title(model.nearby.isEmpty ? "目の前の場所や物に向けてください"
                           : "近くに GATE が \(model.nearby.count) つあります")
-                    if model.nearby.isEmpty {
-                        Caption("近く（100m 以内）に GATE があれば、ここで開けます。")
-                    } else {
-                        Caption("作った人が写した場所や物にカメラを向けて「ここで開く」。")
+                    if !model.nearby.isEmpty {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 8) {
                                 ForEach(model.nearby.prefix(6)) { gate in
@@ -509,10 +518,14 @@ private struct ExperienceCard: View {
                         .buttonStyle(SecondaryButtonStyle())
                 }
             } else {
-                Title("作った人が写した場所・物に向けてください")
-                Caption("位置（120m 以内）と景色の両方が合うと、GATE が現れます。")
-                Button("ここで開く") { model.openHere() }
-                    .buttonStyle(PrimaryButtonStyle())
+                // 作った人が写した景色を見本に出す（同じように写すと開く）
+                GuideLook(cover: model.guideCover, title: "この景色にカメラを向けて", detail: model.guideGate?.title)
+                Button {
+                    model.openHere()
+                } label: {
+                    Label("ここで開く", systemImage: "viewfinder")
+                }
+                .buttonStyle(PrimaryButtonStyle())
             }
         }
     }
@@ -766,6 +779,156 @@ private struct Caption: View {
     }
 }
 
+/// カードの見出し：光る丸のしるし・題・ひとことの案内（1 行ずつ。狭い iPhone では少し小さくして入れる）
+private struct CardHeadline: View {
+    let symbol: String
+    let title: String
+    var hint: String?
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 10) {
+            Image(systemName: symbol)
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 38, height: 38)
+                .background(Theme.neonBand, in: Circle())
+                .symbolEffect(.pulse, options: .repeating)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.headline)
+                    .foregroundStyle(Theme.text)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                if let hint {
+                    Text(hint)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(Theme.accent)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                }
+            }
+            Spacer(minLength: 4)
+        }
+    }
+}
+
+/// 仮の位置に出た GATE を、指で合わせる（小さく）
+private struct AdjustLink: View {
+    @ObservedObject var model: ARExperienceModel
+
+    var body: some View {
+        Button {
+            model.beginAdjust()
+        } label: {
+            Label("ずれていたら、GATE の位置を合わせる", systemImage: "hand.draw")
+                .font(.footnote.weight(.semibold))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(Theme.accent)
+        .frame(maxWidth: .infinity)
+    }
+}
+
+/// 作った人が写した景色（GATE の表紙）を見本に出す。押すと大きく見られる
+private struct GuideLook: View {
+    let cover: String?
+    let title: String
+    var detail: String?
+    @State private var large = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                if let cover, !large {
+                    Button {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { large = true }
+                        Haptics.tap()
+                    } label: {
+                        RemotePhoto(path: cover)
+                            .frame(width: 64, height: 64)
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Theme.neonBand, lineWidth: 2))
+                            .overlay(alignment: .bottomTrailing) {
+                                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .padding(4)
+                                    .background(.black.opacity(0.45), in: Circle())
+                                    .padding(4)
+                            }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("見本の景色を大きく見る")
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.headline)
+                        .foregroundStyle(Theme.text)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let detail, !detail.isEmpty {
+                        Text(detail)
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(Theme.accent)
+                            .lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            if large, let cover {
+                Button {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { large = false }
+                } label: {
+                    Color.clear
+                        .frame(height: 190)
+                        .frame(maxWidth: .infinity)
+                        .overlay { RemotePhoto(path: cover) }
+                        .clipShape(RoundedRectangle(cornerRadius: 18))
+                        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Theme.neonBand, lineWidth: 2))
+                }
+                .buttonStyle(.plain)
+                .transition(.scale(scale: 0.6, anchor: .topLeading).combined(with: .opacity))
+                .accessibilityLabel("見本の景色を小さくする")
+            }
+        }
+    }
+}
+
+/// 写真の特徴を作っているあいだ、カメラの景色の上を流れる光（「確かめている」が目で分かるように）
+private struct ScanSweep: View {
+    var body: some View {
+        TimelineView(.animation) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+            GeometryReader { geo in
+                let w = geo.size.width, h = geo.size.height
+                let p = t.truncatingRemainder(dividingBy: 1.3) / 1.3
+                let y = h * (0.1 + 0.7 * p)
+                ZStack {
+                    RoundedRectangle(cornerRadius: 38)
+                        .strokeBorder(Theme.neonBand, lineWidth: 5)
+                        .opacity(0.55 + 0.35 * abs(sin(t * 3)))
+                        .blur(radius: 1.5)
+                        .padding(8)
+                    LinearGradient(colors: [.clear, Color(hex: 0xFF5FD2).opacity(0.28), .white.opacity(0.7),
+                                            Color(hex: 0x3FD0FF).opacity(0.28), .clear],
+                                   startPoint: .top, endPoint: .bottom)
+                        .frame(width: w, height: 110)
+                        .position(x: w / 2, y: y)
+                    ForEach(0..<7, id: \.self) { i in
+                        let phase = Double(i) * 0.9
+                        Image(systemName: "sparkle")
+                            .font(.system(size: 12 + 10 * abs(sin(t * 3 + phase)), weight: .bold))
+                            .foregroundStyle(.white)
+                            .shadow(color: Color(hex: i % 2 == 0 ? 0xFF5FD2 : 0x9B5CFF), radius: 6)
+                            .position(x: w * (0.08 + 0.84 * Double(i) / 6), y: y + 14 * sin(t * 4 + phase))
+                    }
+                }
+            }
+        }
+        .ignoresSafeArea()
+    }
+}
+
 /// GATE が開いたとき（2026-11-20 オーナー「選ぶボタンが多くわかりにくい」）：
 /// 大きなボタンは「中へ入る」と「AR カメラでカードを撮る」の 2 つだけ。AR の飾りを置く・位置や大きさ・位置の記録は右上の「そのほか」へ
 private struct DoorOpenCard: View {
@@ -782,18 +945,8 @@ private struct DoorOpenCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .center, spacing: 10) {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 36, height: 36)
-                    .background(Theme.neonBand, in: Circle())
-                VStack(alignment: .leading, spacing: 2) {
-                    Title("GATE が開きました")
-                    Text(model.doorScale < 0.6 ? "iPhone を中へ入れても入れます" : "くぐっても入れます")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(Theme.accent)
-                }
-                Spacer(minLength: 8)
+                CardHeadline(symbol: "sparkles", title: "GATE が開きました",
+                             hint: model.doorScale < 0.6 ? "iPhone を GATE に入れても中へ" : "くぐっても中へ入れるよ")
                 if model.visitID != nil || model.isGateOwner {
                     moreMenu
                 }
@@ -806,30 +959,29 @@ private struct DoorOpenCard: View {
                     .foregroundStyle(Theme.accent)
             }
             if let warning = model.mapWarning { Caption(warning) }
-            Button {
-                model.goInside()
-            } label: {
-                Label("中へ入る", systemImage: "door.left.hand.open")
+            // 2 つの大きなボタンを横に並べて、カードを低くする（GATE のまわりの光が、カードに隠れないように）
+            HStack(spacing: 10) {
+                Button {
+                    model.goInside()
+                } label: {
+                    Label("中へ入る", systemImage: "door.left.hand.open")
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                // AR カメラ：GATE・みんなの AR・効果・文字と一緒に撮って、グラフィティカードに
+                Button {
+                    model.startStoryCamera()
+                } label: {
+                    Label("AR カメラで撮る", systemImage: "camera.viewfinder")
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+                .buttonStyle(SecondaryButtonStyle())
             }
-            .buttonStyle(PrimaryButtonStyle())
-            // AR カメラ：GATE・みんなの AR・効果・文字と一緒に撮って、グラフィティカードに
-            Button {
-                model.startStoryCamera()
-            } label: {
-                Label("AR カメラでカードを撮る", systemImage: "camera.viewfinder")
-            }
-            .buttonStyle(SecondaryButtonStyle())
             if !model.placedPrecisely {
                 // 仮の位置に出ているときだけ、小さく
-                Button {
-                    model.beginAdjust()
-                } label: {
-                    Label("ずれていたら、GATE の位置を合わせる", systemImage: "hand.draw")
-                        .font(.footnote.weight(.semibold))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(Theme.accent)
-                .frame(maxWidth: .infinity)
+                AdjustLink(model: model)
             }
         }
     }
@@ -862,12 +1014,11 @@ private struct DoorOpenCard: View {
                 }
             }
         } label: {
-            Label("そのほか", systemImage: "ellipsis")
-                .font(.subheadline.weight(.semibold))
+            Image(systemName: "ellipsis")
+                .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(Theme.accent)
-                .padding(.horizontal, 12)
-                .frame(height: 34)
-                .background(Theme.accentLight, in: Capsule())
+                .frame(width: 38, height: 38)
+                .background(Theme.accentLight, in: Circle())
         }
         .accessibilityLabel("そのほか（AR の飾りを置く など）")
     }

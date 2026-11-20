@@ -51,6 +51,8 @@ final class ARExperienceModel: ObservableObject {
         let print: [Float]
         let jpeg: Data?
         let thumbnail: UIImage?
+        /// 同じ絵のまん中を切り抜いた特徴（見本に足す）
+        var crops: [[Float]] = []
     }
 
     struct GateForm {
@@ -197,6 +199,12 @@ final class ARExperienceModel: ObservableObject {
     var visitID: UUID?
     /// 入ろうとしている GATE の方向の案内（GATE の画面から開いたとき）
     @Published var guideGate: GuideGate?
+    /// 入る GATE の表紙（作った人が写した景色。「この景色に向けて」の見本に出す）
+    @Published private(set) var guideCover: String?
+    /// 写真の特徴を作っているあいだ（カメラの景色に、確かめている光を流す）
+    @Published private(set) var scanningLook = false
+    /// いちばん最近、GATE を開けられなかった理由（gf_enter の reason）
+    @Published private(set) var lastEnterReason: String?
     private var keeperWatch: AnyCancellable?
     var visitExpires: Date?
     var artScene: ArtworkScene?
@@ -206,7 +214,7 @@ final class ARExperienceModel: ObservableObject {
     /// 受け取っている途中の映像・声（同じものを何度も受け取らない）
     var artMediaLoading: Set<UUID> = []
     var captionTask: Task<Void, Never>?
-    private var lastPrint: [Float]?
+    private var lastPrints: [[Float]] = []
     private var clientKey = UUID().uuidString
     /// 送り直しのための途中の記録（できた GATE・送った表紙・GATE の位置の記録を保存したか）
     private var createdGate: UUID?
@@ -312,6 +320,7 @@ final class ARExperienceModel: ObservableObject {
                 // カメラの景色に、この GATE の方向と距離を出す（場所はおおよそ）
                 guideGate = GuideGate(id: summary.id, title: summary.title,
                                       latitude: summary.approx_lat, longitude: summary.approx_lon)
+                guideCover = summary.cover_path
             }
         case .addLooks(let gate):
             targetKind = GateKind(raw: try? await api.summary(gate)?.kind)
@@ -320,6 +329,13 @@ final class ARExperienceModel: ObservableObject {
             // 扉を出すときに種類も受け取る（showDoor）
             return
         }
+    }
+
+    /// 作るときに送る見本の特徴：3 方向の写真の特徴と、そのまん中の切り抜き（サーバーは 8 つまで）
+    static func referencePrints(_ shots: [Shot]) -> [[Float]] {
+        let main = shots.map(\.print)
+        let extra = shots.flatMap(\.crops)
+        return Array((main + extra).prefix(8))
     }
 
     func stop() {
@@ -409,17 +425,22 @@ final class ARExperienceModel: ObservableObject {
         }
         notice = nil
         phase = .working("この場所を確かめています…")
+        scanningLook = true
+        defer { scanningLook = false }
         do {
-            let shot = try await stage.grabShot(withPhoto: false)
-            lastPrint = shot.print
+            // 何コマか × いくつかの切り抜きの特徴をまとめて送る（作った人と少しちがう所から写しても合うように）
+            let started = Date()
+            let prints = try await stage.grabPrints()
+            lastPrints = prints
+            Trace.log(String(format: "写真の特徴を %d 個作った（%.1f 秒）", prints.count, Date().timeIntervalSince(started)))
             switch mode {
             case .enter(let gate), .addLooks(let gate), .cardCamera(let gate, _):
-                await enter(gate, fix: fix, print: shot.print)
+                await enter(gate, fix: fix, prints: prints)
             case .explore:
-                let list = try await api.candidates(fix, print: shot.print)
+                let list = try await api.candidates(fix, prints: prints)
                 Trace.log("近くの候補：\(list.map { "\($0.title)=\($0.similarity)" }.joined(separator: "、"))")
                 if let best = list.first(where: { $0.similarity == "strong" }) {
-                    await enter(best.id, fix: fix, print: shot.print)
+                    await enter(best.id, fix: fix, prints: prints)
                 } else if list.isEmpty {
                     phase = .failed("近く（100m 以内）に入れる GATE はありません。「ここに GATE を作る」で、この場所に作れます。")
                 } else {
@@ -432,21 +453,24 @@ final class ARExperienceModel: ObservableObject {
     }
 
     func choose(_ candidate: MatchCandidate) {
-        guard let fix = location?.usableFix, let print = lastPrint else {
+        guard let fix = location?.usableFix, !lastPrints.isEmpty else {
             notice = location?.fixProblem
             location?.askFullAccuracyIfNeeded()
             return
         }
-        Task { await enter(candidate.id, fix: fix, print: print) }
+        let prints = lastPrints
+        Task { await enter(candidate.id, fix: fix, prints: prints) }
     }
 
-    private func enter(_ gate: UUID, fix: CLLocation, print: [Float]) async {
+    private func enter(_ gate: UUID, fix: CLLocation, prints: [[Float]]) async {
         guard let api = session?.api else { return }
         phase = .working("GATE を開ける準備をしています…")
+        lastEnterReason = nil
         do {
-            let result = try await api.enter(gate: gate, location: fix, print: print)
+            let result = try await api.enter(gate: gate, location: fix, prints: prints)
             guard result.ok else {
-                Trace.log("入場できませんでした：\(result.reason ?? "不明")")
+                Trace.log("入場できませんでした：\(result.reason ?? "不明")（特徴 \(prints.count) 個）")
+                lastEnterReason = result.reason
                 phase = .failed(ErrorText.enterReason(result.reason))
                 return
             }
@@ -595,10 +619,9 @@ final class ARExperienceModel: ObservableObject {
 
     func openDoor() {
         guard let door, phase == .doorClosed else { return }
+        // 開くと、開口部から星がはじけ飛び、中から光の粒があふれ続ける（GateAura）
         door.open()
         Haptics.open()
-        // 開いた瞬間に、足もとから光の粒がふわっと舞い上がる（TRAIL が進んだときは、あとで大きな粒も）
-        door.celebrate(big: false)
         phase = .doorOpen
         revealArtworks()
     }
@@ -799,9 +822,10 @@ final class ARExperienceModel: ObservableObject {
         }
         notice = nil
         do {
-            let shot = try await stage.grabShot(withPhoto: true)
+            // 見本には、まん中を切り抜いた特徴も足す（入る人が作った人より近くから写しても合うように）
+            let shot = try await stage.grabShot(withPhoto: true, crops: FrameGrab.referenceCrops)
             let thumbnail = shot.jpeg.flatMap(UIImage.init(data:))?.downscaled(maxSide: 240)
-            shots.append(Shot(print: shot.print, jpeg: index == 0 ? shot.jpeg : nil, thumbnail: thumbnail))
+            shots.append(Shot(print: shot.print, jpeg: index == 0 ? shot.jpeg : nil, thumbnail: thumbnail, crops: shot.crops))
             Haptics.tap()
             if shots.count >= 2, let a = shots.first?.print, let d = FeaturePrint.distance(a, shot.print) {
                 Trace.log(String(format: "作る：正面と %@ の写真の特徴の距離 %.3f", createKind.shootSteps[index], d))
@@ -823,13 +847,13 @@ final class ARExperienceModel: ObservableObject {
             return
         }
         phase = .working("近くに同じ場所の GATE がないか確かめています…")
-        let list = (try? await api.candidates(fix, print: first.print)) ?? []
+        let list = (try? await api.candidates(fix, prints: [first.print] + first.crops)) ?? []
         let similar = list.filter { $0.similarity == "strong" || $0.similarity == "weak" }
         Trace.log("作る前の確かめ：似た GATE \(similar.count) 件（\(similar.map(\.similarity).joined(separator: "、"))）")
         if similar.isEmpty {
             phase = .createDetails
         } else {
-            lastPrint = first.print
+            lastPrints = [first.print] + first.crops
             phase = .createSimilar(similar)
         }
     }
@@ -933,7 +957,7 @@ final class ARExperienceModel: ObservableObject {
                                                 note: form.note.trimmingCharacters(in: .whitespacesAndNewlines),
                                                 kind: form.kind, visibility: form.visibility, location: fix,
                                                 heading: location?.heading, coverPath: form.useCover ? uploadedCover : nil,
-                                                prints: shots.map(\.print))
+                                                prints: Self.referencePrints(shots))
                 createdGate = gate
                 // 扉の見た目（前のサーバーでは無いので、送れなくても続ける）
                 if doorDesign != .neon {
@@ -977,13 +1001,13 @@ final class ARExperienceModel: ObservableObject {
             // 写真の特徴は、さっき正面から写したもの。前はここでカメラの絵を写し直していたが、扉を置いて見回したあとの
             // カメラは床や別の方向を向いているので、登録した物と合わず「写したものが合いません」になっていた（2026-11-15）。
             phase = .createSaving("GATE を開けています…")
-            let print: [Float]
-            if let front = shots.first?.print {
-                print = front
+            let prints: [[Float]]
+            if let front = shots.first {
+                prints = [front.print] + front.crops
             } else {
-                print = try await stage.grabShot(withPhoto: false).print
+                prints = try await stage.grabPrints(frames: 1)
             }
-            let result = try await api.enter(gate: gate, location: fix, print: print)
+            let result = try await api.enter(gate: gate, location: fix, prints: prints)
             enteredGate = gate
             if result.ok {
                 visitID = result.visit_id

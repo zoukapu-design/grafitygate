@@ -49,7 +49,7 @@ enum OnThisDay {
             if !hit.isEmpty { return Pick(headline: "\(months) か月前の今ごろ", items: Array(sorted(hit).prefix(6))) }
         }
         let week = matches(.day, 7, within: 1)
-        if !week.isEmpty { return Pick(headline: "1 週間前", items: Array(sorted(week).prefix(6))) }
+        if !week.isEmpty { return Pick(headline: "1 週間前の今日", items: Array(sorted(week).prefix(6))) }
         return nil
     }
 
@@ -61,29 +61,33 @@ enum OnThisDay {
     }
 }
 
-/// わたしの画面の「あの日」：同じころに作った GATE・残したカード。押すとその GATE へ
+/// わたしの画面の「あの日」：同じころに作った GATE・残したカード。押すとその GATE へ。
+/// 2026-11-21 オーナー「あの日というのは何の機能？よくわからず」：見出しを「1 週間前の今日」など、いつの何かがそのまま
+/// 分かる言葉にし、1 つだけのときは「「○○」の GATE を作りました」と横長の 1 枚で見せる（前は小さな札が 1 枚と空白）
 struct OnThisDayCard: View {
     let pick: OnThisDay.Pick
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: "sparkles").foregroundStyle(Theme.warm)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("あの日").font(.title3.weight(.bold)).foregroundStyle(Theme.text)
-                    Text(pick.headline).font(.caption.weight(.semibold)).foregroundStyle(Theme.warm)
+            if pick.items.count == 1, let item = pick.items.first {
+                NavigationLink {
+                    GateDetailView(gateID: item.gateID)
+                } label: {
+                    single(item)
                 }
-                Spacer()
-            }
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
-                    ForEach(pick.items) { item in
-                        NavigationLink {
-                            GateDetailView(gateID: item.gateID)
-                        } label: {
-                            tile(item)
+                .buttonStyle(.plain)
+            } else {
+                header(subtitle: "あなたの記録が \(pick.items.count) つあります")
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(pick.items) { item in
+                            NavigationLink {
+                                GateDetailView(gateID: item.gateID)
+                            } label: {
+                                tile(item)
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -97,25 +101,83 @@ struct OnThisDayCard: View {
         .overlay(RoundedRectangle(cornerRadius: Theme.radiusCard).stroke(Theme.warm.opacity(0.25)))
     }
 
+    private func header(subtitle: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "clock.arrow.circlepath")
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 34, height: 34)
+                .background(Theme.warm, in: Circle())
+            VStack(alignment: .leading, spacing: 1) {
+                Text(pick.headline).font(.title3.weight(.bold)).foregroundStyle(Theme.text)
+                Text(subtitle).font(.footnote.weight(.semibold)).foregroundStyle(Theme.warm)
+            }
+            Spacer()
+        }
+    }
+
+    private static func what(_ item: OnThisDay.Item) -> String {
+        item.isGate ? "「\(item.title)」の GATE を作りました" : "「\(item.title)」にカードを残しました"
+    }
+
+    private static func day(_ date: Date) -> String {
+        GateDates.full.string(from: date).components(separatedBy: "（").first ?? ""
+    }
+
+    /// 1 つだけのとき：写真と「何をした日か」を横長に
+    private func single(_ item: OnThisDay.Item) -> some View {
+        HStack(spacing: 14) {
+            photo(item)
+                .frame(width: 96, height: 124)
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .rotationEffect(.degrees(-3))
+                .shadow(color: .black.opacity(0.15), radius: 6, y: 3)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(Theme.warm)
+                    Text(pick.headline).font(.title3.weight(.bold)).foregroundStyle(Theme.text)
+                }
+                Text(Self.what(item))
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Theme.text)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(Self.day(item.date)).font(.caption).foregroundStyle(Theme.textSecondary)
+                HStack(spacing: 4) {
+                    Text("見に行く")
+                    Image(systemName: "chevron.right")
+                }
+                .font(.footnote.weight(.bold))
+                .foregroundStyle(Theme.accent)
+            }
+            Spacer(minLength: 0)
+        }
+        .contentShape(Rectangle())
+    }
+
+    @ViewBuilder private func photo(_ item: OnThisDay.Item) -> some View {
+        if let path = item.photoPath {
+            Color.clear.overlay { RemotePhoto(path: path) }
+        } else {
+            ZStack {
+                Theme.surfaceElevated
+                GateMark(size: 44, glowing: false)
+            }
+        }
+    }
+
     private func tile(_ item: OnThisDay.Item) -> some View {
         ZStack(alignment: .bottomLeading) {
-            Group {
-                if let path = item.photoPath {
-                    RemotePhoto(path: path)
-                } else {
-                    ZStack {
-                        Theme.surfaceElevated
-                        GateMark(size: 44, glowing: false)
-                    }
-                }
-            }
-            .frame(width: 132, height: 168)
+            photo(item)
+                .frame(width: 132, height: 168)
             LinearGradient(colors: [.clear, .black.opacity(0.65)], startPoint: .center, endPoint: .bottom)
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.isGate ? "GATE を作った" : "カードを残した")
                     .font(.caption2.weight(.semibold)).foregroundStyle(.white.opacity(0.85))
                 Text(item.title).font(.caption.weight(.bold)).foregroundStyle(.white).lineLimit(2)
-                Text(GateDates.full.string(from: item.date).components(separatedBy: "（").first ?? "")
+                Text(Self.day(item.date))
                     .font(.caption2).foregroundStyle(.white.opacity(0.85))
             }
             .padding(10)

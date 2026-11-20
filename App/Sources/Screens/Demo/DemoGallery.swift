@@ -168,6 +168,10 @@ struct DemoGallery: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         OnThisDayCard(pick: Demo.onThisDay)
+                        // 1 つだけのとき（横長の 1 枚）
+                        OnThisDayCard(pick: OnThisDay.Pick(headline: "1 週間前の今日", items: [
+                            OnThisDay.Item(id: UUID(), gateID: Demo.gateID, title: "磁石の戦士", photoPath: "demo/sunset.jpg",
+                                           date: Date().addingTimeInterval(-7 * 86400), isGate: true)]))
                         TrailCard(trail: Demo.trail)
                     }
                     .padding(16)

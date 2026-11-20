@@ -167,6 +167,8 @@ final class StoryCamera: ObservableObject {
         isOn = true
         shot = nil
         Trace.log("AR カメラを開いた（扉 \(doorBase?() == nil ? "なし" : "あり")・大きさ \(String(format: "%.2f", doorScale))）")
+        // はじめからキラキラを舞わせる（効果を選ばないと何も出ず、「エフェクトが出ない」に見えていた。なしも選べる）
+        setEffect(.sparkle)
         turnTask = Task { [weak self] in
             while !Task.isCancelled {
                 self?.updateIconTurn()
@@ -610,8 +612,11 @@ final class StoryEffectField {
         let area = max(scale, 0.8)
         halfWidth = 1.5 * area
         top = 2.8 * area
-        near = -0.6 * area
-        far = 1.8 * area
+        // GATE の面より奥の粒は、開いた GATE の見えない壁に隠れるので、手前だけに舞わせる。
+        // こちら側はカメラの少し手前まで（カメラより後ろの粒は見えないので、その分を前に集める）
+        near = 0.03
+        let camZ = parent.convert(position: arView.cameraTransform.translation, from: nil).z
+        far = min(max(camZ - 0.3, 0.6), 1.8 * area)
         let low = Perf.isLowMemoryDevice
         let count: Int
         switch effect {
@@ -643,6 +648,10 @@ final class StoryEffectField {
 
     private func random(_ r: ClosedRange<Float>) -> Float { Float.random(in: r) }
 
+    /// 白い壁の前でも見える、濃い光の色（金・ピンク・むらさき・水色）
+    private static let vivid: [UIColor] = [UIColor(red: 1, green: 0.72, blue: 0.2, alpha: 1), UIColor(red: 1, green: 0.38, blue: 0.68, alpha: 1),
+                                           UIColor(red: 0.62, green: 0.4, blue: 1, alpha: 1), UIColor(red: 0.28, green: 0.78, blue: 1, alpha: 1)]
+
     private func build(count: Int, scale: Float) {
         guard count > 0 else { return }
         let materials: [RealityKit.Material]
@@ -652,8 +661,8 @@ final class StoryEffectField {
         switch effect {
         case .sparkle:
             mesh = .generatePlane(width: 1, height: 1)
-            materials = [UIColor(red: 1, green: 0.92, blue: 0.7, alpha: 1), .white, UIColor(red: 0.85, green: 0.75, blue: 1, alpha: 1)]
-                .compactMap { StorySprites.material(.star, tint: $0) }
+            // 色の光の輪に白い芯（前の白・クリーム色の星は、白い壁の部屋では見えなかった＝2026-11-21）
+            materials = Self.vivid.compactMap { AuraSprites.material(.star, color: $0) }
             baseSize = 0.12
         case .hearts:
             mesh = .generatePlane(width: 1, height: 1)
@@ -671,7 +680,8 @@ final class StoryEffectField {
             baseSize = 0.06
         case .snow:
             mesh = .generatePlane(width: 1, height: 1)
-            materials = [StorySprites.material(.dot, tint: .white)].compactMap { $0 }
+            materials = [UIColor(red: 0.55, green: 0.75, blue: 1, alpha: 1), UIColor(red: 0.7, green: 0.85, blue: 1, alpha: 1)]
+                .compactMap { AuraSprites.material(.glow, color: $0) }
             baseSize = 0.07
         case .petals:
             mesh = .generateBox(width: 1, height: 0.7, depth: 0.03, cornerRadius: 0.3)
@@ -682,17 +692,21 @@ final class StoryEffectField {
             baseSize = 0.07
         case .stardust:
             mesh = .generatePlane(width: 1, height: 1)
-            materials = [UIColor(red: 0.75, green: 0.6, blue: 1, alpha: 1), UIColor(red: 0.5, green: 0.85, blue: 1, alpha: 1), .white]
-                .compactMap { StorySprites.material(.dot, tint: $0) }
-            baseSize = 0.055
+            materials = [UIColor(red: 0.6, green: 0.42, blue: 1, alpha: 1), UIColor(red: 0.3, green: 0.78, blue: 1, alpha: 1),
+                         UIColor(red: 1, green: 0.45, blue: 0.8, alpha: 1)]
+                .compactMap { AuraSprites.material(.glow, color: $0) }
+            baseSize = 0.06
         case .fireflies:
             mesh = .generatePlane(width: 1, height: 1)
-            materials = [UIColor(red: 1, green: 0.9, blue: 0.45, alpha: 1), UIColor(red: 0.85, green: 1, blue: 0.5, alpha: 1)]
-                .compactMap { StorySprites.material(.dot, tint: $0) }
+            materials = [UIColor(red: 1, green: 0.8, blue: 0.15, alpha: 1), UIColor(red: 0.7, green: 0.95, blue: 0.2, alpha: 1)]
+                .compactMap { AuraSprites.material(.glow, color: $0) }
             baseSize = 0.09
         case .bubbles:
             mesh = .generatePlane(width: 1, height: 1)
-            materials = [StorySprites.material(.bubble, tint: .white)].compactMap { $0 }
+            // うすい色のふち（白いふちは、白い壁の前で消えていた）
+            materials = [UIColor(red: 0.45, green: 0.75, blue: 1, alpha: 1), UIColor(red: 0.85, green: 0.5, blue: 1, alpha: 1),
+                         UIColor(red: 1, green: 0.55, blue: 0.75, alpha: 1)]
+                .compactMap { StorySprites.material(.bubble, tint: $0) }
             baseSize = 0.16
         case .none:
             return
@@ -702,7 +716,7 @@ final class StoryEffectField {
             let entity = ModelEntity(mesh: mesh, materials: [materials[i % materials.count]])
             holder.addChild(entity)
             let size = baseSize * scale * random(0.6...1.4)
-            let start = SIMD3<Float>(random(-halfWidth...halfWidth), random(0...top), random(near...far))
+            let start = SIMD3<Float>(random(-halfWidth...halfWidth), random(0...top), random(near...max(far, near + 0.1)))
             let axis = simd_normalize(SIMD3<Float>(random(-1...1), random(-1...1), random(-1...1)) + [0, 0.001, 0])
             particles.append(Particle(entity: entity, p: start, speed: random(0.6...1.4), phase: random(0...6.28), size: size,
                                       spin: axis, spinSpeed: random(1.5...4), billboard: billboard,

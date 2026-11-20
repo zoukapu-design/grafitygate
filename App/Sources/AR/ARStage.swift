@@ -239,13 +239,37 @@ final class ARStage: NSObject, ObservableObject {
     }
 
     /// いまのカメラの絵から、写真の特徴（と、頼まれれば写真）を作る
-    func grabShot(withPhoto: Bool) async throws -> FrameGrab.Shot {
+    func grabShot(withPhoto: Bool, crops: [CGRect] = []) async throws -> FrameGrab.Shot {
         guard let frame = arView.session.currentFrame else { throw StageError.noFrame }
         let buffer = frame.capturedImage
         let orientation = FrameGrab.orientation(of: frame.camera.transform)
         return try await Task.detached(priority: .userInitiated) {
-            try FrameGrab.make(from: buffer, withPhoto: withPhoto, orientation: orientation)
+            try FrameGrab.make(from: buffer, withPhoto: withPhoto, orientation: orientation, crops: crops)
         }.value
+    }
+
+    /// 何コマかのカメラの絵から、いくつかの切り抜き（全体・まん中・下寄り）の写真の特徴をまとめて作る（GATE を開けるとき）。
+    /// 2026-11-21 オーナー「もっと簡単に認識してほしい」：1 コマ・全体の 1 枚だけだと、作った人より少し遠く・近く・ななめから
+    /// 写したときに合いにくかった。サーバーは、送った特徴のうち見本といちばん近いもので判定する（0033・gf_enter2）
+    func grabPrints(frames: Int = 3, gap: TimeInterval = 0.25, crops: [CGRect] = FrameGrab.enterCrops) async throws -> [[Float]] {
+        var all: [[Float]] = []
+        for i in 0..<frames {
+            if i > 0 { try? await Task.sleep(nanoseconds: UInt64(gap * 1_000_000_000)) }
+            // ARFrame は長く持たない（絵と向きだけ取り出して、すぐ離す）
+            guard let image = currentImage() else { continue }
+            let buffer = image.0, orientation = image.1
+            let prints = try await Task.detached(priority: .userInitiated) {
+                try FrameGrab.prints(from: buffer, orientation: orientation, crops: crops)
+            }.value
+            all.append(contentsOf: prints)
+        }
+        guard !all.isEmpty else { throw FeaturePrint.Failure.noResult }
+        return Array(all.prefix(12))
+    }
+
+    private func currentImage() -> (CVPixelBuffer, CGImagePropertyOrientation)? {
+        guard let frame = arView.session.currentFrame else { return nil }
+        return (frame.capturedImage, FrameGrab.orientation(of: frame.camera.transform))
     }
 
     /// いまのカメラの景色を写真にする（AR の飾りは写らない。位置などの付加情報も入らない）
@@ -408,6 +432,32 @@ enum FrameGrab {
     struct Shot {
         let print: [Float]
         let jpeg: Data?
+        /// 同じ絵のまん中を切り抜いた特徴（作るとき、見本に足す。近くから写した人にも合うように）
+        var crops: [[Float]] = []
+    }
+
+    /// GATE を開けるときに切り抜く所（Vision の座標＝左下が 0。まっすぐ立てた絵の割合）
+    static let enterCrops: [CGRect] = [
+        CGRect(x: 0, y: 0, width: 1, height: 1),              // 全体
+        CGRect(x: 0.15, y: 0.15, width: 0.7, height: 0.7),    // まん中（作った人より少し離れて写したとき）
+        CGRect(x: 0.25, y: 0.25, width: 0.5, height: 0.5),    // まん中を大きく（もっと離れて写したとき）
+        CGRect(x: 0.15, y: 0.04, width: 0.7, height: 0.66),   // 下寄り（立ったまま、机や床の上の物を写したとき）
+    ]
+
+    /// GATE を作るとき、見本に足す切り抜き（まん中。入る人が作った人より近くから写しても合うように）
+    static let referenceCrops: [CGRect] = [CGRect(x: 0.175, y: 0.175, width: 0.65, height: 0.65)]
+
+    /// 1 枚の絵の、いくつかの切り抜きの写真の特徴（メインの列の外で呼ぶ）
+    static func prints(from buffer: CVPixelBuffer, orientation: CGImagePropertyOrientation, crops: [CGRect]) throws -> [[Float]] {
+        let requests = crops.map { rect -> VNGenerateImageFeaturePrintRequest in
+            let r = VNGenerateImageFeaturePrintRequest()
+            r.revision = FeaturePrint.revision
+            r.regionOfInterest = rect
+            return r
+        }
+        let handler = VNImageRequestHandler(cvPixelBuffer: buffer, orientation: orientation, options: [:])
+        try handler.perform(requests)
+        return requests.compactMap { $0.results?.first?.floatValues }.filter { !$0.isEmpty }
     }
 
     private static let context = CIContext()
@@ -425,7 +475,8 @@ enum FrameGrab {
         return uy > 0 ? .up : .down
     }
 
-    static func make(from buffer: CVPixelBuffer, withPhoto: Bool, orientation: CGImagePropertyOrientation = .right) throws -> Shot {
+    static func make(from buffer: CVPixelBuffer, withPhoto: Bool, orientation: CGImagePropertyOrientation = .right,
+                     crops: [CGRect] = []) throws -> Shot {
         let request = VNGenerateImageFeaturePrintRequest()
         request.revision = FeaturePrint.revision
         // 写真の特徴も、まっすぐ立てた絵で作る（作った人と入る人の持ち方が違っても比べられる）
@@ -434,7 +485,8 @@ enum FrameGrab {
         guard let observation = request.results?.first else { throw FeaturePrint.Failure.noResult }
         let values = observation.floatValues
         guard !values.isEmpty else { throw FeaturePrint.Failure.noResult }
-        return Shot(print: values, jpeg: withPhoto ? photo(from: buffer, orientation: orientation) : nil)
+        let extra = crops.isEmpty ? [] : ((try? prints(from: buffer, orientation: orientation, crops: crops)) ?? [])
+        return Shot(print: values, jpeg: withPhoto ? photo(from: buffer, orientation: orientation) : nil, crops: extra)
     }
 
     /// カメラの絵を JPEG にする（位置などの付加情報は入らない）
