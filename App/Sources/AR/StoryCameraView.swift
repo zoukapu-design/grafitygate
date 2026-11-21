@@ -31,7 +31,6 @@ struct StoryCameraControls: View {
     @State private var editing: EditingPhoto?
     /// 整え終えた写真（整える画面が閉じてから渡す＝画面を閉じるのが重ならないように）
     @State private var edited: UIImage?
-    @State private var showHint = true
 
     var body: some View {
         ZStack {
@@ -68,10 +67,6 @@ struct StoryCameraControls: View {
             CardPhotoEditor(original: item.image) { result in
                 edited = result
             }
-        }
-        .task {
-            try? await Task.sleep(nanoseconds: 6_000_000_000)
-            withAnimation(.easeOut(duration: 0.4)) { showHint = false }
         }
     }
 
@@ -119,19 +114,6 @@ struct StoryCameraControls: View {
                     .background(.black.opacity(0.5), in: Capsule())
                     .padding(.top, 10)
                     .transition(.opacity)
-            } else if showHint {
-                Text(artworkCount > 0 ? "GATE や、みんなの AR と一緒に撮れます。AR の飾りは押すと動きます。"
-                                      : "GATE と一緒に撮れます。効果と文字を足してみましょう。")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .background(.black.opacity(0.4), in: Capsule())
-                    .padding(.top, 10)
-                    .padding(.horizontal, 30)
-                    .transition(.opacity)
-                    .allowsHitTesting(false)
             }
 
             Spacer(minLength: 0)
@@ -182,12 +164,15 @@ struct StoryCameraControls: View {
                     .frame(width: 44, height: 44)
                     .background(active ? AnyShapeStyle(Color.white) : AnyShapeStyle(Color.black.opacity(0.35)), in: Circle())
                     .rotationEffect(.degrees(story.iconTurn))
+                // 白い壁の前でも読めるように、うすい黒の札に入れる（AR の見本で、白い字が壁に溶けて読めなかった）
                 Text(label)
                     .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.6), radius: 2)
                     .lineLimit(1)
                     .fixedSize()
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(.black.opacity(0.42), in: Capsule())
             }
         }
         .buttonStyle(.plain)
@@ -262,8 +247,10 @@ struct StoryCameraControls: View {
                             Text(item.label)
                                 .font(.system(size: 10, weight: story.effect == item ? .heavy : .semibold))
                                 .foregroundStyle(.white)
-                                .shadow(color: .black.opacity(0.6), radius: 2)
                                 .fixedSize()
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(.black.opacity(story.effect == item ? 0.6 : 0.4), in: Capsule())
                         }
                     }
                     .buttonStyle(.plain)

@@ -99,7 +99,7 @@ final class GateAura {
             guard let m = material(.star, i) else { continue }
             let e = ModelEntity(mesh: star, materials: [m])
             sprites.append(Sprite(entity: e, kind: .orbit, u: Float(i) / Float(orbitCount), speed: Float.random(in: 0.035...0.06),
-                                  phase: Float.random(in: 0...6.28), size: Float.random(in: 0.055...0.08),
+                                  phase: Float.random(in: 0...6.28), size: Float.random(in: 0.065...0.095),
                                   delay: 0.25 + 0.06 * Float(i)))
         }
         let halfW = shape.outerWidth / 2 + 0.25
@@ -107,7 +107,7 @@ final class GateAura {
             guard let m = material(.glow, i + 1) else { continue }
             let e = ModelEntity(mesh: star, materials: [m])
             sprites.append(Sprite(entity: e, kind: .rise, u: Float.random(in: 0...1), speed: Float.random(in: 0.12...0.24),
-                                  phase: Float.random(in: 0...6.28), size: Float.random(in: 0.035...0.055),
+                                  phase: Float.random(in: 0...6.28), size: Float.random(in: 0.04...0.06),
                                   lane: SIMD3(Float.random(in: -halfW...halfW), 0, Float.random(in: 0.08...0.55)),
                                   delay: Float.random(in: 0...0.8)))
         }

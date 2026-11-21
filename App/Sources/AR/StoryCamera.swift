@@ -225,7 +225,7 @@ final class StoryCamera: ObservableObject {
             var forward = -cam.matrix.columns.2.xyz
             forward.y = 0
             forward = simd_length(forward) > 0.01 ? simd_normalize(forward) : [0, 0, -1]
-            let center = cam.translation + forward * 1.8 + SIMD3<Float>(0, -1.3, 0)
+            let center = cam.translation + forward * 1.5 + SIMD3<Float>(0, -1.3, 0)
             holder.transform = Transform(scale: .one, rotation: simd_quatf(angle: atan2(-forward.x, -forward.z), axis: [0, 1, 0]),
                                          translation: center)
             root.addChild(holder)
@@ -234,8 +234,10 @@ final class StoryCamera: ObservableObject {
         } else {
             return
         }
-        let scale = doorHidden || doorBase?() == nil ? 1 : min(max(doorScale, 0.4), 1.5)
-        field = StoryEffectField(effect: next, parent: parent, scale: scale, arView: arView)
+        // 粒を集める高さ：GATE のまん中（隠したときは、目の前の足もとから 1.3m＝カメラの高さ）
+        let onDoor = !doorHidden && doorBase?() != nil
+        let focusY: Float = onDoor ? 0.95 * min(max(doorScale, 0.2), 1.5) : 1.3
+        field = StoryEffectField(effect: next, parent: parent, focusY: focusY, arView: arView)
         Trace.log("AR カメラ：効果「\(next.label)」")
     }
 
@@ -598,40 +600,49 @@ final class StoryEffectField {
     private var time: Float = 0
     private weak var arView: ARView?
     private let effect: StoryEffect
-    /// 舞う範囲（扉の座標の m）
+    /// 舞う範囲（holder の座標の m。holder は GATE の足もとで、+Z がはじめのカメラの方）
     private let halfWidth: Float
+    private let bottom: Float
     private let top: Float
     private let near: Float
     private let far: Float
 
-    init(effect: StoryEffect, parent: Entity, scale: Float, arView: ARView) {
+    /// - focusY: 粒を集める高さ（GATE のまん中。GATE を隠したときはカメラの高さ）
+    init(effect: StoryEffect, parent: Entity, focusY: Float, arView: ARView) {
         self.effect = effect
         self.arView = arView
-        // 小さな GATE（物の GATE は大きさ 0.35 ほど）でも、まわりに十分な広さで舞わせる。
-        // 前は粒の大きさも GATE に合わせて小さくしていて、1〜4cm の粒になり、ほとんど見えなかった（2026-11-20 オーナー「エフェクトが出ない」）
-        let area = max(scale, 0.8)
-        halfWidth = 1.5 * area
-        top = 2.8 * area
-        // GATE の面より奥の粒は、開いた GATE の見えない壁に隠れるので、手前だけに舞わせる。
-        // こちら側はカメラの少し手前まで（カメラより後ろの粒は見えないので、その分を前に集める）
+        // カメラから見える所に集める（2026-11-21 AR の見本で確かめた）：前は GATE の大きさに関係なく横 2.4m・高さ 2.2m に
+        // 散らしていて、物の GATE を 1m ほどから撮ると、画面に入るのは 1 割ほどの粒だけ。カメラのすぐ前の粒は大きくぼやけていた。
+        // いまは、はじめのカメラの方へ holder を向け、そのカメラから GATE のあたりに見える広さ（縦向き・横向きのどちらでも）だけに舞わせる。
+        // GATE の面より奥の粒は、開いた GATE の見えない壁に隠れるので、手前だけ。カメラの 0.55m 手前まで。
+        let cam = parent.convert(position: arView.cameraTransform.translation, from: nil)
+        let flat = SIMD2<Float>(cam.x, cam.z)
+        let distance = max(simd_length(flat), 0.6)
+        holder.orientation = simd_quatf(angle: atan2(cam.x, cam.z), axis: [0, 1, 0])
+        halfWidth = max(0.4, 0.62 * distance)
+        bottom = max(0, focusY - 0.62 * distance)
+        top = focusY + 0.7 * distance
         near = 0.03
-        let camZ = parent.convert(position: arView.cameraTransform.translation, from: nil).z
-        far = min(max(camZ - 0.3, 0.6), 1.8 * area)
+        far = max(near + 0.25, distance - 0.55)
         let low = Perf.isLowMemoryDevice
         let count: Int
         switch effect {
-        case .stardust: count = low ? 40 : 64
-        case .confetti: count = low ? 34 : 52
-        case .snow: count = low ? 36 : 56
+        case .stardust: count = low ? 40 : 60
+        case .confetti: count = low ? 34 : 50
+        case .snow: count = low ? 36 : 54
+        case .hearts: count = low ? 20 : 28
+        case .bubbles: count = low ? 14 : 20
         case .none: count = 0
-        default: count = low ? 24 : 36
+        default: count = low ? 26 : 38
         }
+        // 粒の大きさは GATE の大きさで小さくしない。遠くから撮るときは少し大きく（近くでは 1 倍）
+        let sizeScale = min(max(distance / 1.4, 0.8), 1.6)
         MainWatch.run("AR カメラの効果を作る") {
-            // 粒の大きさは GATE の大きさに合わせて小さくしない（見えなくなる）
-            build(count: count, scale: max(scale, 1))
+            build(count: count, scale: sizeScale)
         }
         parent.addChild(holder)
-        Trace.log("AR カメラ：効果の粒 \(particles.count) 個（GATE の大きさ \(String(format: "%.2f", scale))・広さ \(String(format: "%.1f", halfWidth * 2))m）")
+        Trace.log(String(format: "AR カメラ：効果の粒 %d 個（カメラまで %.1fm・横 %.1fm・高さ %.1f〜%.1fm・奥行き %.1fm）",
+                         particles.count, distance, halfWidth * 2, bottom, top, far - near))
         subscription = arView.scene.subscribe(to: SceneEvents.Update.self) { [weak self] event in
             MainActor.assumeIsolated {
                 self?.tick(Float(event.deltaTime))
@@ -680,16 +691,16 @@ final class StoryEffectField {
             baseSize = 0.06
         case .snow:
             mesh = .generatePlane(width: 1, height: 1)
-            materials = [UIColor(red: 0.55, green: 0.75, blue: 1, alpha: 1), UIColor(red: 0.7, green: 0.85, blue: 1, alpha: 1)]
+            materials = [UIColor(red: 0.42, green: 0.62, blue: 0.98, alpha: 1), UIColor(red: 0.58, green: 0.76, blue: 1, alpha: 1)]
                 .compactMap { AuraSprites.material(.glow, color: $0) }
-            baseSize = 0.07
+            baseSize = 0.075
         case .petals:
-            mesh = .generateBox(width: 1, height: 0.7, depth: 0.03, cornerRadius: 0.3)
-            billboard = false
-            materials = [UIColor(red: 1, green: 0.76, blue: 0.84, alpha: 1), UIColor(red: 1, green: 0.66, blue: 0.78, alpha: 1),
-                         UIColor(red: 1, green: 0.88, blue: 0.92, alpha: 1)]
-                .map { DoorDecor.pbr($0, rough: 0.6, emissive: $0, glow: 0.25) }
-            baseSize = 0.07
+            // 花びらの形の絵（前は角の丸い板で、明かりが当たると白い四角に見えた＝AR の見本で分かった）
+            mesh = .generatePlane(width: 1, height: 1)
+            materials = [UIColor(red: 1, green: 0.55, blue: 0.72, alpha: 1), UIColor(red: 1, green: 0.66, blue: 0.8, alpha: 1),
+                         UIColor(red: 0.98, green: 0.45, blue: 0.62, alpha: 1)]
+                .compactMap { StorySprites.material(.petal, tint: $0) }
+            baseSize = 0.09
         case .stardust:
             mesh = .generatePlane(width: 1, height: 1)
             materials = [UIColor(red: 0.6, green: 0.42, blue: 1, alpha: 1), UIColor(red: 0.3, green: 0.78, blue: 1, alpha: 1),
@@ -707,7 +718,7 @@ final class StoryEffectField {
             materials = [UIColor(red: 0.45, green: 0.75, blue: 1, alpha: 1), UIColor(red: 0.85, green: 0.5, blue: 1, alpha: 1),
                          UIColor(red: 1, green: 0.55, blue: 0.75, alpha: 1)]
                 .compactMap { StorySprites.material(.bubble, tint: $0) }
-            baseSize = 0.16
+            baseSize = 0.14
         case .none:
             return
         }
@@ -716,7 +727,7 @@ final class StoryEffectField {
             let entity = ModelEntity(mesh: mesh, materials: [materials[i % materials.count]])
             holder.addChild(entity)
             let size = baseSize * scale * random(0.6...1.4)
-            let start = SIMD3<Float>(random(-halfWidth...halfWidth), random(0...top), random(near...max(far, near + 0.1)))
+            let start = SIMD3<Float>(random(-halfWidth...halfWidth), random(bottom...top), random(near...far))
             let axis = simd_normalize(SIMD3<Float>(random(-1...1), random(-1...1), random(-1...1)) + [0, 0.001, 0])
             particles.append(Particle(entity: entity, p: start, speed: random(0.6...1.4), phase: random(0...6.28), size: size,
                                       spin: axis, spinSpeed: random(1.5...4), billboard: billboard,
@@ -729,7 +740,6 @@ final class StoryEffectField {
         let step = min(dt, 0.05)
         time += step
         let cam = holder.convert(position: arView.cameraTransform.translation, from: nil)
-        let height = top
         for i in particles.indices {
             var q = particles[i]
             var scaleFactor: Float = 1
@@ -773,22 +783,32 @@ final class StoryEffectField {
                 break
             }
             // 範囲の外へ出たら、反対の端から入り直す
-            if q.p.y > height { q.p.y = 0; q.p.x = random(-halfWidth...halfWidth) }
-            if q.p.y < 0 { q.p.y = height; q.p.x = random(-halfWidth...halfWidth) }
+            if q.p.y > top { q.p.y = bottom; q.p.x = random(-halfWidth...halfWidth) }
+            if q.p.y < bottom { q.p.y = top; q.p.x = random(-halfWidth...halfWidth) }
             if q.p.x > halfWidth { q.p.x = -halfWidth }
             if q.p.x < -halfWidth { q.p.x = halfWidth }
             if q.p.z > far { q.p.z = near }
             if q.p.z < near { q.p.z = far }
+            // カメラのすぐ前（0.6m より近く）の粒は小さくして消す（大きくぼやけた粒が写らないように）
+            let d = cam - q.p
+            let toCamera = simd_length(d)
+            if toCamera < 0.6 { scaleFactor *= max(0, (toCamera - 0.3) / 0.3) }
+            var stretch = SIMD3<Float>(1, 1, 1)
             let rotation: simd_quatf
             if q.billboard {
-                let d = cam - q.p
                 let yaw = atan2(d.x, d.z)
                 let pitch = atan2(d.y, max(simd_length(SIMD2<Float>(d.x, d.z)), 0.001))
-                rotation = simd_quatf(angle: yaw, axis: [0, 1, 0]) * simd_quatf(angle: -pitch, axis: [1, 0, 0])
+                var r = simd_quatf(angle: yaw, axis: [0, 1, 0]) * simd_quatf(angle: -pitch, axis: [1, 0, 0])
+                if effect == .petals {
+                    // くるくる回って、ひらひら裏返る
+                    r = r * simd_quatf(angle: time * q.spinSpeed * 0.5 + q.phase, axis: [0, 0, 1])
+                    stretch.x = 0.35 + 0.65 * abs(cos(time * q.spinSpeed * 0.7 + q.phase))
+                }
+                rotation = r
             } else {
                 rotation = simd_quatf(angle: time * q.spinSpeed + q.phase, axis: q.spin)
             }
-            q.entity.transform = Transform(scale: .one * (q.size * scaleFactor), rotation: rotation, translation: q.p)
+            q.entity.transform = Transform(scale: stretch * (q.size * scaleFactor), rotation: rotation, translation: q.p)
             particles[i] = q
         }
     }
@@ -799,7 +819,7 @@ final class StoryEffectField {
 @MainActor
 enum StorySprites {
     enum Kind: String {
-        case star, dot, heart, bubble, glow
+        case star, dot, heart, bubble, glow, petal
     }
 
     private static var cache: [Kind: TextureResource] = [:]
@@ -891,6 +911,25 @@ enum StorySprites {
             ctx.setFillColor(UIColor.white.withAlphaComponent(0.5).cgColor)
             ctx.addPath(UIBezierPath(roundedRect: rect, cornerRadius: rect.height / 2).cgPath)
             ctx.fillPath()
+        case .petal:
+            // 桜の花びら：先に小さな切れこみのある、しずくの形（白で描いて色を付ける。ふちは少し濃く、根もとは白っぽく）
+            let p = CGMutablePath()
+            p.move(to: CGPoint(x: W * 0.5, y: H * 0.95))
+            p.addCurve(to: CGPoint(x: W * 0.42, y: H * 0.1), control1: CGPoint(x: W * 0.05, y: H * 0.7),
+                       control2: CGPoint(x: W * 0.12, y: H * 0.12))
+            p.addLine(to: CGPoint(x: W * 0.5, y: H * 0.2))
+            p.addLine(to: CGPoint(x: W * 0.58, y: H * 0.1))
+            p.addCurve(to: CGPoint(x: W * 0.5, y: H * 0.95), control1: CGPoint(x: W * 0.88, y: H * 0.12),
+                       control2: CGPoint(x: W * 0.95, y: H * 0.7))
+            p.closeSubpath()
+            ctx.saveGState()
+            ctx.addPath(p)
+            ctx.clip()
+            if let g = CGGradient(colorsSpace: space, colors: [UIColor(white: 0.78, alpha: 1).cgColor, UIColor.white.cgColor] as CFArray,
+                                  locations: [0, 1]) {
+                ctx.drawLinearGradient(g, start: CGPoint(x: W / 2, y: H * 0.1), end: CGPoint(x: W / 2, y: H * 0.95), options: [])
+            }
+            ctx.restoreGState()
         }
         guard let image = ctx.makeImage(),
               let texture = try? TextureResource.generate(from: image, options: TextureResource.CreateOptions(semantic: .color))
