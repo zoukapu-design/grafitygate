@@ -48,6 +48,10 @@ final class ARLab: ObservableObject {
         var effect: StoryEffect?
         var hideDoor = false
         var controls = false
+        /// 景色の色（GATE の中が抜けて後ろが見えていないかを確かめるとき、白以外にする）
+        var background = UIColor(white: 0.95, alpha: 1)
+        /// ななめから見る
+        var side = false
     }
 
     static func plan(for screen: String) -> Plan {
@@ -57,6 +61,8 @@ final class ARLab: ObservableObject {
         case "ar-gate-small": p.scale = 0.35
         case "ar-gate-burst": p.open = true; p.burst = true
         case "ar-gate-open": p.open = true
+        case "ar-gate-open-green": p.open = true; p.background = .green
+        case "ar-gate-open-side": p.open = true; p.side = true
         case "ar-gate-small-open": p.scale = 0.35; p.open = true
         case "ar-gate-heart": p.scale = 0.6; p.design = .heart; p.open = true
         case "ar-gate-magic": p.scale = 0.6; p.design = .magic; p.open = true
@@ -77,7 +83,7 @@ final class ARLab: ObservableObject {
         let s = plan.scale
 
         // 白い壁と木の床（カメラの景色の代わり）
-        arView.environment.background = .color(UIColor(white: 0.95, alpha: 1))
+        arView.environment.background = .color(plan.background)
         let room = AnchorEntity(world: matrix_identity_float4x4)
         let floor = ModelEntity(mesh: .generatePlane(width: 10, depth: 10),
                                 materials: [SimpleMaterial(color: UIColor(red: 0.45, green: 0.33, blue: 0.25, alpha: 1),
@@ -85,7 +91,8 @@ final class ARLab: ObservableObject {
         room.addChild(floor)
         let wall = ModelEntity(mesh: .generatePlane(width: 10, height: 5),
                                materials: [SimpleMaterial(color: UIColor(white: 0.96, alpha: 1), roughness: 0.9, isMetallic: false)])
-        wall.position = [0, 2.5, -2.2 * max(s, 0.5)]
+        // 壁は GATE の向こうの回廊（奥行き 5.5m×大きさ）より後ろに（手前に置くと、回廊を壁が切って白く見える）
+        wall.position = [0, 2.5, -(GateDoor.worldDeep * s + 0.8)]
         room.addChild(wall)
         let light = DirectionalLight()
         light.light.intensity = 2500
@@ -94,7 +101,8 @@ final class ARLab: ObservableObject {
         // カメラ：GATE を少し上から見る（物の GATE は近くから）
         let camera = PerspectiveCamera()
         camera.camera.fieldOfViewInDegrees = 62
-        let eye = SIMD3<Float>(0.18 * s, 1.15 * s + 0.3, 1.9 * s + 0.55)
+        let eye = plan.side ? SIMD3<Float>(1.3 * s + 0.4, 1.15 * s + 0.3, 1.5 * s + 0.4)
+                            : SIMD3<Float>(0.18 * s, 1.15 * s + 0.3, 1.9 * s + 0.55)
         camera.look(at: [0, 0.95 * s, 0], from: eye, relativeTo: nil)
         room.addChild(camera)
         arView.scene.addAnchor(room)

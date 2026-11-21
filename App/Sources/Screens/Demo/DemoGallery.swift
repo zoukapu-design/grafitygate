@@ -22,7 +22,8 @@ struct DemoGallery: View {
                           "follow-list", "album-create", "letter-sealed"] + arScreens
 
     /// AR の見本（ARLab。Apple のチップの Mac のシミュレーターで撮る）
-    static let arScreens = ["ar-gate", "ar-gate-small", "ar-gate-burst", "ar-gate-open", "ar-gate-small-open",
+    static let arScreens = ["ar-gate", "ar-gate-small", "ar-gate-burst", "ar-gate-open", "ar-gate-open-green", "ar-gate-open-side",
+                            "ar-gate-small-open",
                             "ar-gate-heart", "ar-gate-magic"]
         + StoryEffect.allCases.filter { $0 != .none }.map { "ar-fx-\($0.rawValue)" }
         + ["ar-fx-hidden", "ar-camera"]

@@ -77,7 +77,7 @@ final class GateDoor {
     /// 扉の向こうの回廊の大きさ（扉の大きさ 1 のときの m）
     private static let worldHalfWidth: Float = 1.8
     private static let worldHeight: Float = 3.0
-    private static let worldDeep: Float = 5.5
+    static let worldDeep: Float = 5.5
     /// 回廊を奥へ流れていく光の輪（中へ誘う）と、いちばん奥の光
     private var beckonRings: [ModelEntity] = []
     private var farLight = ModelEntity()
