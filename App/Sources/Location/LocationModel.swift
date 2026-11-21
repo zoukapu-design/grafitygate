@@ -13,6 +13,8 @@ final class LocationModel: NSObject, ObservableObject {
     private(set) var heading: Double?
 
     private let manager = CLLocationManager()
+    /// 届いた位置をならす（ゆれ・古い位置・一瞬だけ粗くなった位置を外す）
+    private var filter = FixFilter()
 
     /// サーバーの決まり（gf_settings の max_accuracy_m）と同じ。これより粗いと作成・入場できない
     static let maxAccuracy: CLLocationAccuracy = 35
@@ -20,7 +22,12 @@ final class LocationModel: NSObject, ObservableObject {
     override init() {
         super.init()
         manager.delegate = self
-        manager.desiredAccuracy = kCLLocationAccuracyBest
+        // いちばん細かい設定（2026-11-21 オーナー「iPhone の地図と比べて位置の精度が悪い」）：
+        // 前は Best だった。BestForNavigation は GPS に加えて iPhone の動きのセンサーも合わせて位置を出すので、
+        // ビルの多い街・駅のまわりでも位置が落ち着きやすい（電気は少し多く使う。アプリが裏に回ると iOS が止める）
+        manager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
+        // 止まっていても、iOS に位置の受け取りを休ませない（休むと、こちらから始め直すまで位置が古いままになる）
+        manager.pausesLocationUpdatesAutomatically = false
         // 止まっていても位置を受け取る。前は「2m 動いたときだけ」にしていたので、家の中でじっと写していると位置が来ず、
         // 30 秒で「古い位置」になって、入る・作るが「現在地を確かめています…」のまま進めなかった（2026-11-15）。
         // 位置を使う画面は自分で問い合わせを間引く（地図は 15m か 30 秒ごと）。アプリが裏に回ると iOS が止める。
@@ -87,8 +94,14 @@ final class LocationModel: NSObject, ObservableObject {
 
 extension LocationModel: CLLocationManagerDelegate {
     nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        guard let last = locations.last else { return }
+        guard !locations.isEmpty else { return }
         Task { @MainActor in
+            // まとめて届いたときも 1 つずつならす（いちばん新しいものが、いちばん正確とは限らない）
+            var next: CLLocation?
+            for raw in locations {
+                if let fixed = self.filter.accept(raw) { next = fixed }
+            }
+            guard let last = next else { return }
             let first = self.location == nil
             let wasUsable = self.usableFix != nil
             self.location = last
@@ -122,6 +135,64 @@ extension LocationModel: CLLocationManagerDelegate {
 
     nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         // 一時的に取れないだけのことが多いので、次の更新を待つ
+    }
+}
+
+/// 届いた位置をならす（2026-11-21 オーナー「iPhone の地図と比べて位置の精度が悪い」）。
+/// - 古い位置（届いた時点で 10 秒より前）は、まだ何も無いときの目安にだけ使う（アプリを開いた直後に、前にいた所の位置が届く）
+/// - 止まっているあいだに、一瞬だけ粗くなった位置が届いても、少し前（10 秒以内）のより正確な位置を持ち続ける
+///   （精度が ±20m → ±45m → ±20m とゆれて、GATE を開ける・作るが「精度が足りません」と行ったり来たりしないように）
+/// - 位置そのものは、精度に合わせて少しずつならす（歩く速さより速くは動かさないが、大きく離れたらすぐに追う）
+/// 精度の数字は、届いた位置の数字をそのまま使う（ならしたぶん小さく見せない＝サーバーの「精度 35m」の決まりを甘くしない）
+struct FixFilter {
+    private(set) var current: CLLocation?
+    /// 位置のならし具合（m の 2 乗）
+    private var variance: Double = 0
+    private var stale = false
+
+    mutating func accept(_ raw: CLLocation) -> CLLocation? {
+        guard raw.horizontalAccuracy >= 0, CLLocationCoordinate2DIsValid(raw.coordinate) else { return nil }
+        let age = -raw.timestamp.timeIntervalSinceNow
+        if age > 10 {
+            // 古い位置：まだ何も無いときだけ、目安として使う（入る・作るには使えない＝30 秒より古い）
+            guard current == nil else { return nil }
+            current = raw
+            stale = true
+            return raw
+        }
+        guard let cur = current, !stale else { return reset(raw) }
+        let dt = raw.timestamp.timeIntervalSince(cur.timestamp)
+        guard dt > 0 else { return nil }
+        let moved = raw.distance(from: cur)
+        let rawVar = raw.horizontalAccuracy * raw.horizontalAccuracy
+        // 歩く・走る速さ（m/秒）。速さが分かればそれを使う
+        let speed = max(2.5, raw.speed > 0 ? raw.speed * 1.5 : 0)
+        let predicted = variance + (speed * dt) * (speed * dt)
+        // 大きく離れた（電車・地下から出た など）：すぐに新しい位置へ
+        if moved > 3 * (predicted + rawVar).squareRoot() + 15 { return reset(raw) }
+        // 止まっていて、新しい位置のほうがずっと粗い：少し前の正確な位置を持ち続ける（時刻だけ新しく）
+        // （基準の current と、ならし具合は変えない＝10 秒たったら、新しい位置を受け入れる）
+        if raw.horizontalAccuracy > cur.horizontalAccuracy * 1.6, dt < 10, moved <= raw.horizontalAccuracy {
+            return CLLocation(coordinate: cur.coordinate, altitude: cur.altitude, horizontalAccuracy: cur.horizontalAccuracy,
+                              verticalAccuracy: cur.verticalAccuracy, course: raw.course, speed: raw.speed, timestamp: raw.timestamp)
+        }
+        // 精度に合わせて、新しい位置のほうへ寄せる
+        let k = predicted / (predicted + rawVar)
+        let lat = cur.coordinate.latitude + k * (raw.coordinate.latitude - cur.coordinate.latitude)
+        let lon = cur.coordinate.longitude + k * (raw.coordinate.longitude - cur.coordinate.longitude)
+        variance = (1 - k) * predicted
+        let fixed = CLLocation(coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon), altitude: raw.altitude,
+                               horizontalAccuracy: raw.horizontalAccuracy, verticalAccuracy: raw.verticalAccuracy,
+                               course: raw.course, speed: raw.speed, timestamp: raw.timestamp)
+        current = fixed
+        return fixed
+    }
+
+    private mutating func reset(_ raw: CLLocation) -> CLLocation {
+        current = raw
+        variance = raw.horizontalAccuracy * raw.horizontalAccuracy
+        stale = false
+        return raw
     }
 }
 
