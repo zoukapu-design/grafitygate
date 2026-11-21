@@ -222,6 +222,7 @@ final class GateDoor {
             var m = UnlitMaterial()
             m.color = .init(tint: .white, texture: .init(shadowTexture))
             m.blending = .transparent(opacity: .init(floatLiteral: 1))
+            AuraSprites.noDepthWrite(&m)
             let shadow = ModelEntity(mesh: .generatePlane(width: shape.outerWidth + 0.7, depth: shape.depth + 0.9),
                                      materials: [m])
             shadow.position = [0, 0.002, 0]
@@ -235,6 +236,7 @@ final class GateDoor {
             var m = UnlitMaterial()
             m.color = .init(tint: .white, texture: .init(texture))
             m.blending = .transparent(opacity: .init(floatLiteral: 1))
+            AuraSprites.noDepthWrite(&m)
             groundGlow = ModelEntity(mesh: .generatePlane(width: shape.outerWidth + 0.9, depth: 1.0), materials: [m])
             groundGlow.position = [0, 0.003, 0.32]
             Fade.set(groundGlow, 0)
@@ -246,6 +248,7 @@ final class GateDoor {
             var m = UnlitMaterial()
             m.color = .init(tint: .white, texture: .init(spillTexture))
             m.blending = .transparent(opacity: .init(floatLiteral: 1))
+            AuraSprites.noDepthWrite(&m)
             spill = ModelEntity(mesh: .generatePlane(width: 1.8, depth: 2.2), materials: [m])
             spill.position = [0, 0.004, 0.9]
             Fade.set(spill, 0)
@@ -257,6 +260,7 @@ final class GateDoor {
             var m = UnlitMaterial()
             m.color = .init(tint: .white, texture: .init(ringTexture))
             m.blending = .transparent(opacity: .init(floatLiteral: 1))
+            AuraSprites.noDepthWrite(&m)
             ring = ModelEntity(mesh: .generatePlane(width: 1.2, height: 1.2), materials: [m])
             ring.position = [0, shape.center.y, shape.depth / 2 + 0.05]
             ring.isEnabled = false
@@ -316,6 +320,7 @@ final class GateDoor {
             var m = UnlitMaterial()
             m.color = .init(tint: .white, texture: .init(texture))
             m.blending = .transparent(opacity: .init(floatLiteral: 1))
+            AuraSprites.noDepthWrite(&m)
             let w = shape.outerWidth + margin * 2, h = shape.outerHeight + margin * 2
             neonGlow = ModelEntity(mesh: .generatePlane(width: w, height: h), materials: [m])
             neonGlow.position = [0, h / 2 - margin, shape.depth / 2 + 0.03]
@@ -422,6 +427,7 @@ final class GateDoor {
             var m = UnlitMaterial()
             m.color = .init(tint: .white, texture: .init(haloTexture))
             m.blending = .transparent(opacity: .init(floatLiteral: 1))
+            AuraSprites.noDepthWrite(&m)
             let halo = ModelEntity(mesh: .generatePlane(width: 1.8, height: 1.8), materials: [m])
             halo.position = [0, 1.45, -deep + 0.5]
             interior.addChild(halo)
@@ -432,6 +438,7 @@ final class GateDoor {
             var m = UnlitMaterial()
             m.color = .init(tint: .white, texture: .init(ringTexture))
             m.blending = .transparent(opacity: .init(floatLiteral: 1))
+            AuraSprites.noDepthWrite(&m)
             for _ in 0..<2 {
                 let r = ModelEntity(mesh: .generatePlane(width: 1.6, height: 1.6), materials: [m])
                 r.position = [0, 1.1, -0.3]

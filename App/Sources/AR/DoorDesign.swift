@@ -266,6 +266,7 @@ final class DoorDecor {
         var m = UnlitMaterial()
         m.color = .init(tint: .white, texture: .init(texture))
         m.blending = .transparent(opacity: .init(floatLiteral: 1))
+        AuraSprites.noDepthWrite(&m)
         return m
     }
 

@@ -280,6 +280,14 @@ enum AuraSprites {
 
     private static var materials: [String: UnlitMaterial] = [:]
 
+    /// 透ける板の絵は、奥行きを書かない（2026-11-21 AR の見本で分かった：書くと、絵の透けた四すみが後ろの光
+    /// ＝床の光・GATE の中の光の道・ほかの粒を四角く切り抜いて、粒のまわりに四角い影が出ていた）
+    static func noDepthWrite(_ m: inout UnlitMaterial) {
+        if #available(iOS 18.0, *) {
+            m.writesDepth = false
+        }
+    }
+
     static func material(_ kind: Kind, color: UIColor) -> UnlitMaterial? {
         var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
         color.getRed(&r, green: &g, blue: &b, alpha: &a)
@@ -289,6 +297,7 @@ enum AuraSprites {
         var m = UnlitMaterial()
         m.color = .init(tint: .white, texture: .init(texture))
         m.blending = .transparent(opacity: .init(floatLiteral: 1))
+        AuraSprites.noDepthWrite(&m)
         materials[key] = m
         return m
     }

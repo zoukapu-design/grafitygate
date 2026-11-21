@@ -223,9 +223,11 @@ final class StoryCamera: ObservableObject {
             let holder = Entity()
             let cam = arView.cameraTransform
             var forward = -cam.matrix.columns.2.xyz
+            // 見ている所（上や下を向いていても）の 1.4m 先に粒を集める
+            let look = simd_length(forward) > 0.01 ? simd_normalize(forward) : SIMD3<Float>(0, 0, -1)
             forward.y = 0
             forward = simd_length(forward) > 0.01 ? simd_normalize(forward) : [0, 0, -1]
-            let center = cam.translation + forward * 1.5 + SIMD3<Float>(0, -1.3, 0)
+            let center = cam.translation + look * 1.4 + SIMD3<Float>(0, -1.3, 0)
             holder.transform = Transform(scale: .one, rotation: simd_quatf(angle: atan2(-forward.x, -forward.z), axis: [0, 1, 0]),
                                          translation: center)
             root.addChild(holder)
@@ -839,6 +841,7 @@ enum StorySprites {
         var m = UnlitMaterial()
         m.color = .init(tint: tint, texture: .init(texture))
         m.blending = .transparent(opacity: .init(floatLiteral: 1))
+        AuraSprites.noDepthWrite(&m)
         materials[key] = m
         return m
     }
