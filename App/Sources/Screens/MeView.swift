@@ -18,7 +18,6 @@ struct MeView: View {
     @State private var editingName = false
     @State private var loaded = false
     /// あの日（1 年前・1 か月前・1 週間前の今ごろの、自分の GATE とカード）
-    @State private var onThisDay: OnThisDay.Pick?
     /// 友達と一緒に管理している GATE
     @State private var managed: [ManagedGate] = []
     @State private var savedCardCount: Int?
@@ -46,9 +45,6 @@ struct MeView: View {
                                               }
                                           })
                             AddFriendButtons(compact: true)
-                        }
-                        if let onThisDay {
-                            OnThisDayCard(pick: onThisDay)
                         }
                         myGatesSection
                         if !managed.isEmpty {
@@ -218,8 +214,6 @@ struct MeView: View {
         visitedCount = try? await api.collection("visited").count
         savedCount = try? await api.collection("saved").count
         savedCardCount = try? await api.mySavedCards().count
-        let myCards = (try? await api.userCardAtlas(me)) ?? []
-        onThisDay = OnThisDay.pick(gates: gates, cards: myCards)
         managed = (try? await api.myManagedGates()) ?? []
         unopenedLetters = (try? await api.letters())?.filter { !$0.sent && !$0.isOpened }.count ?? 0
         loaded = true

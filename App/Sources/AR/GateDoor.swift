@@ -66,6 +66,12 @@ final class GateDoor {
     }
     private var tweens: [Tween] = []
     private var clock: TimeInterval = 0
+    #if DEBUG
+    /// AR の見本：この時刻で止める
+    private var labFrozenAt: TimeInterval?
+    /// AR の見本：いまから seconds 秒あとの瞬間で、動きを止める
+    func labFreeze(after seconds: TimeInterval) { labFrozenAt = clock + seconds }
+    #endif
     private var subscription: Cancellable?
 
     /// 扉の向こうの回廊の大きさ（扉の大きさ 1 のときの m）
@@ -85,12 +91,17 @@ final class GateDoor {
     /// まわりの光を出し始めたか（現れた・開いたあと）
     private var auraShown = false
 
-    init(anchor: ARAnchor, in arView: ARView, style: Style = .portal, design: DoorDesign = .neon) throws {
+    convenience init(anchor: ARAnchor, in arView: ARView, style: Style = .portal, design: DoorDesign = .neon) throws {
+        try self.init(anchorEntity: AnchorEntity(anchor: anchor), in: arView, style: style, design: design)
+    }
+
+    /// 印（AnchorEntity）を渡して作る（AR の見本では、カメラを使わない画面の決まった場所に置く）
+    init(anchorEntity: AnchorEntity, in arView: ARView, style: Style = .portal, design: DoorDesign = .neon) throws {
         self.style = style
         self.design = design
         self.shape = design.shape
         self.arView = arView
-        anchorEntity = AnchorEntity(anchor: anchor)
+        self.anchorEntity = anchorEntity
         try MainWatch.run("GATE を組み立てる") {
             try build()
         }
@@ -689,7 +700,12 @@ final class GateDoor {
     }
 
     private func update(dt: TimeInterval) {
+        #if DEBUG
+        // AR の見本：決まった瞬間で止めて撮る（開いた瞬間にはじける星など）
+        if let frozen = labFrozenAt { clock = frozen } else { clock += dt }
+        #else
         clock += dt
+        #endif
         checkPassThrough()
         decor?.tick(time: Float(clock))
         if let aura, let arView, aura.root.isEnabled {

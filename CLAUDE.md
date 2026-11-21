@@ -39,7 +39,7 @@
   - 掲示板の「解決しました」（`resolved_at`・`gf_board_resolve`・一覧は `gf_board_list3`）：質問・調べるの話題で、立てた本人か GATE を作った人。
   - 名前で探す（`gf_search_gates`・`gf_trail_search`）：見てよい GATE・TRAIL だけ、場所はおおよそ（小数 3 桁）、1 分 30 回。地図の「探す」（`MapSearchSheet`）は GATE と場所（MKLocalSearch）。場所を選ぶと地図をそこへ動かし、歩いて行く道を開ける（GATE が見つかるのは、いまいる所の 100m 以内のまま）。
   - TRAIL：友達のプロフィールの TRAIL（`gf_user_trails`）、リンク `grafitygate://trail/<id>`（`gf_trail_get`・`AppNavigator.trailLink`）、作った本人が名前・説明・見せる範囲を直す（`gf_update_trail`。地点の並びは歩いている人の進み具合が崩れるので変えない）、近くの TRAIL（5km）。
-  - 見返す：「あの日」（`OnThisDay`：1 年前・1 か月前・1 週間前の今ごろの自分の GATE とカード。iPhone の中だけで選ぶ。2026-11-21 オーナー「何の機能？」で、画面の見出しは「1 週間前の今日」「1 年前の今ごろ」など、いつの何かがそのまま分かる言葉に。1 つだけのときは「「○○」の GATE を作りました」の横長の 1 枚）、GATE の「あなたは n 回」から来た日の一覧（`gf_my_visit_history`・本人だけ）。
+  - 見返す：GATE の「あなたは n 回」から来た日の一覧（`gf_my_visit_history`・本人だけ）。わたしの「あの日」（1 年前・1 週間前の今ごろ）は 2026-11-21 オーナー「なくていい」でやめた（作らない）。
   - お知らせの設定（`gf_notify_prefs`・`gf_set_notify_mute`・`NotificationSettingsView`）：種類ごとに止める。止めた種類は `gf_notify` が作らない（`gf_notify` は 0018 が最新）。
 - GATE の管理（`0019`）：
   - 一緒に管理する人（`gf_gate_managers`・`gf_add_gate_manager`・`gf_remove_gate_manager`・`gf_gate_managers_of`・`gf_my_managed_gates`）：作った人が、お互いにフォローの友達を 5 人まで。判定は `gf_is_gate_manager`（作った人か、作った人とお互いにフォローのままの人）。できるのは名前・紹介・表紙を直す、掲示板のピン留め・話題や返信を消す・「解決しました」（`gf_board_pin`・`gf_board_delete`・`gf_board_resolve` は 0019 が最新）。見せる範囲・閉じる・管理する人を変えるのは作った人だけ。アプリは `GateContext.canManage`・`GateManagersSheet`・わたしの「一緒に管理している GATE」。

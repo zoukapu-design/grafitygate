@@ -19,7 +19,13 @@ struct DemoGallery: View {
                           "photo-editor", "story-camera", "story-text", "story-review",
                           "gate-posted", "card-maker", "card-maker-photo", "letter-card", "card-picker", "letter-compose",
                           "album-cards", "board-thread-card", "board-new-thread",
-                          "follow-list", "album-create", "letter-sealed"]
+                          "follow-list", "album-create", "letter-sealed"] + arScreens
+
+    /// AR の見本（ARLab。Apple のチップの Mac のシミュレーターで撮る）
+    static let arScreens = ["ar-gate", "ar-gate-small", "ar-gate-burst", "ar-gate-open", "ar-gate-small-open",
+                            "ar-gate-heart", "ar-gate-magic"]
+        + StoryEffect.allCases.filter { $0 != .none }.map { "ar-fx-\($0.rawValue)" }
+        + ["ar-fx-hidden", "ar-camera"]
 
     @StateObject private var nearby = NearbyCardsModel()
     @StateObject private var inbox = InboxModel()
@@ -51,6 +57,14 @@ struct DemoGallery: View {
     }
 
     @ViewBuilder private var content: some View {
+        if screen.hasPrefix("ar-") {
+            ARLabView(screen: screen)
+        } else {
+            gallery
+        }
+    }
+
+    @ViewBuilder private var gallery: some View {
         switch screen {
         case "door-designs":
             // 扉の見た目の一覧（AR はシミュレーターで作れないので、選ぶ画面の絵で確かめる）
@@ -167,11 +181,6 @@ struct DemoGallery: View {
             NavigationStack {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
-                        OnThisDayCard(pick: Demo.onThisDay)
-                        // 1 つだけのとき（横長の 1 枚）
-                        OnThisDayCard(pick: OnThisDay.Pick(headline: "1 週間前の今日", items: [
-                            OnThisDay.Item(id: UUID(), gateID: Demo.gateID, title: "磁石の戦士", photoPath: "demo/sunset.jpg",
-                                           date: Date().addingTimeInterval(-7 * 86400), isGate: true)]))
                         TrailCard(trail: Demo.trail)
                     }
                     .padding(16)
@@ -369,15 +378,6 @@ private enum Demo {
         DMMessage(id: UUID(), sender: friend ? Demo.friend : me, body: "", photo_path: nil, created_at: now, read_at: nil,
                   card_id: UUID(), card_body: "公園の大きな木の下で。春になったら、またみんなで来よう。", card_photo: nil,
                   card_gate_id: gateID, card_gate_title: "公園の大きな木", card_created_at: now, card_gone: false)
-    }
-
-    static var onThisDay: OnThisDay.Pick {
-        let year = Date().addingTimeInterval(-365 * 86400)
-        return OnThisDay.Pick(headline: "1 年前の今ごろ", items: [
-            OnThisDay.Item(id: UUID(), gateID: gateID, title: "夕焼けの見える丘", photoPath: "demo/sunset.jpg", date: year, isGate: true),
-            OnThisDay.Item(id: UUID(), gateID: UUID(), title: "駅前の大時計", photoPath: "demo/night.jpg", date: year, isGate: false),
-            OnThisDay.Item(id: UUID(), gateID: UUID(), title: "公園の大きな木", photoPath: nil, date: year, isGate: false),
-        ])
     }
 
     static let trail = TrailSummary(id: UUID(), owner: friend, owner_name: "みさき", title: "夕焼けの散歩道",
