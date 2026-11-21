@@ -26,7 +26,7 @@ struct DemoGallery: View {
                             "ar-gate-small-open",
                             "ar-gate-heart", "ar-gate-magic"]
         + StoryEffect.allCases.filter { $0 != .none }.map { "ar-fx-\($0.rawValue)" }
-        + ["ar-fx-hidden", "ar-camera"]
+        + ["ar-fx-hidden", "ar-camera", "ar-card-scan", "ar-card-checking", "ar-card-nomatch", "ar-card-closed", "ar-card-open"]
 
     @StateObject private var nearby = NearbyCardsModel()
     @StateObject private var inbox = InboxModel()

@@ -331,6 +331,22 @@ final class ARExperienceModel: ObservableObject {
         }
     }
 
+    #if DEBUG
+    /// AR の見本：カードの見た目を確かめるため、決まった状態にする（AR は動かさない）
+    func labPrepare(phase: Phase, cover: String?, title: String, reason: String? = nil, scanning: Bool = false,
+                    doorScale: Float = 0.35) {
+        self.phase = phase
+        guideCover = cover
+        lastEnterReason = reason
+        scanningLook = scanning
+        guideGate = GuideGate(id: UUID(), title: title, latitude: 35.659, longitude: 139.701)
+        placedPrecisely = true
+        self.doorScale = doorScale
+        enteredGate = UUID()
+        visitID = UUID()
+    }
+    #endif
+
     /// 作るときに送る見本の特徴：3 方向の写真の特徴と、そのまん中の切り抜き（サーバーは 8 つまで）
     static func referencePrints(_ shots: [Shot]) -> [[Float]] {
         let main = shots.map(\.print)

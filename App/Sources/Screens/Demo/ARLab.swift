@@ -25,6 +25,9 @@ struct ARLabView: View {
         ZStack {
             ARLabContainer(lab: lab, screen: screen)
                 .ignoresSafeArea()
+            if let model = lab.cardModel {
+                ARCardsPreview(model: model)
+            }
             if lab.showsControls, let story = lab.story {
                 StoryCameraControls(story: story, gateTitle: "ジェネシスの水槽", artworkCount: 0, canLeaveArt: true, toast: nil,
                                     onClose: {}, onLeaveArt: {}, onUse: { _ in })
@@ -37,6 +40,8 @@ struct ARLabView: View {
 final class ARLab: ObservableObject {
     @Published var story: StoryCamera?
     @Published var showsControls = false
+    /// AR の画面の下のカードを確かめる見本（AR は動かさない）
+    @Published var cardModel: ARExperienceModel?
     private var door: GateDoor?
     private var started = false
 
@@ -52,6 +57,10 @@ final class ARLab: ObservableObject {
         var background = UIColor(white: 0.95, alpha: 1)
         /// ななめから見る
         var side = false
+        /// GATE を出さない（開ける前の画面）
+        var noDoor = false
+        /// 下のカード（nil なら出さない）
+        var card: String?
     }
 
     static func plan(for screen: String) -> Plan {
@@ -68,6 +77,9 @@ final class ARLab: ObservableObject {
         case "ar-gate-magic": p.scale = 0.6; p.design = .magic; p.open = true
         case "ar-fx-hidden": p.scale = 0.35; p.open = true; p.effect = .sparkle; p.hideDoor = true
         case "ar-camera": p.scale = 0.35; p.open = true; p.effect = .sparkle; p.controls = true
+        case "ar-card-scan", "ar-card-checking", "ar-card-nomatch": p.scale = 0.35; p.noDoor = true; p.card = screen
+        case "ar-card-closed": p.scale = 0.35; p.card = screen
+        case "ar-card-open": p.scale = 0.35; p.open = true; p.card = screen
         default:
             if screen.hasPrefix("ar-fx-"), let e = StoryEffect(rawValue: String(screen.dropFirst("ar-fx-".count))) {
                 p.scale = 0.35; p.open = true; p.effect = e
@@ -107,6 +119,8 @@ final class ARLab: ObservableObject {
         room.addChild(camera)
         arView.scene.addAnchor(room)
 
+        if let card = plan.card { prepareCard(card) }
+        if plan.noDoor { return }
         do {
             let door = try GateDoor(anchorEntity: AnchorEntity(world: matrix_identity_float4x4), in: arView,
                                     style: .portal, design: plan.design)
@@ -139,6 +153,28 @@ final class ARLab: ObservableObject {
             self.story = story
             self.showsControls = plan.controls
         }
+    }
+}
+
+extension ARLab {
+    /// AR の画面の下のカードを、決まった状態で出す
+    func prepareCard(_ screen: String) {
+        let model = ARExperienceModel(mode: .enter(UUID()))
+        let title = "ジェネシスの水槽"
+        let cover = "demo/sunset.jpg"
+        switch screen {
+        case "ar-card-scan":
+            model.labPrepare(phase: .scanning, cover: cover, title: title)
+        case "ar-card-checking":
+            model.labPrepare(phase: .working("この場所を確かめています…"), cover: cover, title: title, scanning: true)
+        case "ar-card-nomatch":
+            model.labPrepare(phase: .failed(ErrorText.enterReason("no_match")), cover: cover, title: title, reason: "no_match")
+        case "ar-card-closed":
+            model.labPrepare(phase: .doorClosed, cover: cover, title: title)
+        default:
+            model.labPrepare(phase: .doorOpen, cover: cover, title: title)
+        }
+        cardModel = model
     }
 }
 

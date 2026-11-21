@@ -779,6 +779,27 @@ private struct Caption: View {
     }
 }
 
+#if DEBUG
+/// AR の見本：AR の画面の下のカード（と、確かめ中の光）だけを、本物の部品で出す
+struct ARCardsPreview: View {
+    @ObservedObject var model: ARExperienceModel
+
+    var body: some View {
+        ZStack {
+            if model.scanningLook {
+                ScanSweep().allowsHitTesting(false)
+            }
+            VStack(spacing: 12) {
+                Spacer()
+                ExperienceCard(model: model)
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 12)
+        }
+    }
+}
+#endif
+
 /// カードの見出し：光る丸のしるし・題・ひとことの案内（1 行ずつ。狭い iPhone では少し小さくして入れる）
 private struct CardHeadline: View {
     let symbol: String
