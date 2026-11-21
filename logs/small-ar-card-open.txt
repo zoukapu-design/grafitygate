@@ -1,0 +1,12 @@
+trace: 位置の許可：4・正確な位置情報 オン
+trace: 扉の向こうの回廊を作りました（奥行き 5.5m・アーチ 4）
+trace: 扉の見た目：ネオン
+trace: 重い作業：GATE を組み立てる 0.28 秒
+trace: GATE のエフェクト：粒 86 個（色 5）
+trace: 扉が現れました
+trace: AR の見本：ar-card-open（大きさ 0.35）カメラ 0.06, 0.70, 1.21
+trace: 位置：精度 ±5m（入る・作るに使える）
+IOSurfaceClientSetSurfaceNotify failed e00002c7
+trace: GATE のエフェクト：開いた光
+trace: 扉が開きました
+shot after 8s

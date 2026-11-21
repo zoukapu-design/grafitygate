@@ -1,0 +1,20 @@
+IOSurfaceClientSetSurfaceNotify failed e00002c7
+trace: 位置の許可：4・正確な位置情報 オン
+trace: 位置：精度 ±5m（入る・作るに使える）
+demo-server: GET /rest/v1/gf_gates → 200 332B
+demo-server: POST /rest/v1/rpc/gf_unread_counts → 200 34B
+demo-server: GET /rest/v1/follows → 200 205B
+demo-server: GET /rest/v1/follows → 200 307B
+trace: 画面が止まっています（0.6 秒・作業：なし・使えるメモリの残り 0MB）
+trace: 画面が動き出しました（止まっていたのは約 0.9 秒）
+demo-server: POST /rest/v1/rpc/gf_my_collection → 200 1119B
+demo-server: POST /rest/v1/rpc/gf_my_collection → 200 1119B
+demo-server: POST /rest/v1/rpc/gf_my_saved_cards2 → 200 1367B
+demo-server: POST /rest/v1/rpc/gf_my_managed_gates → 200 266B
+demo-server: POST /rest/v1/rpc/gf_my_letters → 200 1268B
+trace: 画面が動き出しました（止まっていたのは約 1.7 秒）
+trace: 画面が止まっています（1.7 秒・作業：なし・使えるメモリの残り 0MB）
+trace: 画面が動き出しました（止まっていたのは約 1.7 秒）
+trace: 画面が止まっています（1.7 秒・作業：なし・使えるメモリの残り 0MB）
+shot after 30s
+demo-server: POST /rest/v1/rpc/gf_unread_counts → 200 34B
